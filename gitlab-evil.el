@@ -38,6 +38,12 @@
 ;; stay untouched: j, k, gg, G, C-d, C-u, /, n and N keep their
 ;; meaning.
 ;;
+;; Every key that evil already binds goes through a key remap of the
+;; evil command, for example [remap evil-ret].  A remap follows the
+;; command and not the key, so a user who moves evil-ret to another
+;; key keeps the GitLab behaviour on the new key.  A key with no evil
+;; command, such as gr, stays a plain key binding.
+;;
 ;; Detail buffers: RET opens the pipeline, merge request or web page
 ;; at point; q quits the window; gr refreshes; p pops back; c copies
 ;; the ID; w opens the web page.
@@ -57,35 +63,43 @@
 (require 'gitlab-pipeline)
 
 (defvar gitlab-evil-detail-keys
-  '(("RET" . gitlab-open-at-point)
+  '(([remap evil-ret] . gitlab-open-at-point)
     ("<mouse-2>" . gitlab-mouse-open-at-point)
-    ("q" . quit-window)
+    ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
-    ("p" . gitlab-pop)
-    ("c" . gitlab-copy-id)
-    ("w" . gitlab-open-web))
-  "Keys that `gitlab-evil-mode' binds in detail buffers.")
+    ([remap evil-paste-after] . gitlab-pop)
+    ([remap evil-change] . gitlab-copy-id)
+    ([remap evil-forward-word-begin] . gitlab-open-web))
+  "Keys that `gitlab-evil-mode' binds in detail buffers.
+A key is a key string, or a `[remap COMMAND]' vector for a command
+that evil already binds.")
 
 (defvar gitlab-evil-list-keys
-  '(("RET" . gitlab-list-open)
+  '(([remap evil-ret] . gitlab-list-open)
     ("<mouse-2>" . gitlab-list-mouse-open)
-    ("q" . quit-window)
+    ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
-    ("S" . tabulated-list-sort)
-    ("c" . gitlab-list-copy-id)
-    ("Y" . gitlab-list-copy-id)
-    ("w" . gitlab-list-open-web))
-  "Keys that `gitlab-evil-mode' binds in list buffers.")
+    ([remap evil-change-whole-line] . tabulated-list-sort)
+    ([remap evil-change] . gitlab-list-copy-id)
+    ([remap evil-yank-line] . gitlab-list-copy-id)
+    ([remap evil-forward-word-begin] . gitlab-list-open-web))
+  "Keys that `gitlab-evil-mode' binds in list buffers.
+A key is a key string, or a `[remap COMMAND]' vector for a command
+that evil already binds.")
 
 (defvar gitlab-evil-list-visual-keys
-  '(("y" . gitlab-evil-list-copy-ids))
-  "Keys that `gitlab-evil-mode' binds in visual state of list buffers.")
+  '(([remap evil-yank] . gitlab-evil-list-copy-ids))
+  "Keys that `gitlab-evil-mode' binds in visual state of list buffers.
+A key is a key string, or a `[remap COMMAND]' vector for a command
+that evil already binds.")
 
 (defvar gitlab-evil-job-log-keys
-  '(("q" . quit-window)
+  '(([remap evil-record-macro] . quit-window)
     ("gr" . gitlab-job-log-restart)
-    ("c" . gitlab-copy-id))
-  "Keys that `gitlab-evil-mode' binds in job log buffers.")
+    ([remap evil-change] . gitlab-copy-id))
+  "Keys that `gitlab-evil-mode' binds in job log buffers.
+A key is a key string, or a `[remap COMMAND]' vector for a command
+that evil already binds.")
 
 ;;; Local minor modes
 
@@ -107,11 +121,18 @@ Do not enable this mode directly: enable `gitlab-evil-mode'."
   :group 'gitlab
   :lighter nil)
 
+(defun gitlab-evil--key-sequence (key)
+  "Return the key sequence of KEY.
+KEY is a key string or a key vector, so a `[remap COMMAND]' entry
+passes through unchanged."
+  (if (vectorp key) key (key-parse key)))
+
 (defun gitlab-evil--bind (state mode keys)
   "Bind STATE's evil keys for MODE from the KEYS list."
   (apply #'evil-define-minor-mode-key state mode
          (mapcan (lambda (binding)
-                   (list (key-parse (car binding)) (cdr binding)))
+                   (list (gitlab-evil--key-sequence (car binding))
+                         (cdr binding)))
                  keys)))
 
 (gitlab-evil--bind 'normal 'gitlab-evil-detail-mode gitlab-evil-detail-keys)

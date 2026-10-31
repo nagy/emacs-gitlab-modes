@@ -191,9 +191,14 @@ without evil.  The suite never opens a network connection.
   `gitlab-modes.el`.
 - `gitlab-evil.el` binds every command key through
   `evil-define-minor-mode-key`, one key set per state and local minor
-  mode.  Do not add evil to `Package-Requires` or `packageRequires`;
-  the check phase and the `preInstall` compile put evil on the load
-  path instead.
+  mode.  A key that evil already binds becomes a `[remap
+  EVIL-COMMAND]` vector, so the binding follows the command and not
+  the key, and a user who moves `evil-ret` elsewhere keeps the
+  behaviour.  A key without an evil command, such as `gr`, stays a
+  key string.  `gitlab-evil--key-sequence` passes a vector unchanged
+  and parses a string.  Do not add evil to `Package-Requires` or
+  `packageRequires`; the check phase and the `preInstall` compile put
+  evil on the load path instead.
 - `ol-gitlab.el` registers the link types at load.  A `:store`
   function calls `org-link-store-props` and returns nil outside a
   GitLab buffer, because Org calls every store function in every
