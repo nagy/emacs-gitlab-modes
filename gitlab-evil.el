@@ -1,0 +1,188 @@
+;;; gitlab-evil.el --- Evil bindings for GitLab modes -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2026  Daniel Nagy
+
+;; Author: Daniel Nagy
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "30.1"))
+;; Keywords: tools, convenience
+;; URL: https://github.com/nagy/emacs-gitlab-modes
+
+;; This file is not part of GNU Emacs.
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License as
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+
+;; You should have received a copy of the GNU Affero General Public
+;; License along with this program.  If not, see
+;; <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Optional evil integration.  The file requires evil but the package
+;; does not declare it, so a user without evil installs nothing:
+;;
+;;   (require 'gitlab-evil)
+;;   (gitlab-evil-mode 1)
+;;
+;; The mode installs one local minor mode per GitLab buffer.  Evil
+;; state maps take precedence over a major mode map, so every command
+;; key needs a state binding to reach the buffer.  The evil motions
+;; stay untouched: j, k, gg, G, C-d, C-u, /, n and N keep their
+;; meaning.
+;;
+;; Detail buffers: RET opens the pipeline, merge request or web page
+;; at point; q quits the window; gr refreshes; p pops back; c copies
+;; the ID; w opens the web page.
+;;
+;; List buffers: RET opens the row; c or Y copies its ID; w opens its
+;; web page; S sorts the current column.  A visual line selection
+;; followed by y copies every selected row ID, one per line.
+;;
+;; Job log buffers: q quits; gr restarts the trace; c copies the job
+;; ID; G and gg reach the end and the start.
+
+;;; Code:
+
+(require 'evil)
+(require 'gitlab-mode)
+(require 'gitlab-merge-request)
+(require 'gitlab-pipeline)
+
+(defvar gitlab-evil-detail-keys
+  '(("RET" . gitlab-open-at-point)
+    ("<mouse-2>" . gitlab-mouse-open-at-point)
+    ("q" . quit-window)
+    ("gr" . revert-buffer)
+    ("p" . gitlab-pop)
+    ("c" . gitlab-copy-id)
+    ("w" . gitlab-open-web))
+  "Keys that `gitlab-evil-mode' binds in detail buffers.")
+
+(defvar gitlab-evil-list-keys
+  '(("RET" . gitlab-list-open)
+    ("<mouse-2>" . gitlab-list-mouse-open)
+    ("q" . quit-window)
+    ("gr" . revert-buffer)
+    ("S" . tabulated-list-sort)
+    ("c" . gitlab-list-copy-id)
+    ("Y" . gitlab-list-copy-id)
+    ("w" . gitlab-list-open-web))
+  "Keys that `gitlab-evil-mode' binds in list buffers.")
+
+(defvar gitlab-evil-list-visual-keys
+  '(("y" . gitlab-evil-list-copy-ids))
+  "Keys that `gitlab-evil-mode' binds in visual state of list buffers.")
+
+(defvar gitlab-evil-job-log-keys
+  '(("q" . quit-window)
+    ("gr" . gitlab-job-log-restart)
+    ("c" . gitlab-copy-id))
+  "Keys that `gitlab-evil-mode' binds in job log buffers.")
+
+;;; Local minor modes
+
+(define-minor-mode gitlab-evil-detail-mode
+  "Install the evil bindings of GitLab detail buffers.
+Do not enable this mode directly: enable `gitlab-evil-mode'."
+  :group 'gitlab
+  :lighter nil)
+
+(define-minor-mode gitlab-evil-list-mode
+  "Install the evil bindings of GitLab list buffers.
+Do not enable this mode directly: enable `gitlab-evil-mode'."
+  :group 'gitlab
+  :lighter nil)
+
+(define-minor-mode gitlab-evil-job-log-mode
+  "Install the evil bindings of GitLab job log buffers.
+Do not enable this mode directly: enable `gitlab-evil-mode'."
+  :group 'gitlab
+  :lighter nil)
+
+(defun gitlab-evil--bind (state mode keys)
+  "Bind STATE's evil keys for MODE from the KEYS list."
+  (apply #'evil-define-minor-mode-key state mode
+         (mapcan (lambda (binding)
+                   (list (key-parse (car binding)) (cdr binding)))
+                 keys)))
+
+(gitlab-evil--bind 'normal 'gitlab-evil-detail-mode gitlab-evil-detail-keys)
+(gitlab-evil--bind 'normal 'gitlab-evil-list-mode gitlab-evil-list-keys)
+(gitlab-evil--bind 'visual 'gitlab-evil-list-mode gitlab-evil-list-visual-keys)
+(gitlab-evil--bind 'normal 'gitlab-evil-job-log-mode gitlab-evil-job-log-keys)
+
+;;; Selection
+
+(defun gitlab-evil--ids-between (start end)
+  "Return the row IDs of the GitLab list rows between START and END."
+  (let ((ids nil))
+    (save-excursion
+      (goto-char start)
+      (while (< (point) end)
+        (when-let* ((id (tabulated-list-get-id)))
+          (push (gitlab-data-id-string id) ids))
+        (forward-line 1)))
+    (nreverse ids)))
+
+(defun gitlab-evil-list-copy-ids (start end)
+  "Copy the IDs of the selected list rows between START and END."
+  (interactive "r")
+  (let ((ids (gitlab-evil--ids-between start end)))
+    (if ids
+        (progn
+          (kill-new (mapconcat #'identity ids "\n"))
+          (message "Copied %d IDs" (length ids)))
+      (user-error "No rows selected"))))
+
+;;; Global mode
+
+(defun gitlab-evil--maybe-enable ()
+  "Enable the matching local evil mode in the current buffer."
+  (cond
+   ((derived-mode-p 'gitlab-pipeline-mode)
+    (gitlab-evil-detail-mode 1))
+   ((derived-mode-p 'gitlab-merge-request-mode)
+    (gitlab-evil-detail-mode 1))
+   ((derived-mode-p 'gitlab-job-log-mode)
+    (gitlab-evil-job-log-mode 1))
+   ((derived-mode-p 'gitlab-list-mode)
+    (gitlab-evil-list-mode 1))))
+
+(defun gitlab-evil--disable ()
+  "Disable every local evil mode in the current buffer."
+  (gitlab-evil-detail-mode -1)
+  (gitlab-evil-list-mode -1)
+  (gitlab-evil-job-log-mode -1))
+
+;;;###autoload
+(define-minor-mode gitlab-evil-mode
+  "Install the evil bindings of the GitLab modes.
+The mode is global; it enables one local minor mode in each
+GitLab buffer and follows new buffers through the major mode
+hook.  It does not load evil for a user who never calls it."
+  :global t
+  :group 'gitlab
+  (if gitlab-evil-mode
+      (progn
+        (add-hook 'after-change-major-mode-hook
+                  #'gitlab-evil--maybe-enable)
+        (dolist (buffer (buffer-list))
+          (with-current-buffer buffer
+            (gitlab-evil--maybe-enable))))
+    (remove-hook 'after-change-major-mode-hook
+                 #'gitlab-evil--maybe-enable)
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (gitlab-evil--disable)))))
+
+(provide 'gitlab-evil)
+
+;;; gitlab-evil.el ends here

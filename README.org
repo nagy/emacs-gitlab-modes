@@ -1,0 +1,170 @@
+#+title: gitlab-modes - GitLab merge request and pipeline modes for Emacs
+#+author: Daniel Nagy
+#+language: en
+
+Read-only Emacs modes for GitLab merge requests and CI pipelines.
+One buffer shows one merge request or one pipeline.  A separate mode
+shows a collection as a sortable table.  Every display buffer refreshes
+itself through =auto-revert-mode= and never blocks Emacs.
+
+The package reads GitLab through the =glab= command line program.  The
+Nix build bakes the store path of =glab= into =gitlab-program=, so an
+installed package works without =glab= on =PATH=.
+
+* Requirements
+
+- Emacs 30.1 or later
+- =glab=, authenticated for the GitLab instance
+- Optional: evil, for =gitlab-evil.el=
+- Optional: Org, for =ol-gitlab.el=
+
+* Commands
+
+| Command                             | What it shows                                      |
+|-------------------------------------+----------------------------------------------------|
+| =gitlab-list-merge-requests=          | Merge request list.  A prefix argument adds =--all=. |
+| =gitlab-display-merge-request=        | One merge request in its own buffer.               |
+| =gitlab-list-pipelines=               | Pipeline list.  A prefix argument reads flags.     |
+| =gitlab-display-pipeline=             | Pipeline fields at the top and jobs below.         |
+| =gitlab-display-job-log=              | Live =glab ci trace= output for one job.             |
+
+The package installs as =gitlab-modes=, the same name as its entry
+library:
+
+#+begin_src elisp
+(require 'gitlab-modes)
+
+(keymap-set global-map "C-c g m" #'gitlab-list-merge-requests)
+(keymap-set global-map "C-c g p" #'gitlab-list-pipelines)
+#+end_src
+
+* Detail buffers
+
+A merge request buffer shows every top-level field of
+=glab mr view --output json=.  Nested objects become one readable line.
+A user becomes =Name (@username)=, a milestone becomes its title and a
+pipeline becomes =#ID status= with a link to the pipeline buffer.
+=RET= opens the object at point.  =n= loads the notes below the fields.
+
+A pipeline buffer shows the pipeline fields at the top and the jobs
+table below.  =RET= on a job streams its log into a separate buffer.
+The log buffer keeps ANSI colors, stays read-only and kills its process
+when the buffer dies.  The log has no timeout and streams until =glab=
+exits, so a long job keeps writing.  =g= restarts the trace.
+
+The notes request and the jobs request ask for one page of 100 items.
+A merge request with more notes, or a pipeline with more jobs, shows
+the first page only.
+
+Both detail modes provide these keys:
+
+| Key       | Command                  |
+|-----------+--------------------------|
+| =RET=       | =gitlab-open-at-point=     |
+| =c=         | =gitlab-copy-id=           |
+| =w=         | =gitlab-open-web=          |
+| =p=         | =gitlab-pop=               |
+| =q=         | =quit-window=              |
+
+* List buffers
+
+The list modes derive from =tabulated-list-mode=.  Column sorting,
+column resizing and point keeping by row identity come from the parent.
+=RET= opens the row, =c= copies its ID and =w= opens its web page.
+
+* Automatic refresh
+
+=gitlab-mode.el= sets three buffer-local variables:
+
+- =buffer-stale-function= decides when a refresh is due.
+- =revert-buffer-function= starts the asynchronous fetch.  A list
+  buffer fetches its collection and a detail buffer its object.
+- =auto-revert-mode= calls the stale check at =auto-revert-interval=.
+
+=gitlab-refresh-interval= sets the normal poll interval.
+=gitlab-refresh-fast-interval= applies while a status still changes.
+=gitlab-refresh-visible-only= stops polling for buffers in no window.
+A manual =M-x revert-buffer= always fetches.
+
+The fetch is asynchronous.  Unchanged data is not rendered again, so
+point and marks survive an automatic refresh that found no change.
+
+* Project selection
+
+A nil =gitlab-repository= lets =glab= infer the project from the
+directory of the buffer that ran the command.  Set it to =OWNER/REPO=
+or a full namespace path to read another project.  A display buffer
+moves its own =default-directory= to the temporary directory, so it
+keeps the origin directory in =gitlab-cli-directory= and glab still
+runs in the right project.
+
+* Optional layers
+
+** Evil
+
+#+begin_src elisp
+(require 'gitlab-evil)
+(gitlab-evil-mode 1)
+#+end_src
+
+The mode binds commands in normal state and leaves the evil motions
+alone.  A visual selection of list rows followed by =y= copies their
+IDs.
+
+** Org links
+
+#+begin_src elisp
+(require 'ol-gitlab)
+#+end_src
+
+The file registers =gitlab-mr:=, =gitlab-pipeline:= and =gitlab-job:=
+link types.  =org-store-link= in a display buffer produces the matching
+link.  HTML, markdown and LaTeX export write a web URL when
+=gitlab-repository= is set.  Every other backend writes the URL after
+the description text.
+
+** Xref
+
+#+begin_src elisp
+(require 'gitlab-xref)
+#+end_src
+
+=M-.= opens =mr:8285=, =pipeline:3010647305= or =job:17624043693=.  In a
+display buffer the text properties win, so a job row opens its log
+without a typed prefix.
+
+* Nix
+
+#+begin_src sh
+nix build          # package; its check phase runs the tests
+nix flake check    # package, package-lint, checkdoc, treefmt
+nix fmt            # nixfmt via treefmt
+nix develop        # emacs with evil, and glab
+#+end_src
+
+* Tests
+
+The ERT suite runs offline.  Every request runs =test/mock-glab=, which
+reads JSON from =test/fixtures=.  No test opens a network connection.
+
+#+begin_src sh
+emacs --batch -L . -L test -L "$EVIL" \
+  -l gitlab-test-helpers.el \
+  -l gitlab-cli-tests.el \
+  -l gitlab-data-tests.el \
+  -l gitlab-mode-tests.el \
+  -l gitlab-merge-request-tests.el \
+  -l gitlab-pipeline-tests.el \
+  -l gitlab-read-tests.el \
+  -l gitlab-evil-tests.el \
+  -l ol-gitlab-tests.el \
+  -l gitlab-xref-tests.el \
+  -f ert-run-tests-batch-and-exit
+#+end_src
+
+Set =EVIL= to the directory that holds =evil.el=.  All other tests run
+without evil.
+
+* License
+
+GNU Affero General Public License, version 3 or later.  See =LICENSE=.

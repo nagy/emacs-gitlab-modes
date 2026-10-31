@@ -1,0 +1,65 @@
+{
+  "id": 3010647305,
+  "iid": 35812,
+  "project_id": 3472737,
+  "status": "success",
+  "source": "merge_request_event",
+  "ref": "refs/merge-requests/8285/merge",
+  "name": "",
+  "sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
+  "before_sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
+  "tag": false,
+  "yaml_errors": "",
+  "user": {"id": 405008, "username": "tavmjong", "name": "Tavmjong Bah"},
+  "updated_at": "2026-10-30T23:18:59.126Z",
+  "created_at": "2026-10-30T23:10:14.82Z",
+  "started_at": "2026-10-30T23:10:16.259Z",
+  "finished_at": "2026-10-30T23:18:59.112Z",
+  "committed_at": null,
+  "duration": 522,
+  "queued_duration": 1,
+  "coverage": "",
+  "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3010647305",
+  "detailed_status": {
+    "icon": "status_success",
+    "text": "Passed",
+    "label": "passed",
+    "group": "success"
+  },
+  "archived": false,
+  "jobs": [
+    {
+      "id": 17624043693,
+      "name": "media-check",
+      "stage": "test",
+      "status": "success",
+      "duration": 100.234765,
+      "queued_duration": 0.078558,
+      "failure_reason": "",
+      "allow_failure": false,
+      "web_url": "https://gitlab.example/inkscape/inkscape/-/jobs/17624043693"
+    },
+    {
+      "id": 17624043692,
+      "name": "clangtidy:linux",
+      "stage": "test",
+      "status": "failed",
+      "duration": 106.277279,
+      "queued_duration": 0.1,
+      "failure_reason": "script_failure",
+      "allow_failure": false,
+      "web_url": "https://gitlab.example/inkscape/inkscape/-/jobs/17624043692"
+    },
+    {
+      "id": 17624043686,
+      "name": "inkscape:android",
+      "stage": "build",
+      "status": "manual",
+      "duration": 0,
+      "queued_duration": 0,
+      "failure_reason": "",
+      "allow_failure": true,
+      "web_url": "https://gitlab.example/inkscape/inkscape/-/jobs/17624043686"
+    }
+  ]
+}

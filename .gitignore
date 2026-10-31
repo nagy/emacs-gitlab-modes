@@ -1,0 +1,6 @@
+*.elc
+*.eln
+.elpa/
+result
+result-*
+.direnv

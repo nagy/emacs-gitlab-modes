@@ -1,0 +1,56 @@
+{
+  "id": 559000946,
+  "iid": 8285,
+  "title": "Make file extension match the export type",
+  "state": "opened",
+  "source_branch": "export-dialog-fix",
+  "target_branch": "master",
+  "author": {"id": 405008, "username": "tavmjong", "name": "Tavmjong Bah"},
+  "assignees": [],
+  "reviewers": [{"id": 259700, "username": "mikix", "name": "Michael Terry"}],
+  "labels": ["UX"],
+  "milestone": {
+    "id": 4490171,
+    "iid": 16,
+    "title": "Inkscape 1.5",
+    "state": "active",
+    "web_url": "https://gitlab.example/groups/inkscape/-/milestones/16"
+  },
+  "description": "Fix for #4238",
+  "draft": false,
+  "has_conflicts": false,
+  "detailed_merge_status": "discussions_not_resolved",
+  "user_notes_count": 6,
+  "web_url": "https://gitlab.example/inkscape/inkscape/-/merge_requests/8285",
+  "references": {"short": "!8285", "relative": "!8285", "full": "inkscape/inkscape!8285"},
+  "time_stats": {
+    "human_time_estimate": "",
+    "human_total_time_spent": "1h",
+    "time_estimate": 0,
+    "total_time_spent": 3600
+  },
+  "task_completion_status": {"count": 2, "completed_count": 1},
+  "pipeline": {
+    "id": 3011498032,
+    "iid": 473,
+    "status": "success",
+    "ref": "export-dialog-fix",
+    "sha": "7d9bcb773538d451b1efe3f424872639499e7db2",
+    "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3011498032"
+  },
+  "head_pipeline": {
+    "id": 3010647305,
+    "iid": 35812,
+    "status": "success",
+    "ref": "refs/merge-requests/8285/merge",
+    "sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
+    "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3010647305"
+  },
+  "diff_refs": {
+    "base_sha": "abe630c22258c2cd550b931fc302c04e75086c66",
+    "head_sha": "3f2a7e72bad47691794babcc4efae36eac184e44",
+    "start_sha": "9207342e5fa93d144277f827b923bdbf3ec5e4af"
+  },
+  "created_at": "2026-10-30T23:10:10.429Z",
+  "updated_at": "2026-10-31T20:57:30.763Z"
+}

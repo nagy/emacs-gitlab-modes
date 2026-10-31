@@ -1,0 +1,3 @@
+[32mRunning job[0m
+step 1
+step 2
