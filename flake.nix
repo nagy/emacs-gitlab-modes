@@ -46,112 +46,128 @@
           ...
         }:
         let
-          inherit (pkgs.emacsPackages) melpaBuild;
+          version = "0.1.0-unstable-${commitDate}";
 
-          # The package shells out to glab at runtime.  Bake the store
-          # path into the defcustom, so the installed package works
-          # without anything on PATH.
-          glab = pkgs.glab;
+          # The package stays overridable, so a consumer can swap the
+          # Emacs, its package set, the build function, the glab store
+          # path or the optional evil package:
+          #   inputs.gitlab-modes.packages.${system}.default.override {
+          #     glab = pkgs.glab-custom;
+          #   }
+          # The flake passes the commit-derived version, because a plain
+          # import of the expression cannot know it.
+          gitlabModes = lib.makeOverridable (
+            {
+              # One Emacs package set supplies every dependency, so an
+              # override of this argument moves all of them.
+              emacs ? pkgs.emacs,
+              emacsPackages ? emacs.pkgs,
+              melpaBuild ? emacsPackages.melpaBuild,
+              version ? "0.1.0",
+              # The package shells out to glab at runtime.  Bake the store
+              # path into the defcustom, so the installed package works
+              # without anything on PATH.
+              glab ? pkgs.glab,
+              # The optional gitlab-evil.el layer needs evil to compile and
+              # test, but the package must not depend on it.  The check
+              # phase supplies the elisp directory on the load path only.
+              evil ? emacsPackages.evil,
+            }:
+            melpaBuild {
+              # The package name matches its entry library, gitlab-modes.el,
+              # so `(use-package gitlab-modes :ensure t)' resolves it.
+              pname = "gitlab-modes";
+              inherit version;
 
-          # The optional gitlab-evil.el layer needs evil to compile and
-          # test, but the package must not depend on it.  The check phase
-          # supplies the elisp directory on the load path only.
-          evil = pkgs.emacsPackages.evil;
+              src = lib.cleanSource ./.;
 
-          package = melpaBuild {
-            # The package name matches its entry library, gitlab-modes.el,
-            # so `(use-package gitlab-modes :ensure t)' resolves it.
-            pname = "gitlab-modes";
-            version = "0.1.0-unstable-${commitDate}";
-
-            src = lib.cleanSource ./.;
-
-            # The shared gitlab-cli.el shells out to glab; bake its store
-            # path in so the default value works out of the box.
-            postPatch = ''
-              substituteInPlace gitlab-cli.el \
-                --replace-fail 'gitlab-program "glab"' 'gitlab-program "${lib.getExe' glab "glab"}"'
-            '';
-
-            # The optional gitlab-evil.el layer needs evil to compile, but
-            # the package must not depend on it.  The default install phase
-            # compiles the packaged files with -Q, so preInstall puts the
-            # evil elisp directory on EMACSLOADPATH for that compile.
-            # Users without evil only see one "Cannot open load file" line
-            # during their own package compile.
-            preInstall = ''
-              evil_dir=$(find ${evil}/share/emacs/site-lisp/elpa \
-                -mindepth 1 -maxdepth 1 -type d -name 'evil-*' -print -quit)
-              export EMACSLOADPATH="$evil_dir:''${EMACSLOADPATH-}"
-            '';
-
-            # Byte-compilation warnings fail the build.  Keep it on: it is
-            # the cheapest lint the package gets.
-            turnCompilationWarningToError = true;
-
-            doCheck = true;
-            # No file lists here: the phase globs the tree.  Test files
-            # carry the `-tests.el' suffix, which package-build excludes
-            # from the tarball and the lint gate excludes from the ELPA
-            # policy checks.
-            checkPhase = ''
-              runHook preCheck
-
-              evil_load_path=$(find ${evil}/share/emacs/site-lisp/elpa \
-                -mindepth 1 -maxdepth 1 -type d -name 'evil-*' -print -quit)
-
-              # The mock program carries a portable #!/usr/bin/env bash
-              # line for the developer shell.  The build sandbox has no
-              # /usr/bin/env, so rewrite the interpreter to the store path.
-              patchShebangs test/mock-glab
-
-              echo '=== byte-compile ==='
-              for file in *.el; do
-                emacs --batch -L . -L test -L "$evil_load_path" \
-                  --eval '(setq byte-compile-error-on-warn t)' \
-                  -f batch-byte-compile "$file"
-              done
-
-              echo '=== ERT tests ==='
-              test_args=(-l gitlab-test-helpers.el)
-              for file in *-tests.el; do test_args+=(-l "$file"); done
-              emacs --batch -L . -L test -L "$evil_load_path" \
-                "''${test_args[@]}" \
-                -f ert-run-tests-batch-and-exit
-
-              runHook postCheck
-            '';
-
-            meta = {
-              description = "Emacs modes for GitLab merge requests and CI pipelines";
-              longDescription = ''
-                A read-only Emacs interface to GitLab merge requests and
-                CI pipelines.  One buffer shows one merge request or one
-                pipeline, and a separate mode shows a collection as a
-                sortable table.
-
-                A pipeline detail buffer renders the pipeline fields at
-                the top and its jobs table below.  RET on a job streams
-                the job trace into another buffer.  The merge request
-                detail buffer shows every glab JSON field and loads notes
-                on demand.
-
-                Both detail and list buffers refresh themselves through
-                auto-revert-mode.  The buffer-stale-function throttles
-                the poll, and the fetch runs asynchronously, so Emacs
-                never waits for the network.
-
-                The package talks to GitLab through the glab command line
-                program (nixpkgs package glab).  The build substitutes
-                the default value of gitlab-program with the store path
-                of that program.
+              # The shared gitlab-cli.el shells out to glab; bake its store
+              # path in so the default value works out of the box.
+              postPatch = ''
+                substituteInPlace gitlab-cli.el \
+                  --replace-fail 'gitlab-program "glab"' 'gitlab-program "${lib.getExe' glab "glab"}"'
               '';
-              license = lib.licenses.agpl3Plus;
-              homepage = "https://github.com/nagy/emacs-gitlab-modes";
-              maintainers = with lib.maintainers; [ nagy ];
-              platforms = lib.platforms.unix;
-            };
-          };
+
+              # The optional gitlab-evil.el layer needs evil to compile, but
+              # the package must not depend on it.  The default install phase
+              # compiles the packaged files with -Q, so preInstall puts the
+              # evil elisp directory on EMACSLOADPATH for that compile.
+              # Users without evil only see one "Cannot open load file" line
+              # during their own package compile.
+              preInstall = ''
+                evil_dir=$(find ${evil}/share/emacs/site-lisp/elpa \
+                  -mindepth 1 -maxdepth 1 -type d -name 'evil-*' -print -quit)
+                export EMACSLOADPATH="$evil_dir:''${EMACSLOADPATH-}"
+              '';
+
+              # Byte-compilation warnings fail the build.  Keep it on: it is
+              # the cheapest lint the package gets.
+              turnCompilationWarningToError = true;
+
+              doCheck = true;
+              # No file lists here: the phase globs the tree.  Test files
+              # carry the `-tests.el' suffix, which package-build excludes
+              # from the tarball and the lint gate excludes from the ELPA
+              # policy checks.
+              checkPhase = ''
+                runHook preCheck
+
+                evil_load_path=$(find ${evil}/share/emacs/site-lisp/elpa \
+                  -mindepth 1 -maxdepth 1 -type d -name 'evil-*' -print -quit)
+
+                # The mock program carries a portable #!/usr/bin/env bash
+                # line for the developer shell.  The build sandbox has no
+                # /usr/bin/env, so rewrite the interpreter to the store path.
+                patchShebangs test/mock-glab
+
+                echo '=== byte-compile ==='
+                for file in *.el; do
+                  emacs --batch -L . -L test -L "$evil_load_path" \
+                    --eval '(setq byte-compile-error-on-warn t)' \
+                    -f batch-byte-compile "$file"
+                done
+
+                echo '=== ERT tests ==='
+                test_args=(-l gitlab-test-helpers.el)
+                for file in *-tests.el; do test_args+=(-l "$file"); done
+                emacs --batch -L . -L test -L "$evil_load_path" \
+                  "''${test_args[@]}" \
+                  -f ert-run-tests-batch-and-exit
+
+                runHook postCheck
+              '';
+
+              meta = {
+                description = "Emacs modes for GitLab merge requests and CI pipelines";
+                longDescription = ''
+                  A read-only Emacs interface to GitLab merge requests and
+                  CI pipelines.  One buffer shows one merge request or one
+                  pipeline, and a separate mode shows a collection as a
+                  sortable table.
+
+                  A pipeline detail buffer renders the pipeline fields at
+                  the top and its jobs table below.  RET on a job streams
+                  the job trace into another buffer.  The merge request
+                  detail buffer shows every glab JSON field and loads notes
+                  on demand.
+
+                  Both detail and list buffers refresh themselves through
+                  auto-revert-mode.  The buffer-stale-function throttles
+                  the poll, and the fetch runs asynchronously, so Emacs
+                  never waits for the network.
+
+                  The package talks to GitLab through the glab command line
+                  program (nixpkgs package glab).  The build substitutes
+                  the default value of gitlab-program with the store path
+                  of that program.
+                '';
+                license = lib.licenses.agpl3Plus;
+                homepage = "https://github.com/nagy/emacs-gitlab-modes";
+                maintainers = with lib.maintainers; [ nagy ];
+                platforms = lib.platforms.unix;
+              };
+            }
+          ) { inherit version; };
 
           # Shell snippet for the ELPA policy checks: copy the packaged
           # Elisp sources into the build directory.  Test files carry the
@@ -176,13 +192,13 @@
             programs.nixfmt.enable = true;
           };
 
-          packages.gitlab-modes = package;
-          packages.default = package;
+          packages.gitlab-modes = gitlabModes;
+          packages.default = gitlabModes;
 
           # `nix flake check' builds the package, so the check phase
           # (byte-compile with warnings as errors, full ERT suite) gates
           # the whole repo rather than only `nix build'.
-          checks.package = package;
+          checks.package = gitlabModes;
 
           # package-lint: ELPA policy (headers, symbol prefixes,
           # dependency declarations).
@@ -236,7 +252,9 @@
             # testing.  Evil comes along for the optional gitlab-evil.el
             # layer.
             packages = [
-              glab
+              # The store path that the package bakes in, so the shell runs
+              # the same binary as the built package.
+              pkgs.glab
               (pkgs.emacsPackages.emacsWithPackages (p: [ p.evil ]))
             ];
           };

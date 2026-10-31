@@ -33,7 +33,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection. |
 | `test/fixtures/` | Minimal glab JSON, a job trace and a pipeline without a jobs array. |
 | `*-tests.el` | ERT suites.  `package-build` excludes this suffix from the package and the lint gate skips it. |
-| `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks. |
+| `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path or the evil package. |
 | `flake.lock` | Pinned flake inputs. |
 | `README.org` | User documentation. |
 | `AGENTS.md` | This file. |
@@ -218,6 +218,13 @@ without evil.  The suite never opens a network connection.
   `checks.package-lint`.  The package-lint check whitelists `gitlab`
   and `ol-gitlab` as shared prefixes.
 - `nix fmt` formats `flake.nix`.  Do not run nixfmt standalone.
+- `gitlabModes` in `flake.nix` calls `lib.makeOverridable` with one
+  argument set: `emacs`, `emacsPackages`, `melpaBuild`, `version`,
+  `glab` and `evil`.  The flake passes the commit-derived `version`, and
+  the argument defaults to `"0.1.0"` for a plain import.  Every other
+  dependency derives from `emacs`, so one override moves them all.  A
+  new build input becomes a new named argument, not a hard-coded
+  binding.
 
 ## TODO
 
