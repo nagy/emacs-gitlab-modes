@@ -194,16 +194,25 @@ or the base object is absent."
             :commits (delq nil (mapcar #'gitlab-git--commit-entry
                                        commits))))))
 
-;;; Commit buffer
+;;; Patch buffers
 
-(define-derived-mode gitlab-git-commit-mode diff-mode "GitLab Commit"
-  "Display one Git commit in a read-only `diff-mode' buffer.
-The buffer shows the commit message and the patch that the commit
-introduced.  It never loads a file."
+(define-derived-mode gitlab-git-patch-mode diff-mode "GitLab Patch"
+  "Display a read-only Git patch in `diff-mode'.
+The buffer keeps the hunk commands of `diff-mode'.  It never loads a
+file."
   :group 'gitlab
   (setq-local buffer-read-only t)
   (setq-local buffer-stale-function nil)
   (setq-local truncate-lines t))
+
+(define-key gitlab-git-patch-mode-map (kbd "q") #'quit-window)
+
+(define-derived-mode gitlab-git-commit-mode gitlab-git-patch-mode
+  "GitLab Commit"
+  "Display one Git commit in a read-only `diff-mode' buffer.
+The buffer shows the commit message and the patch that the commit
+introduced."
+  :group 'gitlab)
 
 (define-key gitlab-git-commit-mode-map (kbd "q") #'quit-window)
 
@@ -236,8 +245,77 @@ available.  Signal a user error when SHA names no local commit."
     (unless revision
       (user-error "Unknown commit: %s" sha))
     (if (and gitlab-git-use-magit (require 'magit nil t))
-        (magit-show-commit revision)
+        (gitlab-git--magit-call #'magit-show-commit revision)
       (gitlab-git--show-commit-buffer revision))))
+
+;;; Changes and log
+
+(defun gitlab-git--magit-call (function &rest arguments)
+  "Call FUNCTION with ARGUMENTS in the directory of the current buffer."
+  (let ((default-directory (gitlab-cli-directory-of)))
+    (apply function arguments)))
+
+(defun gitlab-git--patch-buffer (name text mode)
+  "Display buffer NAME with TEXT and MODE, and return the buffer.
+The buffer starts read-only and stays out of auto-revert."
+  (let* ((directory (gitlab-cli-directory-of))
+         (buffer (get-buffer-create name)))
+    (with-current-buffer buffer
+      (setq-local default-directory directory)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert text))
+      (funcall mode)
+      (set-buffer-modified-p nil)
+      (goto-char (point-min)))
+    (pop-to-buffer buffer)))
+
+(defun gitlab-git--merge-request-revision (iid data)
+  "Return the local revision range of merge request IID in DATA.
+Return nil when the local ref or the base object is absent."
+  (when-let* ((range (gitlab-git-merge-request-range iid data)))
+    (format "%s..%s" (cdr range) (car range))))
+
+(defun gitlab-git--show-patch-buffer (name arguments mode)
+  "Return buffer NAME with the answer of git ARGUMENTS.
+MODE is the major mode of the buffer."
+  (gitlab-git--patch-buffer
+   name
+   (or (gitlab-git--run arguments) "No changes.\n")
+   mode))
+
+(defun gitlab-git-show-changes (iid data)
+  "Show the local changes of merge request IID in DATA.
+The view covers the merge base to the fetched head.  Use Magit and
+its whole-tree diff when `gitlab-git-use-magit' is non-nil and
+Magit is available, and a plain `diff-mode' buffer otherwise.
+Signal a user error when no local ref or base exists."
+  (let ((revision (or (gitlab-git--merge-request-revision iid data)
+                      (user-error
+                       "No local merge request ref for !%s" iid))))
+    (if (and gitlab-git-use-magit (require 'magit nil t))
+        (gitlab-git--magit-call #'magit-diff-range revision)
+      (gitlab-git--show-patch-buffer
+       (format "*GitLab MR %s Changes*" iid)
+       (list "diff" "--no-color" "--stat" "--patch" revision)
+       #'gitlab-git-patch-mode))))
+
+(defun gitlab-git-show-log (iid data)
+  "Show the local commit log of merge request IID in DATA.
+The log holds only the commits of the merge request.  Use Magit's
+log buffer when `gitlab-git-use-magit' is non-nil and Magit is
+available, and a plain `diff-mode' buffer otherwise.  Signal a
+user error when no local ref or base exists."
+  (let ((revision (or (gitlab-git--merge-request-revision iid data)
+                      (user-error
+                       "No local merge request ref for !%s" iid))))
+    (if (and gitlab-git-use-magit (require 'magit nil t))
+        (gitlab-git--magit-call #'magit-log-other (list revision))
+      (gitlab-git--show-patch-buffer
+       (format "*GitLab MR %s Log*" iid)
+       (list "log" "--no-color" "--decorate" "--stat" "--patch"
+             revision)
+       #'gitlab-git-patch-mode))))
 
 (provide 'gitlab-git)
 

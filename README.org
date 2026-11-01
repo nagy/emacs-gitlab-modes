@@ -84,9 +84,15 @@ the commit.  The option =gitlab-merge-request-show-commits=, on by
 default, turns the list off, and =gitlab-git-commit-limit= caps it at
 50 commits.  A project without the ref shows no commit section.
 
-The commit view uses Magit when Magit is available.  Without Magit the
-package opens a read-only =diff-mode= buffer.  The package never loads
-Magit at startup and never fetches from the network for this view.
+=d= shows the local changes of the merge request, and =l= shows its
+commit log.  Both cover the merge base to the fetched head.  The commit
+view, the changes view and the log view use Magit when Magit is
+available.  Magit supplies its whole-tree diff, its commit view and the
+=ediff= commands on =E=, so a review can compare a file or a commit
+side by side.  The commit log of =l= holds only the commits of the merge
+request.  Without Magit the package opens a read-only =diff-mode=
+buffer, and =q= closes it.  The package never loads Magit at startup and
+never fetches from the network for these views.
 
 The notes request and the jobs request ask for one page of 100 items.
 A merge request with more notes, or a pipeline with more jobs, shows
@@ -101,6 +107,9 @@ Both detail modes provide these keys:
 | =w=         | =gitlab-open-web=          |
 | =p=         | =gitlab-pop=               |
 | =q=         | =quit-window=              |
+
+A merge request buffer also binds =n= for the notes, =d= for the local
+changes and =l= for the local commit log.
 
 * List buffers
 

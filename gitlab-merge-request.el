@@ -273,6 +273,7 @@ stored notes without another request."
 Every top-level field of the glab JSON answer appears in a field
 table.  A local merge request ref adds the commit list below the
 fields, when `gitlab-merge-request-show-commits' is non-nil.
+d shows the local changes and l the local commit log.
 `gitlab-merge-request-show-notes' loads the notes below the fields.
 RET opens the pipeline, the commit or the web page at point."
   :group 'gitlab
@@ -283,8 +284,30 @@ RET opens the pipeline, the commit or the web page at point."
   (setq-local gitlab-merge-request--notes nil)
   (setq-local gitlab-merge-request--notes-loaded nil))
 
+(defun gitlab-merge-request-show-changes ()
+  "Show the local changes of the current merge request.
+The view needs a fetched merge request ref.  Magit, when available,
+supplies the diff buffer and its Ediff command on E."
+  (interactive)
+  (unless (derived-mode-p 'gitlab-merge-request-mode)
+    (user-error "This is not a merge request buffer"))
+  (gitlab-git-show-changes gitlab--id gitlab--last-data))
+
+(defun gitlab-merge-request-show-log ()
+  "Show the local commit log of the current merge request.
+The log holds only the commits of the merge request.  Magit, when
+available, supplies the log buffer and its Ediff commands."
+  (interactive)
+  (unless (derived-mode-p 'gitlab-merge-request-mode)
+    (user-error "This is not a merge request buffer"))
+  (gitlab-git-show-log gitlab--id gitlab--last-data))
+
 (define-key gitlab-merge-request-mode-map (kbd "n")
   #'gitlab-merge-request-show-notes)
+(define-key gitlab-merge-request-mode-map (kbd "d")
+  #'gitlab-merge-request-show-changes)
+(define-key gitlab-merge-request-mode-map (kbd "l")
+  #'gitlab-merge-request-show-log)
 
 (defun gitlab-merge-request--buffer-name (iid)
   "Return the detail buffer name for merge request IID."

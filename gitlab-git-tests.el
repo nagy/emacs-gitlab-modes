@@ -183,6 +183,53 @@ macro deletes the repository afterwards."
         (when (buffer-live-p buffer)
           (kill-buffer buffer))))))
 
+(ert-deftest gitlab-git-show-changes-buffer ()
+  "The plain changes buffer holds the diff of the merge request."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (let ((gitlab-git-use-magit nil)
+          (buffer nil))
+      (unwind-protect
+          (with-temp-buffer
+            (setq-local gitlab-cli-directory (car repo))
+            (gitlab-git-show-changes "7" (gitlab-git-tests--data (cdr repo)))
+            (setq buffer (current-buffer))
+            (should (derived-mode-p 'gitlab-git-patch-mode))
+            (should (string-match-p "diff --git a/file.txt b/file.txt"
+                                    (buffer-string)))
+            (should (string-match-p "^\\+two" (buffer-string)))
+            (should buffer-read-only))
+        (when (buffer-live-p buffer)
+          (kill-buffer buffer))))))
+
+(ert-deftest gitlab-git-show-log-buffer ()
+  "The plain log buffer holds only the commits of the merge request."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (let ((gitlab-git-use-magit nil)
+          (buffer nil))
+      (unwind-protect
+          (with-temp-buffer
+            (setq-local gitlab-cli-directory (car repo))
+            (gitlab-git-show-log "7" (gitlab-git-tests--data (cdr repo)))
+            (setq buffer (current-buffer))
+            (should (derived-mode-p 'gitlab-git-patch-mode))
+            (should (string-match-p "second" (buffer-string)))
+            (should-not (string-match-p "\\* first" (buffer-string))))
+        (when (buffer-live-p buffer)
+          (kill-buffer buffer))))))
+
+(ert-deftest gitlab-git-show-changes-without-ref ()
+  "A missing local ref signals a user error."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (let ((gitlab-git-use-magit nil))
+      (with-temp-buffer
+        (setq-local gitlab-cli-directory (car repo))
+        (should-error
+         (gitlab-git-show-changes "8" (gitlab-git-tests--data (cdr repo)))
+         :type 'user-error)))))
+
 (provide 'gitlab-git-tests)
 
 ;;; gitlab-git-tests.el ends here
