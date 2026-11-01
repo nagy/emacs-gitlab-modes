@@ -93,6 +93,20 @@
                                       temporary-file-directory))
                       (file-truename (file-name-as-directory pwd))))))))
 
+(ert-deftest gitlab-cli-project-directory ()
+  "The display directory is the project root or the directory itself."
+  (cl-letf (((symbol-function 'project-current)
+             (lambda (&rest _arguments) 'stub-project))
+            ((symbol-function 'project-root)
+             (lambda (_project) "/the/project/")))
+    (should (equal "/the/project/"
+                   (gitlab-cli--project-directory
+                    (file-name-as-directory "/the/project/sub")))))
+  (cl-letf (((symbol-function 'project-current)
+             (lambda (&rest _arguments) nil)))
+    (should (equal (file-name-as-directory "/no/project")
+                   (gitlab-cli--project-directory "/no/project")))))
+
 (ert-deftest gitlab-cli-stream-no-timeout ()
   "A stream has no timeout by default."
   (gitlab-test-with-environment

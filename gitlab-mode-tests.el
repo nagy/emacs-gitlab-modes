@@ -185,21 +185,41 @@
        (should (= 2 calls))))))
 
 (ert-deftest gitlab-mode-detail-directory ()
-  "A detail buffer keeps the origin directory for glab."
+  "A detail buffer keeps the project root for glab."
   (gitlab-test-with-environment
-   (let ((default-directory (file-name-as-directory "/some/project")))
+   (let ((default-directory (file-name-as-directory "/some/project/sub")))
      (with-temp-buffer
-       (let ((buffer (gitlab--prepare-detail
-                      "*GitLab directory test*"
-                      #'gitlab-detail-mode "1")))
-         (unwind-protect
-             (with-current-buffer buffer
-               (should (equal (file-name-as-directory temporary-file-directory)
-                              default-directory))
-               (should (equal (file-name-as-directory "/some/project")
-                              gitlab-cli-directory))
-               (should-not (buffer-modified-p)))
-           (kill-buffer buffer)))))))
+       (cl-letf (((symbol-function 'project-current)
+                  (lambda (&rest _arguments) 'stub-project))
+                 ((symbol-function 'project-root)
+                  (lambda (_project) "/some/project/")))
+         (let ((buffer (gitlab--prepare-detail
+                        "*GitLab directory test*"
+                        #'gitlab-detail-mode "1")))
+           (unwind-protect
+               (with-current-buffer buffer
+                 (should (equal "/some/project/" default-directory))
+                 (should (equal "/some/project/" gitlab-cli-directory))
+                 (should-not (buffer-modified-p)))
+             (kill-buffer buffer))))))))
+
+(ert-deftest gitlab-mode-detail-directory-outside-project ()
+  "A detail buffer keeps the directory when it belongs to no project."
+  (gitlab-test-with-environment
+   (let ((default-directory (file-name-as-directory "/no/project")))
+     (with-temp-buffer
+       (cl-letf (((symbol-function 'project-current)
+                  (lambda (&rest _arguments) nil)))
+         (let ((buffer (gitlab--prepare-detail
+                        "*GitLab directory fallback test*"
+                        #'gitlab-detail-mode "1")))
+           (unwind-protect
+               (with-current-buffer buffer
+                 (should (equal (file-name-as-directory "/no/project")
+                                default-directory))
+                 (should (equal (file-name-as-directory "/no/project")
+                                gitlab-cli-directory)))
+             (kill-buffer buffer))))))))
 
 (ert-deftest gitlab-mode-list-number-sort ()
   "A numeric column sorts entries and ignores the IID sigil."

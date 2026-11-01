@@ -94,9 +94,10 @@ point and marks survive an automatic refresh that found no change.
 A nil =gitlab-repository= lets =glab= infer the project from the
 directory of the buffer that ran the command.  Set it to =OWNER/REPO=
 or a full namespace path to read another project.  A display buffer
-moves its own =default-directory= to the temporary directory, so it
-keeps the origin directory in =gitlab-cli-directory= and glab still
-runs in the right project.
+asks =project.el= for the project root of the buffer that opened it,
+and uses that root as =default-directory= and as
+=gitlab-cli-directory=.  glab therefore runs in the right project, and
+project commands in the display buffer see the same project too.
 
 * Optional layers
 

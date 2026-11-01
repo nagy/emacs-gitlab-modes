@@ -334,7 +334,7 @@ function with the two `revert-buffer' arguments."
 The buffer is read-only and fills while `glab ci trace' runs.  g
 restarts the trace.  Killing the buffer deletes the process."
   :group 'gitlab
-  (gitlab--detach-directory)
+  (gitlab--use-project-directory)
   (setq-local gitlab--kind 'job)
   (setq-local gitlab--label "GitLab job")
   (setq-local buffer-stale-function nil)
@@ -356,7 +356,7 @@ trace JOB-ID' and does not display the buffer."
           (delete-process gitlab-job-log--process))))
     (with-current-buffer buffer
       (gitlab-job-log-mode)
-      (setq-local gitlab-cli-directory directory)
+      (gitlab--use-project-directory directory)
       (setq-local gitlab--id id)
       (setq-local gitlab-job-log--name name)
       (gitlab-job-log--start))

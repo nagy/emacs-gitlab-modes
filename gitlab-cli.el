@@ -53,6 +53,7 @@
 (require 'ansi-color)
 (require 'cl-lib)
 (require 'json)
+(require 'project)
 (require 'subr-x)
 (require 'url-util)
 (require 'gitlab-error)
@@ -93,9 +94,9 @@ text properties.  Set it to nil to keep the raw output."
 (defcustom gitlab-cli-directory nil
   "Directory in which glab runs.
 A nil value uses `default-directory' of the calling buffer.  A
-display buffer sets this buffer-locally to the directory of the
-buffer that opened it, because the display buffer itself moves to
-the variable `temporary-file-directory'."
+display buffer sets this buffer-locally to the project root of
+the buffer that opened it, because the display buffer itself
+shows remote data and not a file."
   :type '(choice (const :tag "Use default-directory" nil)
                  (directory :tag "Directory"))
   :group 'gitlab)
@@ -109,6 +110,18 @@ buffer-local `gitlab-cli-directory', or the `default-directory'
 of BUFFER when the first is nil."
   (with-current-buffer (or buffer (current-buffer))
     (or gitlab-cli-directory default-directory)))
+
+(defun gitlab-cli--project-directory (directory)
+  "Return the root of the project that holds DIRECTORY.
+The helper asks project.el.  DIRECTORY comes back unchanged
+when it belongs to no project."
+  (condition-case nil
+      (let ((project (project-current nil directory)))
+        (file-name-as-directory
+         (if project
+             (project-root project)
+           (expand-file-name directory))))
+    (error (file-name-as-directory (expand-file-name directory)))))
 
 (defun gitlab-cli--repository-named-p (arguments)
   "Return non-nil when ARGUMENTS name a repository.

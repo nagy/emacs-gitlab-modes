@@ -20,7 +20,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 |---|---|
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts and both resource families.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
-| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, argument helpers.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
+| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, the project.el directory helper, argument helpers.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu and the navigation commands. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
@@ -110,7 +110,9 @@ without evil.  The suite never opens a network connection.
 - `gitlab-cli-directory` selects the directory in which glab runs.  A
   nil value means `default-directory`, so a prompt runs in the project
   of the user.  Every process creation binds `default-directory` to
-  `gitlab-cli-directory-of'.
+  `gitlab-cli-directory-of'.  `gitlab-cli--project-directory` asks
+  project.el for the root of a directory and returns the directory
+  itself when it belongs to no project.
 - A stream has no timeout by default.  `gitlab-cli-stream` takes a
   TIMEOUT only when a caller wants one, because a job trace can run for
   hours.  The synchronous and asynchronous requests keep
@@ -130,15 +132,17 @@ without evil.  The suite never opens a network connection.
   `gitlab-refresh-visible-only`, in a buffer that no window shows.
   `gitlab-refresh-fast-interval` applies while a status in
   `gitlab-transitional-states` shows.
-- Display buffers are views.  `default-directory` points at
-  `temporary-file-directory`, `buffer-modified-p` stays nil, and
-  `kill-buffer` asks no question.  A new display path must call
-  `gitlab--detach-directory` and `(set-buffer-modified-p nil)`.
-- A display buffer keeps the directory of the buffer that opened it in
-  `gitlab-cli-directory`, because glab must run in the project.  Set it
-  in `gitlab--prepare-detail`, `gitlab-list--show` and
-  `gitlab-pipeline--prepare-job-log`, not in the mode body, so a second
-  display of the same buffer never captures the temporary directory.
+- Display buffers are views.  `default-directory` is the project root
+  of the buffer that opened the display, `buffer-modified-p` stays
+  nil, and `kill-buffer` asks no question.  A new display path must
+  call `gitlab--use-project-directory` and
+  `(set-buffer-modified-p nil)`.
+- A display buffer keeps the project root of the buffer that opened it
+  in `gitlab-cli-directory`, because glab must run in the project.
+  `gitlab--use-project-directory` sets both variables from the
+  project.el answer.  Call it in `gitlab--prepare-detail`,
+  `gitlab-list--show` and `gitlab-pipeline--prepare-job-log`, so a
+  second display of the same buffer never captures an old project.
 - `gitlab--prepare-detail` and `gitlab-pipeline--prepare-job-log`
   return a buffer without displaying it.  The xref backend uses them, so
   a definition never moves the window configuration.

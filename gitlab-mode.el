@@ -44,11 +44,11 @@
 ;; keep its own place receives the old data indirectly through the
 ;; buffer's own state.
 ;;
-;; Display buffers are views, not files: `default-directory' points at
-;; `temporary-file-directory', `buffer-modified-p' stays nil and the
-;; buffer asks no question on kill.  A detail buffer bookmarks no
-;; file, so project.el, version control and language servers stay out
-;; of it.
+;; Display buffers are views, not files: `default-directory' is the
+;; project root of the buffer that opened the display, so project.el,
+;; version control and language servers find the project.  The buffer
+;; bookmarks no file, `buffer-modified-p' stays nil and the buffer asks
+;; no question on kill.
 ;;
 ;; The renderers attach text properties that the navigation commands
 ;; read: `gitlab-field' names a field line, `gitlab-pipeline-id' opens
@@ -283,13 +283,17 @@ receives this value because a list buffer has no single ID.")
 
 ;;; Small helpers
 
-(defun gitlab--detach-directory ()
-  "Move the current buffer to the temporary directory.
-A display buffer shows remote data, not a file: it belongs to no
-project, so project.el, version control and language servers stay
-out of it."
-  (setq-local default-directory
-              (file-name-as-directory temporary-file-directory)))
+(defun gitlab--use-project-directory (&optional directory)
+  "Set the directory of the current display buffer to a project root.
+DIRECTORY defaults to `gitlab-cli-directory-of'.  The function
+sets both `default-directory' and the buffer-local
+`gitlab-cli-directory' to the project root that project.el
+reports, because glab must run in the project.  A directory that
+belongs to no project stays as it is."
+  (let ((root (gitlab-cli--project-directory
+               (or directory (gitlab-cli-directory-of)))))
+    (setq-local default-directory root)
+    (setq-local gitlab-cli-directory root)))
 
 (defun gitlab--status-state (data)
   "Return the status text of the decoded object DATA."
@@ -741,7 +745,7 @@ its detail buffer and a web URL opens the browser."
 (defun gitlab--init-display-buffer ()
   "Wire the current buffer into the asynchronous refresh pipeline."
   (gitlab--kill-pending)
-  (gitlab--detach-directory)
+  (gitlab--use-project-directory)
   (setq-local revert-buffer-function #'gitlab--revert-buffer)
   (setq-local buffer-stale-function #'gitlab--buffer-stale-p)
   (add-hook 'kill-buffer-hook #'gitlab--kill-pending nil t)
@@ -790,7 +794,7 @@ can set the buffer-local arguments or the origin buffer."
     (with-current-buffer buffer
       (funcall mode)
       (setq-local gitlab--origin-buffer origin)
-      (setq-local gitlab-cli-directory directory)
+      (gitlab--use-project-directory directory)
       (when setup (funcall setup))
       (gitlab-list--refresh))
     (pop-to-buffer buffer)))
@@ -926,7 +930,7 @@ directory in which glab must run, then does not display BUFFER."
     (with-current-buffer buffer
       (funcall mode)
       (setq-local gitlab--origin-buffer origin)
-      (setq-local gitlab-cli-directory directory)
+      (gitlab--use-project-directory directory)
       (setq-local gitlab--id id)
       (gitlab--refresh))
     buffer))
