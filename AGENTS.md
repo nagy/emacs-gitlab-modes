@@ -215,6 +215,14 @@ without evil.  The suite never opens a network connection.
   pipeline ID, so an update keeps point on the same row.
   `gitlab-change-functions` receives `gitlab-list--kind` and a nil ID
   for a list buffer, because one collection has no single ID.
+- `gitlab-list-mode` appends a `url` provider to
+  `thing-at-point-provider-alist`.  `gitlab-list--thing-at-point-url`
+  returns the `web_url` field of `gitlab-list--row-at-point`, so
+  `thing-at-point 'url` and `browse-url-at-point` answer with the
+  upstream URL of the object on the current line.  The provider
+  returns nil on a line without a row, and `thing-at-point` then falls
+  back to its own scan.  `gitlab-list-open-web` and the provider share
+  that function, so `w` and `thing-at-point` never disagree.
 - The list columns live in `gitlab-merge-request-list-format` and
   `gitlab-pipeline-list-format`.  Numeric columns use
   `gitlab-list--number-sort`.  A `tabulated-list` SORT predicate

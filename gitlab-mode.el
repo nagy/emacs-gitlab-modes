@@ -71,6 +71,7 @@
 (require 'json)
 (require 'subr-x)
 (require 'tabulated-list)
+(require 'thingatpt)
 (require 'gitlab-data)
 (require 'gitlab-error)
 
@@ -958,6 +959,9 @@ and `gitlab-list--open-function'.  The mode wires
 `revert-buffer-function'."
   :group 'gitlab
   (gitlab--init-list-buffer)
+  (setq-local thing-at-point-provider-alist
+              (cons '(url . gitlab-list--thing-at-point-url)
+                    thing-at-point-provider-alist))
   (setq-local gitlab--render-function #'gitlab-list--render)
   (setq-local gitlab--header-line-format '(:eval (gitlab-list--header-line)))
   (setq-local header-line-format gitlab--header-line-format)
@@ -986,6 +990,15 @@ Return non-nil when the function found the row."
   (when-let* ((id (gitlab-list--id-at-point)))
     (alist-get id gitlab-list--rows nil nil #'equal)))
 
+(defun gitlab-list--thing-at-point-url ()
+  "Return the upstream web URL of the row at point.
+The provider answers the `url' thing of the current list line
+with the `web_url' field of the decoded row, so
+`thing-at-point', `browse-url-at-point' and every other caller
+that reads a URL work on a table row."
+  (when-let* ((row (gitlab-list--row-at-point)))
+    (gitlab-data-field "web_url" row)))
+
 (defun gitlab-list-open ()
   "Open the row at point."
   (interactive)
@@ -1013,9 +1026,7 @@ Return non-nil when the function found the row."
 (defun gitlab-list-open-web ()
   "Open the web page of the row at point in a browser."
   (interactive)
-  (let ((url (and (gitlab-list--row-at-point)
-                  (gitlab-data-field "web_url"
-                                     (gitlab-list--row-at-point)))))
+  (let ((url (gitlab-list--thing-at-point-url)))
     (if url
         (browse-url url)
       (user-error "The row has no web URL"))))

@@ -82,6 +82,10 @@ column resizing and point keeping by row identity come from the parent.
 A header line shows the collection name, the row count, the sort column
 and the refresh state.  A date column carries the =gitlab-date= face.
 
+=thing-at-point 'url= on a row returns the upstream web URL of that
+merge request or pipeline, so =browse-url-at-point= and every caller
+that reads a URL work on the table.
+
 * JSON export
 
 =M-x gitlab-export-json= writes the glab JSON answer of the current

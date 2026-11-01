@@ -50,6 +50,28 @@
            (should (string-match-p "feature-branch" (buffer-string))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-list-thing-at-point-url ()
+  "The url thing at point is the web URL of the pipeline row."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab pipeline list url test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-pipeline-list-mode)
+           (gitlab-list--refresh)
+           (should (gitlab-test-wait
+                    (lambda () (= 2 (length tabulated-list-entries)))))
+           (goto-char (point-min))
+           (forward-line 1)
+           (forward-char 3)
+           (should (equal "https://gitlab.example/group/project/-/pipelines/1003"
+                          (thing-at-point 'url)))
+           (should (equal (gitlab-data-field
+                           "web_url" (gitlab-list--row-at-point))
+                          (thing-at-point 'url))))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-detail-render ()
   "The detail buffer shows the pipeline fields and the jobs table."
   (gitlab-test-with-environment

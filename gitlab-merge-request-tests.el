@@ -57,6 +57,28 @@
            (should (string-match-p "closed" (buffer-string))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-merge-request-list-thing-at-point-url ()
+  "The url thing at point is the web URL of the row."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR list url test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-merge-request-list-mode)
+           (gitlab-list--refresh)
+           (should (gitlab-test-wait
+                    (lambda () (= 2 (length tabulated-list-entries)))))
+           (goto-char (point-min))
+           (forward-line 1)
+           (forward-char 3)
+           (should (equal "https://gitlab.example/group/project/-/merge_requests/13"
+                          (thing-at-point 'url)))
+           (should (equal (gitlab-data-field
+                           "web_url" (gitlab-list--row-at-point))
+                          (thing-at-point 'url))))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-merge-request-detail-render ()
   "The detail buffer shows fields and nested objects."
   (gitlab-test-with-environment
