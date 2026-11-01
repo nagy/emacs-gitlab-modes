@@ -142,8 +142,14 @@ without evil.  The suite never opens a network connection.
 - Display buffers are views.  `default-directory` is the project root
   of the buffer that opened the display, `buffer-modified-p` stays
   nil, and `kill-buffer` asks no question.  A new display path must
-  call `gitlab--use-project-directory` and
+  call `gitlab--use-project-directory`,
+  `gitlab--update-list-buffers-directory` and
   `(set-buffer-modified-p nil)`.
+- `gitlab--update-list-buffers-directory` sets the buffer-local
+  `list-buffers-directory` to `gitlab-data-identifier` of the project
+  and the object ID, so `list-buffers` shows `group/project!12` for a
+  merge request, `#` for a pipeline and `&` for a job log.  A list
+  buffer has no object ID and gets the project path alone.
 - A display buffer keeps the project root of the buffer that opened it
   in `gitlab-cli-directory`, because glab must run in the project.
   `gitlab--use-project-directory` sets both variables from the

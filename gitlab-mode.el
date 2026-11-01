@@ -344,6 +344,21 @@ is dropped first, so the capture sees the binding of the caller."
       (setq-local gitlab-cli-directory root)
       (setq-local gitlab-repository repository))))
 
+(defun gitlab--update-list-buffers-directory ()
+  "Name the current buffer in `list-buffers-directory' by identifier.
+`list-buffers' then shows the project and the object in the
+identifier syntax of `gitlab-data-identifier'.  A list buffer has
+no object ID and shows the project path alone.  A buffer without
+a project leaves the variable nil, so `list-buffers' shows the
+`default-directory'."
+  (let ((kind (or gitlab--kind gitlab-list--kind)))
+    (setq-local list-buffers-directory
+                (and kind
+                     (gitlab-data-identifier
+                      kind
+                      gitlab--id
+                      (gitlab--identifier-repository))))))
+
 (defun gitlab--status-state (data)
   "Return the status text of the decoded object DATA."
   (let ((status (gitlab-data-field "status" data)))
@@ -863,6 +878,7 @@ can set the buffer-local arguments or the origin buffer."
       (setq-local gitlab--origin-buffer origin)
       (gitlab--use-project-directory directory)
       (when setup (funcall setup))
+      (gitlab--update-list-buffers-directory)
       (gitlab-list--refresh))
     (pop-to-buffer buffer)))
 
@@ -1053,7 +1069,7 @@ one syntax.")
   "Return the object kind of the list KIND, or KIND itself."
   (intern (string-remove-suffix "-list" (symbol-name kind))))
 
-(defun gitlab--bookmark-repository ()
+(defun gitlab--identifier-repository ()
   "Return the project of the current buffer in identifier form."
   (let ((repository (string-trim (or gitlab-repository "") "/+" "/+")))
     (unless (string-empty-p repository) repository)))
@@ -1064,7 +1080,7 @@ A list KIND takes no ID and names the project alone, so a
 collection bookmark keeps its meaning when the table changes."
   (let ((path (gitlab-data-identifier (gitlab--bookmark-base-kind kind)
                                       id
-                                      (gitlab--bookmark-repository))))
+                                      (gitlab--identifier-repository))))
     (if path
         (concat (alist-get kind gitlab--bookmark-link-types) ":" path)
       (alist-get kind gitlab--bookmark-link-types))))
@@ -1105,7 +1121,7 @@ filtered table comes back the same."
              (id . ,id)
              (handler . gitlab-bookmark-jump)
              (location . ,location)
-             (repository . ,(gitlab--bookmark-repository))
+             (repository . ,(gitlab--identifier-repository))
              (directory . ,(gitlab-cli-directory-of)))
            (when list-p
              `((arguments . ,gitlab-list--arguments)
@@ -1195,6 +1211,7 @@ directory in which glab must run, then does not display BUFFER."
       (setq-local gitlab--origin-buffer origin)
       (gitlab--use-project-directory directory)
       (setq-local gitlab--id id)
+      (gitlab--update-list-buffers-directory)
       (gitlab--refresh))
     buffer))
 

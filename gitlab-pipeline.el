@@ -496,6 +496,7 @@ trace JOB-ID' and does not display the buffer."
       (gitlab--use-project-directory directory)
       (setq-local gitlab--id id)
       (setq-local gitlab-job-log--name name)
+      (gitlab--update-list-buffers-directory)
       (gitlab-job-log--start))
     buffer))
 

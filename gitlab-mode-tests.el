@@ -272,6 +272,16 @@
        (gitlab-list--refresh)
        (should (equal '(merge-request nil) seen))))))
 
+(ert-deftest gitlab-mode-list-buffers-directory ()
+  "A list buffer names its project in `list-buffers-directory'."
+  (gitlab-test-with-environment
+   (let ((gitlab-repository "group/project"))
+     (with-temp-buffer
+       (gitlab-list-mode)
+       (setq-local gitlab-list--kind 'merge-request)
+       (gitlab--update-list-buffers-directory)
+       (should (equal "group/project" list-buffers-directory))))))
+
 (ert-deftest gitlab-mode-format-object-job ()
   "A nested job gets no pipeline property."
   (let* ((value (gitlab--format-value

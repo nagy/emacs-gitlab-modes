@@ -27,6 +27,20 @@
           (with-current-buffer buffer
             (string-match-p (regexp-quote text) (buffer-string)))))))
 
+(ert-deftest gitlab-merge-request-detail-list-buffers-directory ()
+  "A detail buffer names its object in `list-buffers-directory'."
+  (gitlab-test-with-environment
+   (let* ((gitlab-repository "group/project")
+          (buffer (gitlab--prepare-detail
+                   "*GitLab list-buffers test*"
+                   #'gitlab-merge-request-mode "12")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (should (equal "group/project!12" list-buffers-directory)))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-merge-request-list-entries ()
   "The list renders both merge requests."
   (gitlab-test-with-environment

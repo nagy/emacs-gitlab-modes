@@ -268,6 +268,19 @@
     (should (equal "2026-10-31 20:57:30" (aref row 4)))
     (should (eq 'gitlab-date (get-text-property 0 'face (aref row 4))))))
 
+(ert-deftest gitlab-pipeline-job-log-list-buffers-directory ()
+  "A job log names its job in `list-buffers-directory'."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log "5001" "unit-tests")))
+     (unwind-protect
+         (progn
+           (gitlab-test-wait
+            (lambda ()
+              (with-current-buffer buffer gitlab-job-log--finished)))
+           (with-current-buffer buffer
+             (should (equal "5001" list-buffers-directory))))
+       (kill-buffer buffer)))))
+
 (provide 'gitlab-pipeline-tests)
 
 ;;; gitlab-pipeline-tests.el ends here
