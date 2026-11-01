@@ -47,6 +47,15 @@
   (should (equal "1m 40s" (gitlab--format-duration 100.234765)))
   (should (equal "1h 0m 5s" (gitlab--format-duration 3605))))
 
+(ert-deftest gitlab-mode-id-field-face ()
+  "Identifier fields carry `gitlab-id'."
+  (dolist (key '(id iid project_id sha before_sha merge_commit_sha))
+    (should (eq 'gitlab-id
+                (get-text-property
+                 0 'face (gitlab--format-field-value key "42")))))
+  (should-not (get-text-property
+               0 'face (gitlab--format-field-value 'ref "main"))))
+
 (ert-deftest gitlab-mode-render-fields ()
   "A field table has labels, values and a field property."
   (gitlab-test-with-environment

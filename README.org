@@ -46,6 +46,8 @@ A merge request buffer shows every top-level field of
 A user becomes =Name (@username)=, a milestone becomes its title and a
 pipeline becomes =#ID status= with a link to the pipeline buffer.
 =RET= opens the object at point.  =n= loads the notes below the fields.
+A field that names one object or one commit, such as =id=, =iid=,
+=project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 
 A pipeline buffer shows the pipeline fields at the top and the jobs
 table below.  =RET= on a job streams its log into a separate buffer.

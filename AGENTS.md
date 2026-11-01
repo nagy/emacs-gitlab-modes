@@ -263,9 +263,12 @@ without evil.  The suite never opens a network connection.
 - Every face inherits a standard face and lives in `gitlab-mode.el`.
   Status faces come from `gitlab-status-faces`; do not apply a
   font-lock face in a renderer.
-- Colors, dates and status values go through
+- Colors, dates, identifiers and status values go through
   `gitlab--field-value-face`, `gitlab--format-date` and
-  `gitlab-status-face`.  A new date field goes into `gitlab-date-fields`.
+  `gitlab-status-face`.  A new date field goes into
+  `gitlab-date-fields`; a new identifier field goes into
+  `gitlab-id-fields`, so `id`, `iid`, `project_id`, `sha` and
+  `before_sha` share `gitlab-id`.
 - Interactive entry points carry `;;;###autoload` cookies.  The
   optional layers keep their own files and are not required by
   `gitlab-modes.el`.

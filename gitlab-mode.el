@@ -160,6 +160,16 @@ entry serves both views."
   :type '(repeat string)
   :group 'gitlab)
 
+(defcustom gitlab-id-fields
+  '("id" "iid" "sha" "before_sha" "project_id" "source_project_id"
+    "target_project_id" "pipeline_id" "job_id" "runner_id"
+    "merge_commit_sha" "squash_commit_sha")
+  "Field names that take `gitlab-id'.
+Every field that names one object or one commit belongs here, so
+`id', `iid', `project_id', `sha' and `before_sha' look alike."
+  :type '(repeat string)
+  :group 'gitlab)
+
 (defcustom gitlab-change-functions nil
   "Hook run after a display buffer renders changed data.
 Each function receives KIND, ID and DATA: the resource kind, its
@@ -684,14 +694,20 @@ tooltip both work."
                    (symbol-name key)))
                 gitlab-date-fields)))
 
+(defun gitlab--id-field-p (key)
+  "Return non-nil when KEY names an identifier field."
+  (and (stringp (symbol-name key))
+       (cl-some (lambda (name)
+                  (string-equal-ignore-case name (symbol-name key)))
+                gitlab-id-fields)))
+
 (defun gitlab--field-value-face (key value)
   "Return the face for the value of field KEY holding VALUE."
   (cond
    ((and (stringp value) (gitlab--status-face value)))
    ((gitlab--status-face (symbol-name key)))
    ((gitlab--date-field-p key) 'gitlab-date)
-   ((memq key '(id iid sha))
-    'gitlab-id)
+   ((gitlab--id-field-p key) 'gitlab-id)
    ((eq key 'title) 'gitlab-title)
    (t nil)))
 
