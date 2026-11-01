@@ -199,7 +199,9 @@
     (should (equal "9" (aref row 0)))
     (should (equal "success" (aref row 1)))
     (should (equal "main" (aref row 2)))
-    (should (equal "push" (aref row 3)))))
+    (should (equal "push" (aref row 3)))
+    (should (equal "2026-10-31 20:57:30" (aref row 4)))
+    (should (eq 'gitlab-date (get-text-property 0 'face (aref row 4))))))
 
 (provide 'gitlab-pipeline-tests)
 

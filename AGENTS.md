@@ -183,7 +183,15 @@ without evil.  The suite never opens a network connection.
   `gitlab-list--number-sort`.  A `tabulated-list` SORT predicate
   receives whole `tabulated-list-entries` elements, not the cell
   strings, so the helper reads the sorted column from the entry and
-  strips the `!` of a merge request IID.
+  strips the `!` of a merge request IID.  A date column goes through
+  `gitlab-list--date-cell`, so the cell carries `gitlab-date`.
+- A list buffer shows a header line from `gitlab-list--header-line`:
+  the collection name, the row count, the sort column and the refresh
+  state.  `gitlab-list-mode` stores the format in
+  `gitlab--header-line-format`.  `gitlab--set-error` replaces the
+  header line of a detail buffer, and `gitlab--clear-error` restores
+  `gitlab--header-line-format`, so a list header line survives an
+  error.  A list error still goes to `mode-line-process`.
 - Every face inherits a standard face and lives in `gitlab-mode.el`.
   Status faces come from `gitlab-status-faces`; do not apply a
   font-lock face in a renderer.

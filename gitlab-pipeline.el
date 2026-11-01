@@ -99,7 +99,7 @@ A longer name is truncated by the table layout, not by the data."
             (status (gitlab-data-field-string "status" pipeline))
             (ref (gitlab-data-field-string "ref" pipeline))
             (source (gitlab-data-field-string "source" pipeline))
-            (updated (gitlab--format-date
+            (updated (gitlab-list--date-cell
                       (gitlab-data-field "updated_at" pipeline))))
        (list id
              (vector

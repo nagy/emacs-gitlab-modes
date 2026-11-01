@@ -102,7 +102,9 @@
     (should (equal "Seven" (aref row 1)))
     (should (equal "Alice (@alice)" (aref row 3)))
     (should (equal "feature -> main" (aref row 4)))
-    (should (equal "UX" (aref row 5)))))
+    (should (equal "UX" (aref row 5)))
+    (should (equal "2026-10-31 20:57:30" (aref row 6)))
+    (should (eq 'gitlab-date (get-text-property 0 'face (aref row 6))))))
 
 (provide 'gitlab-merge-request-tests)
 

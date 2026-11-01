@@ -106,7 +106,7 @@ that invocation only."
             (target (gitlab-data-field-string "target_branch" merge-request))
             (labels (gitlab--format-value
                      (gitlab-data-field "labels" merge-request)))
-            (updated (gitlab--format-date
+            (updated (gitlab-list--date-cell
                       (gitlab-data-field "updated_at" merge-request))))
        (list id
              (vector

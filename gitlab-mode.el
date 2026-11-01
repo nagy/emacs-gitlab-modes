@@ -257,6 +257,12 @@ runs.")
 (defvar-local gitlab--origin-buffer nil
   "Buffer from which the current display buffer was opened.")
 
+(defvar-local gitlab--header-line-format nil
+  "Header line format of the current display buffer.
+A list buffer sets a format that reports the collection, a detail
+buffer keeps nil.  `gitlab--set-error' shows the error text in the
+header line and `gitlab--clear-error' restores this value.")
+
 (defvar-local gitlab-list--fetch-function nil
   "Function that fetches the collection of the current list buffer.
 It receives SUCCESS and ERROR and returns a process object or nil.")
@@ -353,7 +359,7 @@ stale."
 (defun gitlab--clear-error ()
   "Forget the last fetch error of the current buffer."
   (setq gitlab--last-error nil)
-  (setq-local header-line-format nil)
+  (setq-local header-line-format gitlab--header-line-format)
   (setq-local mode-line-process nil))
 
 (defun gitlab--set-error (error)
@@ -827,13 +833,39 @@ can set the buffer-local arguments or the origin buffer."
         (when (and (not settled) handle)
           (setq gitlab--pending handle)))))))
 
+(defun gitlab-list--header-line ()
+  "Return the header line text of the current list buffer.
+The text names the collection, its size, the sort column and the
+refresh state.  A `:eval' entry of `header-line-format' calls this
+function on every redisplay, so the text stays current."
+  (let ((count (length tabulated-list-entries))
+        (sort tabulated-list-sort-key)
+        (name (if (stringp mode-name) mode-name
+                (format-mode-line mode-name))))
+    (concat (propertize (format " %s" name)
+                        'face 'gitlab-table-header)
+            (when gitlab-repository
+              (format "  %s" gitlab-repository))
+            (format "  %d %s" count (if (= count 1) "row" "rows"))
+            (when sort
+              (format "  by %s %s" (car sort)
+                      (if (cdr sort) "descending" "ascending")))
+            (cond (gitlab--pending "  refreshing")
+                  (gitlab--last-error "  stale")
+                  (t "")))))
+
+(defun gitlab-list--date-cell (value)
+  "Return timestamp VALUE as a table cell with `gitlab-date'."
+  (propertize (gitlab--format-date value) 'face 'gitlab-date))
+
 (defun gitlab-list--render (_id data)
   "Render collection DATA into the current list buffer."
   (when gitlab-list--rows-function
     (setq gitlab-list--rows (funcall gitlab-list--rows-function data)))
   (when gitlab-list--entries-function
     (setq tabulated-list-entries (funcall gitlab-list--entries-function data)))
-  (tabulated-list-print t))
+  (tabulated-list-print t)
+  (force-mode-line-update t))
 
 (define-derived-mode gitlab-list-mode tabulated-list-mode "GitLab List"
   "Display a collection of GitLab objects in the current buffer.
@@ -849,6 +881,8 @@ and `gitlab-list--open-function'.  The mode wires
   :group 'gitlab
   (gitlab--init-list-buffer)
   (setq-local gitlab--render-function #'gitlab-list--render)
+  (setq-local gitlab--header-line-format '(:eval (gitlab-list--header-line)))
+  (setq-local header-line-format gitlab--header-line-format)
   (setq-local truncate-lines t))
 
 (defun gitlab-list--id-at-point ()

@@ -142,6 +142,24 @@
      (should (= 2 (length gitlab-list--rows)))
      (should (string-match-p "One" (buffer-string))))))
 
+(ert-deftest gitlab-mode-list-header-line ()
+  "A list buffer shows a header line with the collection size."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 8 t)])
+     (setq-local tabulated-list-sort-key '("ID" . t))
+     (setq-local tabulated-list-entries '(("1" ["one"]) ("2" ["two"])))
+     (should header-line-format)
+     (let ((text (gitlab-list--header-line)))
+       (should (string-match-p "GitLab List" text))
+       (should (string-match-p "2 rows" text))
+       (should (string-match-p "by ID descending" text)))
+     (gitlab--set-error '(gitlab-cli-error "offline"))
+     (should (string-match-p "offline" (format "%s" mode-line-process)))
+     (gitlab--clear-error)
+     (should (equal header-line-format gitlab--header-line-format)))))
+
 (ert-deftest gitlab-mode-list-error ()
   "A list error goes to the mode line."
   (gitlab-test-with-environment

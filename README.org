@@ -71,6 +71,8 @@ Both detail modes provide these keys:
 The list modes derive from =tabulated-list-mode=.  Column sorting,
 column resizing and point keeping by row identity come from the parent.
 =RET= opens the row, =c= copies its ID and =w= opens its web page.
+A header line shows the collection name, the row count, the sort column
+and the refresh state.  A date column carries the =gitlab-date= face.
 
 * Automatic refresh
 
