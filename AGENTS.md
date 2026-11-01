@@ -240,13 +240,17 @@ without evil.  The suite never opens a network connection.
   strings, so the helper reads the sorted column from the entry and
   strips the `!` of a merge request IID.  A date column goes through
   `gitlab-list--date-cell`, so the cell carries `gitlab-date`.
-- A list buffer shows a header line from `gitlab-list--header-line`:
-  the collection name, the row count, the sort column and the refresh
-  state.  `gitlab-list-mode` stores the format in
-  `gitlab--header-line-format`.  `gitlab--set-error` replaces the
-  header line of a detail buffer, and `gitlab--clear-error` restores
-  `gitlab--header-line-format`, so a list header line survives an
-  error.  A list error still goes to `mode-line-process`.
+- A list buffer shows the column names of `tabulated-list-format'
+  in its header line, with the sort column marked by
+  `tabulated-list-sort-key'.  `gitlab-list--render' calls
+  `tabulated-list-init-header' after `tabulated-list-print', because
+  the printer alone sets no header, and keeps the answer in
+  `gitlab--header-line-format'.  `gitlab--set-error' replaces the
+  header line of a detail buffer, and `gitlab--clear-error' restores
+  `gitlab--header-line-format`.  A list error goes to
+  `mode-line-process`, because the header line belongs to the table.
+  Do not set a `:eval' entry in `header-line-format` of a list mode:
+  it replaces the column names.
 - `gitlab-export-json` exports the answer of the current display
   buffer.  The transport binds `gitlab-cli-response-text` around an
   asynchronous SUCCESS callback, and the refresh pipeline stores that

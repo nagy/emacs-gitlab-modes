@@ -18,6 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
+(require 'subr-x)
 (require 'gitlab-test-helpers)
 (require 'gitlab-mode)
 
@@ -183,18 +184,24 @@
      (should (string-match-p "One" (buffer-string))))))
 
 (ert-deftest gitlab-mode-list-header-line ()
-  "A list buffer shows a header line with the collection size."
+  "A list buffer shows the column names in its header line."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-list-mode)
-     (setq-local tabulated-list-format [("ID" 8 t)])
+     (setq-local tabulated-list-format [("ID" 8 t) ("Title" 12 t)])
      (setq-local tabulated-list-sort-key '("ID" . t))
-     (setq-local tabulated-list-entries '(("1" ["one"]) ("2" ["two"])))
-     (should header-line-format)
-     (let ((text (gitlab-list--header-line)))
-       (should (string-match-p "GitLab List" text))
-       (should (string-match-p "2 rows" text))
-       (should (string-match-p "by ID descending" text)))
+     (setq-local tabulated-list-entries
+                 '(("1" ["one" "alpha"]) ("2" ["two" "beta"])))
+     (gitlab-list--render nil nil)
+     ;; The header line holds strings and the `header-line-indent'
+     ;; symbol, so keep the strings only.
+     (let ((text (apply #'concat
+                        (delq nil (mapcar (lambda (item)
+                                            (and (stringp item) item))
+                                          (flatten-list header-line-format))))))
+       (should (string-match-p "ID" text))
+       (should (string-match-p "Title" text)))
+     (should (equal header-line-format gitlab--header-line-format))
      (gitlab--set-error '(gitlab-cli-error "offline"))
      (should (string-match-p "offline" (format "%s" mode-line-process)))
      (gitlab--clear-error)

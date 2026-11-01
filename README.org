@@ -81,8 +81,9 @@ Both detail modes provide these keys:
 The list modes derive from =tabulated-list-mode=.  Column sorting,
 column resizing and point keeping by row identity come from the parent.
 =RET= opens the row, =c= copies its ID and =w= opens its web page.
-A header line shows the collection name, the row count, the sort column
-and the refresh state.  A date column carries the =gitlab-date= face.
+A header line shows the column names, and the sort column carries the
+sort indicator of =tabulated-list-mode=.  A date column carries the
+=gitlab-date= face.
 
 =thing-at-point 'url= on a row returns the upstream web URL of that
 merge request or pipeline, so =browse-url-at-point= and every caller
