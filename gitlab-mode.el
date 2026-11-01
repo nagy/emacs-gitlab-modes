@@ -116,6 +116,16 @@ GitLab for buffers that nobody reads.  A manual
   :type 'boolean
   :group 'gitlab)
 
+(defcustom gitlab-refresh-finished-pipelines t
+  "When non-nil, a finished pipeline buffer does not poll.
+A pipeline with a final status and no job whose status still
+changes cannot change without a user action, so the stale check
+returns nil and `auto-revert-mode' sends no request.  A manual
+\\[revert-buffer] always fetches, so a restarted job appears
+again."
+  :type 'boolean
+  :group 'gitlab)
+
 (defcustom gitlab-status-faces
   '(("success" . gitlab-status-success)
     ("passed" . gitlab-status-success)
@@ -385,6 +395,28 @@ DATA is one decoded object or a list of decoded objects."
              data))
    (t nil)))
 
+(defun gitlab--final-state-p (state)
+  "Return non-nil when STATE cannot change without a user action."
+  (and (stringp state)
+       (not (gitlab--transitional-state-p state))))
+
+(defun gitlab--settled-p ()
+  "Return non-nil when the current buffer needs no polling.
+A pipeline buffer is settled when the pipeline status is final
+and every job status is final too.  A list buffer is never
+settled, because a new merge request or pipeline can arrive."
+  (and (eq gitlab--kind 'pipeline)
+       (gitlab-data-alist-p gitlab--last-data)
+       (gitlab--final-state-p
+        (gitlab--status-state gitlab--last-data))
+       (let ((jobs (gitlab-data-field "jobs" gitlab--last-data)))
+         (or (not (listp jobs))
+             (cl-every (lambda (job)
+                         (and (gitlab-data-alist-p job)
+                              (gitlab--final-state-p
+                               (gitlab--status-state job))))
+                       jobs)))))
+
 (defun gitlab--refresh-delay ()
   "Return seconds to wait before the next automatic refresh.
 A buffer with a status that still changes polls faster, up to the
@@ -398,10 +430,13 @@ upper bound of `gitlab-refresh-interval'."
 This is `buffer-stale-function' for both display modes.  An
 in-flight fetch is never interrupted.  With
 `gitlab-refresh-visible-only', a buffer in no window is never
-stale."
+stale.  With `gitlab-refresh-finished-pipelines', a settled
+pipeline buffer is never stale."
   (and (not gitlab--pending)
        (or (not gitlab-refresh-visible-only)
            (get-buffer-window (current-buffer) t))
+       (not (and gitlab-refresh-finished-pipelines
+                 (gitlab--settled-p)))
        (or (null gitlab--last-fetch-time)
            (>= (- (float-time) gitlab--last-fetch-time)
                (gitlab--refresh-delay)))))

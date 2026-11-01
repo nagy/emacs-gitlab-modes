@@ -149,7 +149,12 @@ everywhere.
 =gitlab-refresh-interval= sets the normal poll interval.
 =gitlab-refresh-fast-interval= applies while a status still changes.
 =gitlab-refresh-visible-only= stops polling for buffers in no window.
-A manual =M-x revert-buffer= always fetches.
+=gitlab-refresh-finished-pipelines= stops polling in a pipeline
+buffer whose pipeline and jobs all hold a final status, because
+nothing can change there without a user action.  A manual
+=M-x revert-buffer= always fetches, so a restarted job appears again.
+A list buffer always polls, because a new merge request or pipeline
+can arrive at any time.
 
 The fetch is asynchronous.  Unchanged data is not rendered again, so
 point and marks survive an automatic refresh that found no change.

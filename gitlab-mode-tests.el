@@ -79,6 +79,37 @@
       (setq-local gitlab--pending t)
       (should-not (gitlab--buffer-stale-p)))))
 
+(ert-deftest gitlab-mode-stale-check-finished-pipeline ()
+  "A finished pipeline buffer does not poll."
+  (gitlab-test-with-environment
+   (let ((gitlab-refresh-visible-only nil)
+         (gitlab-refresh-interval 30)
+         (gitlab-refresh-fast-interval 5))
+     (with-temp-buffer
+       (gitlab-detail-mode)
+       (setq-local gitlab--kind 'pipeline)
+       (setq-local gitlab--last-fetch-time (- (float-time) 400))
+       (setq-local gitlab--last-data
+                   '((status . "success")
+                     (jobs . (((status . "success"))
+                              ((status . "failed"))
+                              ((status . "manual"))))))
+       (should-not (gitlab--buffer-stale-p))
+       (let ((gitlab-refresh-finished-pipelines nil))
+         (should (gitlab--buffer-stale-p)))
+       (setq-local gitlab--last-data
+                   '((status . "running")
+                     (jobs . (((status . "running"))))))
+       (should (gitlab--buffer-stale-p))
+       (setq-local gitlab--last-data
+                   '((status . "success")
+                     (jobs . (((status . "success"))
+                              ((status . "running"))))))
+       (should (gitlab--buffer-stale-p))
+       (setq-local gitlab--kind 'merge-request)
+       (setq-local gitlab--last-data '((status . "merged")))
+       (should (gitlab--buffer-stale-p))))))
+
 (ert-deftest gitlab-mode-detail-refresh ()
   "A synchronous fetch renders the detail buffer."
   (gitlab-test-with-environment

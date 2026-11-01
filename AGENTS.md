@@ -139,6 +139,16 @@ without evil.  The suite never opens a network connection.
   `gitlab-refresh-visible-only`, in a buffer that no window shows.
   `gitlab-refresh-fast-interval` applies while a status in
   `gitlab-transitional-states` shows.
+- With `gitlab-refresh-finished-pipelines` (default t), the stale
+  check also returns nil in a settled pipeline buffer.
+  `gitlab--settled-p` reports a `pipeline` kind whose status is not in
+  `gitlab-transitional-states` and whose `jobs` array holds no such
+  status either.  A final pipeline cannot change without a user
+  action.  A list buffer, a merge request buffer and a pipeline with a
+  nil status keep polling, because a new object or a reopened
+  collection can arrive.  A manual `revert-buffer` still fetches, so a
+  restarted job shows again; the settle check then applies to the new
+  answer.
 - Display buffers are views.  `default-directory` is the project root
   of the buffer that opened the display, `buffer-modified-p` stays
   nil, and `kill-buffer` asks no question.  A new display path must

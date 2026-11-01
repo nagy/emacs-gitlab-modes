@@ -72,6 +72,24 @@
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-finished-buffer-does-not-poll ()
+  "A fetched finished pipeline is not stale."
+  (gitlab-test-with-environment
+   (let ((gitlab-refresh-visible-only nil)
+         (buffer (generate-new-buffer "*GitLab pipeline poll test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-pipeline-mode)
+           (setq-local gitlab--id "1001")
+           (gitlab--refresh)
+           (should (gitlab-test-wait
+                    (lambda () (not gitlab--pending))))
+           (should (equal "success" (gitlab--status-state gitlab--last-data)))
+           (should-not (gitlab--buffer-stale-p)))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-detail-render ()
   "The detail buffer shows the pipeline fields and the jobs table."
   (gitlab-test-with-environment
