@@ -273,7 +273,8 @@ stored notes without another request."
 Every top-level field of the glab JSON answer appears in a field
 table.  A local merge request ref adds the commit list below the
 fields, when `gitlab-merge-request-show-commits' is non-nil.
-d shows the local changes and l the local commit log.
+d shows the local changes and l the local commit log, and an
+active region over commit lines limits both to those commits.
 `gitlab-merge-request-show-notes' loads the notes below the fields.
 RET opens the pipeline, the commit or the web page at point."
   :group 'gitlab
@@ -284,23 +285,45 @@ RET opens the pipeline, the commit or the web page at point."
   (setq-local gitlab-merge-request--notes nil)
   (setq-local gitlab-merge-request--notes-loaded nil))
 
+(defun gitlab-merge-request--region-commits ()
+  "Return the commit hashes on the lines of the active region.
+The hashes come back in display order, newest first.  A line
+without the `gitlab-commit-sha' property contributes nothing.
+Return nil without an active region or without a commit line."
+  (when (use-region-p)
+    (save-excursion
+      (let ((end (region-end))
+            (commits nil))
+        (goto-char (region-beginning))
+        (beginning-of-line)
+        (while (< (point) end)
+          (when-let* ((sha (get-text-property (point) 'gitlab-commit-sha)))
+            (push sha commits))
+          (forward-line 1))
+        (nreverse commits)))))
+
 (defun gitlab-merge-request-show-changes ()
   "Show the local changes of the current merge request.
-The view needs a fetched merge request ref.  Magit, when available,
-supplies the diff buffer and its Ediff command on E."
+The view needs a fetched merge request ref.  With an active region
+over commit lines, the view covers only those commits.  Magit, when
+available, supplies the diff buffer and its Ediff command on E."
   (interactive)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
-  (gitlab-git-show-changes gitlab--id gitlab--last-data))
+  (gitlab-git-show-changes gitlab--id gitlab--last-data
+                           (gitlab-merge-request--region-commits)))
 
 (defun gitlab-merge-request-show-log ()
   "Show the local commit log of the current merge request.
-The log holds only the commits of the merge request.  Magit, when
-available, supplies the log buffer and its Ediff commands."
+The log holds only the commits of the merge request.  With an
+active region over commit lines, the log covers only those
+commits.  Magit, when available, supplies the log buffer and its
+Ediff commands."
   (interactive)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
-  (gitlab-git-show-log gitlab--id gitlab--last-data))
+  (gitlab-git-show-log gitlab--id gitlab--last-data
+                       (gitlab-merge-request--region-commits)))
 
 (define-key gitlab-merge-request-mode-map (kbd "n")
   #'gitlab-merge-request-show-notes)

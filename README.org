@@ -85,7 +85,10 @@ default, turns the list off, and =gitlab-git-commit-limit= caps it at
 50 commits.  A project without the ref shows no commit section.
 
 =d= shows the local changes of the merge request, and =l= shows its
-commit log.  Both cover the merge base to the fetched head.  The commit
+commit log.  Both cover the merge base to the fetched head.  An active
+region over commit lines narrows both views to the selected commits,
+from the parent of the oldest selected commit to the newest selected
+commit.  The commit
 view, the changes view and the log view use Magit when Magit is
 available.  Magit supplies its whole-tree diff, its commit view and the
 =ediff= commands on =E=, so a review can compare a file or a commit

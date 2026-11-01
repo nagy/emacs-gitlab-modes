@@ -139,6 +139,33 @@ KEY names a field of the nested diff_refs object."
   (when-let* ((output (gitlab-git--run (list "merge-base" head target))))
     (string-trim output)))
 
+(defun gitlab-git--parent (commit)
+  "Return the parent of COMMIT, or nil for a root commit."
+  (when-let* ((output (gitlab-git--run
+                       (list "rev-parse" "--verify" "--quiet"
+                             (concat commit "^")))))
+    (string-trim output)))
+
+(defun gitlab-git--empty-tree ()
+  "Return the empty tree of the repository object format."
+  (when-let* ((output (gitlab-git--run
+                       (list "hash-object" "-t" "tree" "/dev/null"))))
+    (string-trim output)))
+
+(defun gitlab-git-commit-selection-range (commits)
+  "Return the commit range of the selected COMMITS.
+COMMITS holds the commit hashes in display order, newest first.
+The range runs from the parent of the oldest commit to the newest
+commit, so it names exactly the selected span.  A root commit uses
+the empty tree as its base.  Return nil without COMMITS or when a
+selected commit is absent."
+  (when commits
+    (let ((head (gitlab-git--rev (car commits)))
+          (oldest (gitlab-git--rev (car (last commits)))))
+      (when (and head oldest)
+        (cons head (or (gitlab-git--parent oldest)
+                       (gitlab-git--empty-tree)))))))
+
 (defun gitlab-git-merge-request-range (iid data)
   "Return the local commit range of merge request IID in DATA.
 The value is a cons of the head commit and the base commit, or nil
@@ -270,10 +297,12 @@ The buffer starts read-only and stays out of auto-revert."
       (goto-char (point-min)))
     (pop-to-buffer buffer)))
 
-(defun gitlab-git--merge-request-revision (iid data)
+(defun gitlab-git--merge-request-revision (iid data &optional commits)
   "Return the local revision range of merge request IID in DATA.
+COMMITS, when non-nil, limits the range to the selected commits.
 Return nil when the local ref or the base object is absent."
-  (when-let* ((range (gitlab-git-merge-request-range iid data)))
+  (when-let* ((range (or (gitlab-git-commit-selection-range commits)
+                         (gitlab-git-merge-request-range iid data))))
     (format "%s..%s" (cdr range) (car range))))
 
 (defun gitlab-git--show-patch-buffer (name arguments mode)
@@ -284,13 +313,14 @@ MODE is the major mode of the buffer."
    (or (gitlab-git--run arguments) "No changes.\n")
    mode))
 
-(defun gitlab-git-show-changes (iid data)
+(defun gitlab-git-show-changes (iid data &optional commits)
   "Show the local changes of merge request IID in DATA.
-The view covers the merge base to the fetched head.  Use Magit and
+The view covers the merge base to the fetched head.  COMMITS, when
+non-nil, limits the view to the selected commits.  Use Magit and
 its whole-tree diff when `gitlab-git-use-magit' is non-nil and
 Magit is available, and a plain `diff-mode' buffer otherwise.
 Signal a user error when no local ref or base exists."
-  (let ((revision (or (gitlab-git--merge-request-revision iid data)
+  (let ((revision (or (gitlab-git--merge-request-revision iid data commits)
                       (user-error
                        "No local merge request ref for !%s" iid))))
     (if (and gitlab-git-use-magit (require 'magit nil t))
@@ -300,13 +330,14 @@ Signal a user error when no local ref or base exists."
        (list "diff" "--no-color" "--stat" "--patch" revision)
        #'gitlab-git-patch-mode))))
 
-(defun gitlab-git-show-log (iid data)
+(defun gitlab-git-show-log (iid data &optional commits)
   "Show the local commit log of merge request IID in DATA.
-The log holds only the commits of the merge request.  Use Magit's
-log buffer when `gitlab-git-use-magit' is non-nil and Magit is
-available, and a plain `diff-mode' buffer otherwise.  Signal a
-user error when no local ref or base exists."
-  (let ((revision (or (gitlab-git--merge-request-revision iid data)
+The log holds only the commits of the merge request.  COMMITS, when
+non-nil, limits the log to the selected commits.  Use Magit's log
+buffer when `gitlab-git-use-magit' is non-nil and Magit is
+available, and a plain `diff-mode' buffer otherwise.  Signal a user
+error when no local ref or base exists."
+  (let ((revision (or (gitlab-git--merge-request-revision iid data commits)
                       (user-error
                        "No local merge request ref for !%s" iid))))
     (if (and gitlab-git-use-magit (require 'magit nil t))

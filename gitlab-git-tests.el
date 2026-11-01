@@ -16,6 +16,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'ert)
 (require 'gitlab-git)
 (require 'gitlab-merge-request)
@@ -75,6 +76,15 @@ carries a fetched refs/remotes/origin/merge-requests/7/head ref."
     (target_branch . "main")
     (diff_refs . ((base_sha . ,base)
                   (start_sha . ,base)))))
+
+(defmacro gitlab-git-tests--with-repo-commits (spec extra &rest body)
+  "Run BODY with SPEC bound to a scratch repository with EXTRA commits.
+The macro deletes the repository afterwards."
+  (declare (indent 2))
+  `(let ((,spec (gitlab-git-tests--repo ,extra)))
+     (unwind-protect
+         (progn ,@body)
+       (delete-directory (car ,spec) t))))
 
 (defmacro gitlab-git-tests--with-repo (spec &rest body)
   "Run BODY with SPEC bound to a scratch repository.
@@ -229,6 +239,159 @@ macro deletes the repository afterwards."
         (should-error
          (gitlab-git-show-changes "8" (gitlab-git-tests--data (cdr repo)))
          :type 'user-error)))))
+
+(defun gitlab-git-tests--position (sha)
+  "Return the line start of the commit SHA in the current buffer."
+  (save-excursion
+    (when (gitlab--goto-property 'gitlab-commit-sha sha)
+      (point))))
+
+(defun gitlab-git-tests--select-commits (first last)
+  "Select the commit lines from FIRST through LAST.
+FIRST and LAST are commit hashes in the current merge request
+buffer."
+  (let ((start (gitlab-git-tests--position first))
+        (end (gitlab-git-tests--position last)))
+    (goto-char end)
+    (forward-line 1)
+    (set-mark (point))
+    (goto-char start)
+    (activate-mark)))
+
+(ert-deftest gitlab-git-commit-selection-range ()
+  "The selected commits give the parent of the oldest as their base."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo-commits repo 2
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (let* ((data (gitlab-git-tests--data (cdr repo)))
+             (info (gitlab-git-merge-request-commits "7" data))
+             (commits (plist-get info :commits))
+             (newest (alist-get 'sha (nth 0 commits)))
+             (middle (alist-get 'sha (nth 1 commits)))
+             (oldest (alist-get 'sha (nth 2 commits)))
+             (range (gitlab-git-commit-selection-range
+                     (list middle oldest))))
+        (should (equal middle (car range)))
+        (should (equal (cdr repo) (cdr range)))
+        (should-not (equal newest (car range)))))))
+
+(ert-deftest gitlab-git-commit-selection-range-root ()
+  "A selected root commit uses the empty tree as its base."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (let* ((root (gitlab-git-tests--git (car repo) "rev-list"
+                                          "--max-parents=0" "HEAD"))
+             (range (gitlab-git-commit-selection-range (list root))))
+        (should (equal root (car range)))
+        (should (equal (gitlab-git--empty-tree) (cdr range)))
+        (should (equal "1"
+                       (gitlab-git-tests--git
+                        (car repo) "rev-list" "--count"
+                        (format "%s..%s" (cdr range) (car range)))))))))
+
+(ert-deftest gitlab-merge-request-region-commits ()
+  "The region helper returns the selected commit lines in order."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo-commits repo 2
+    (let ((buffer (generate-new-buffer "*GitLab MR region test*")))
+      (unwind-protect
+          (with-current-buffer buffer
+            (gitlab-merge-request-mode)
+            (setq-local gitlab--id "7")
+            (setq-local gitlab-cli-directory (car repo))
+            (setq-local gitlab--last-data (gitlab-git-tests--data (cdr repo)))
+            (gitlab-merge-request--render "7" gitlab--last-data)
+            (let* ((info (gitlab-git-merge-request-commits
+                          "7" gitlab--last-data))
+                   (commits (plist-get info :commits))
+                   (middle (alist-get 'sha (nth 1 commits)))
+                   (oldest (alist-get 'sha (nth 2 commits))))
+              (gitlab-git-tests--select-commits middle oldest)
+              (should (equal (list middle oldest)
+                             (gitlab-merge-request--region-commits)))))
+        (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-show-changes-region ()
+  "The changes command passes the selected commits to the Git layer."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo-commits repo 2
+    (let ((buffer (generate-new-buffer "*GitLab MR changes region test*")))
+      (unwind-protect
+          (with-current-buffer buffer
+            (gitlab-merge-request-mode)
+            (setq-local gitlab--id "7")
+            (setq-local gitlab-cli-directory (car repo))
+            (setq-local gitlab--last-data (gitlab-git-tests--data (cdr repo)))
+            (gitlab-merge-request--render "7" gitlab--last-data)
+            (let* ((info (gitlab-git-merge-request-commits
+                          "7" gitlab--last-data))
+                   (commits (plist-get info :commits))
+                   (middle (alist-get 'sha (nth 1 commits)))
+                   (oldest (alist-get 'sha (nth 2 commits)))
+                   (captured 'none))
+              (gitlab-git-tests--select-commits middle oldest)
+              (cl-letf (((symbol-function 'gitlab-git-show-changes)
+                         (lambda (_iid _data &optional commits)
+                           (setq captured commits))))
+                (gitlab-merge-request-show-changes))
+              (should (equal (list middle oldest) captured))))
+        (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-show-log-region ()
+  "The log command passes the selected commits to the Git layer."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo-commits repo 2
+    (let ((buffer (generate-new-buffer "*GitLab MR log region test*")))
+      (unwind-protect
+          (with-current-buffer buffer
+            (gitlab-merge-request-mode)
+            (setq-local gitlab--id "7")
+            (setq-local gitlab-cli-directory (car repo))
+            (setq-local gitlab--last-data (gitlab-git-tests--data (cdr repo)))
+            (gitlab-merge-request--render "7" gitlab--last-data)
+            (let* ((info (gitlab-git-merge-request-commits
+                          "7" gitlab--last-data))
+                   (commits (plist-get info :commits))
+                   (middle (alist-get 'sha (nth 1 commits)))
+                   (oldest (alist-get 'sha (nth 2 commits)))
+                   (captured 'none))
+              (gitlab-git-tests--select-commits middle oldest)
+              (cl-letf (((symbol-function 'gitlab-git-show-log)
+                         (lambda (_iid _data &optional commits)
+                           (setq captured commits))))
+                (gitlab-merge-request-show-log))
+              (should (equal (list middle oldest) captured))))
+        (kill-buffer buffer)))))
+
+(ert-deftest gitlab-git-show-log-selected-commits ()
+  "A selected commit range leaves the other commits out of the log."
+  (skip-unless (executable-find "git"))
+  (let* ((repo (gitlab-git-tests--repo 2))
+         (directory (car repo)))
+    (unwind-protect
+        (with-temp-buffer
+          (setq-local gitlab-cli-directory directory)
+          (let* ((data (gitlab-git-tests--data (cdr repo)))
+                 (info (gitlab-git-merge-request-commits "7" data))
+                 (commits (plist-get info :commits))
+                 (newest (alist-get 'sha (nth 0 commits)))
+                 (middle (alist-get 'sha (nth 1 commits)))
+                 (oldest (alist-get 'sha (nth 2 commits)))
+                 (gitlab-git-use-magit nil)
+                 (buffer nil))
+            (unwind-protect
+                (progn
+                  (gitlab-git-show-log "7" data (list middle oldest))
+                  (setq buffer (current-buffer))
+                  (should (string-match-p "extra 0" (buffer-string)))
+                  (should (string-match-p "second" (buffer-string)))
+                  (should-not (string-match-p newest (buffer-string))))
+              (when (buffer-live-p buffer)
+                (kill-buffer buffer)))))
+      (delete-directory directory t))))
 
 (provide 'gitlab-git-tests)
 

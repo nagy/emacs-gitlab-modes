@@ -111,10 +111,20 @@ without evil.  The suite never opens a network connection.
   melpaBuild inputs.  Declare every Magit function with
   `declare-function`.
 - `gitlab-merge-request-show-changes` on `d` and
-  `gitlab-merge-request-show-log` on `l` pass `gitlab--id` and
-  `gitlab--last-data` to the Git layer.  Both signal a user error in a
-  buffer without a local merge request ref.  The log covers
-  `BASE..HEAD`, so Magit lists only the commits of the merge request.
+  `gitlab-merge-request-show-log` on `l` pass `gitlab--id`,
+  `gitlab--last-data` and the active commit selection to the Git
+  layer.  Both signal a user error in a buffer without a local merge
+  request ref.  The log covers `BASE..HEAD`, so Magit lists only the
+  commits of the merge request.
+- An active region over commit lines narrows `d` and `l`.
+  `gitlab-merge-request--region-commits` collects the
+  `gitlab-commit-sha` values from the region in display order.
+  `gitlab-git-commit-selection-range` takes the newest selected commit
+  as the head and the parent of the oldest selected commit as the
+  base.  A selected root commit uses `git hash-object -t tree
+  /dev/null`, so a SHA-256 repository gets its own empty tree.  A
+  region without a commit line and a stale selected commit both fall
+  back to the full merge request range.
 - The merge request detail lists the local commits after the field
   table with `gitlab-commit-sha` on every line.  `gitlab-open-at-point`
   reads that property first.  A commit limit shows "N more commits."
