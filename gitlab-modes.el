@@ -34,6 +34,7 @@
 ;;   M-x gitlab-list-pipelines
 ;;   M-x gitlab-display-pipeline
 ;;   M-x gitlab-display-job-log
+;;   M-x gitlab-export-json
 ;;
 ;; The optional layers keep their own libraries and stay out of this
 ;; one: `gitlab-evil' adds evil bindings, `ol-gitlab' adds Org link
@@ -56,6 +57,7 @@
 (require 'gitlab-read)
 (require 'gitlab-merge-request)
 (require 'gitlab-pipeline)
+(require 'gitlab-export)
 
 (declare-function gitlab-evil-auto-setup "gitlab-evil" ())
 

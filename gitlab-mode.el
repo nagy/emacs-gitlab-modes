@@ -234,6 +234,12 @@ It receives ID and DATA.")
 (defvar-local gitlab--last-data nil
   "Last decoded answer rendered in the current buffer.")
 
+(defvar-local gitlab--raw-text nil
+  "Raw glab answer of the last successful fetch.
+The value is the exact standard output that `gitlab--last-data' was
+decoded from.  A nil value means that the data layer merged more
+than one answer, so a JSON export encodes `gitlab--last-data'.")
+
 (defvar-local gitlab--rendered nil
   "Non-nil when the current buffer holds a rendered answer.")
 
@@ -424,7 +430,8 @@ and served when that fetch completes."
                           id
                           (lambda (data)
                             (setq settled t)
-                            (gitlab--refresh-done buffer marker data nil))
+                            (gitlab--refresh-done buffer marker data nil
+                                                  gitlab-cli-response-text))
                           (lambda (error)
                             (setq settled t)
                             (gitlab--refresh-done buffer marker nil error)))
@@ -435,11 +442,13 @@ and served when that fetch completes."
         (when (and (not settled) handle)
           (setq gitlab--pending handle)))))))
 
-(defun gitlab--refresh-done (buffer marker data error)
+(defun gitlab--refresh-done (buffer marker data error &optional raw)
   "Finish one refresh of BUFFER.
 MARKER identifies the fetch, DATA is the decoded answer and
-ERROR is a condition or nil.  An error keeps the old content and
-shows the message in the header line or the mode line."
+ERROR is a condition or nil.  RAW is the exact glab text that DATA
+was decoded from, or nil when the data layer merged two answers.
+An error keeps the old content and shows the message in the header
+line or the mode line."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (when (eq marker gitlab--fetch-marker)
@@ -449,6 +458,7 @@ shows the message in the header line or the mode line."
         (if error
             (gitlab--set-error error)
           (gitlab--clear-error)
+          (setq gitlab--raw-text (and (stringp raw) raw))
           (let ((changed (not (and gitlab--rendered
                                    (equal data gitlab--last-data)))))
             (when changed
@@ -822,7 +832,8 @@ can set the buffer-local arguments or the origin buffer."
                  (funcall gitlab-list--fetch-function
                           (lambda (data)
                             (setq settled t)
-                            (gitlab--refresh-done buffer marker data nil))
+                            (gitlab--refresh-done buffer marker data nil
+                                                  gitlab-cli-response-text))
                           (lambda (error)
                             (setq settled t)
                             (gitlab--refresh-done buffer marker nil error)))

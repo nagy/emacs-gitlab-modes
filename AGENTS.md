@@ -18,14 +18,15 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 
 | File | Purpose |
 |---|---|
-| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts and both resource families.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
+| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
-| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, the project.el directory helper, argument helpers.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
+| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the project.el directory helper, argument helpers.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu and the navigation commands. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands and the notes command. |
 | `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, and the streaming job log mode. |
+| `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer, the fallback encoder and the `js-json-mode` remaps of both display base modes. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers.  Text properties win over a typed identifier. |
@@ -54,8 +55,8 @@ Without Nix:
 emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helpers.el \
   -l gitlab-cli-tests.el -l gitlab-data-tests.el \
   -l gitlab-mode-tests.el -l gitlab-merge-request-tests.el \
-  -l gitlab-pipeline-tests.el -l gitlab-read-tests.el \
-  -l gitlab-evil-tests.el -l ol-gitlab-tests.el \
+  -l gitlab-pipeline-tests.el -l gitlab-export-tests.el \
+  -l gitlab-read-tests.el -l gitlab-evil-tests.el -l ol-gitlab-tests.el \
   -l gitlab-xref-tests.el -f ert-run-tests-batch-and-exit
 ```
 
@@ -192,6 +193,19 @@ without evil.  The suite never opens a network connection.
   header line of a detail buffer, and `gitlab--clear-error` restores
   `gitlab--header-line-format`, so a list header line survives an
   error.  A list error still goes to `mode-line-process`.
+- `gitlab-export-json` exports the answer of the current display
+  buffer.  The transport binds `gitlab-cli-response-text` around an
+  asynchronous SUCCESS callback, and the refresh pipeline stores that
+  raw text in the buffer-local `gitlab--raw-text`.  The export uses the
+  raw text, so it matches `glab ... --output json` byte for byte.  A
+  fetch that merges two answers sets `gitlab--raw-text` to nil, and the
+  export encodes `gitlab--last-data` with `json-false` bound to
+  `:false`.  One buffer, named by `gitlab-export-json-buffer-name`,
+  serves every export.  It stays read-only, unmodified and a snapshot.
+  Both display base modes remap `js-json-mode` to the command, and the
+  job log mode does not, because a trace has no JSON answer.  The
+  export layer lives in `gitlab-export.el` and loads from
+  `gitlab-modes.el`.
 - Every face inherits a standard face and lives in `gitlab-mode.el`.
   Status faces come from `gitlab-status-faces`; do not apply a
   font-lock face in a renderer.
@@ -208,7 +222,10 @@ without evil.  The suite never opens a network connection.
   the key, and a user who moves `evil-ret` elsewhere keeps the
   behaviour.  A key without an evil command, such as `gr`, stays a
   key string.  `gitlab-evil--key-sequence` passes a vector unchanged
-  and parses a string.  Do not `require` evil at the top of the file:
+  and parses a string.  `gitlab-export-json` takes the `evil-yank`
+  remap, so `y` exports the JSON of a detail buffer or of a list
+  buffer in normal state, and visual state keeps the ID copy.  Do not
+  `require` evil at the top of the file:
   evil runs `evil-after-load-hook` before it provides its feature, so
   a plain `require` recurses there.  The file requires evil only when
   `evil-define-minor-mode-key` is absent, and it declares that
@@ -241,6 +258,8 @@ without evil.  The suite never opens a network connection.
 - Tests run offline.  Mock at the process level with `test/mock-glab`;
   never call a real GitLab.  A new command needs an ERT test and, when
   it adds a file, a line in `checkPhase` only if the glob misses it.
+  The export tests compare the export buffer with the fixture text, so
+  a raw answer must survive the fetch unchanged.
 - Byte-compilation runs with warnings as errors.  Declare a function
   from another file with `declare-function` when the file does not
   require it.  The test helper marks its dynamically bound variables

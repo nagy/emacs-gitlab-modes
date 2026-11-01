@@ -27,6 +27,7 @@ installed package works without =glab= on =PATH=.
 | =gitlab-list-pipelines=               | Pipeline list.  A prefix argument reads flags.     |
 | =gitlab-display-pipeline=             | Pipeline fields at the top and jobs below.         |
 | =gitlab-display-job-log=              | Live =glab ci trace= output for one job.             |
+| =gitlab-export-json=                  | The glab JSON answer of the buffer, in one buffer.  |
 
 The package installs as =gitlab-modes=, the same name as its entry
 library:
@@ -73,6 +74,29 @@ column resizing and point keeping by row identity come from the parent.
 =RET= opens the row, =c= copies its ID and =w= opens its web page.
 A header line shows the collection name, the row count, the sort column
 and the refresh state.  A date column carries the =gitlab-date= face.
+
+* JSON export
+
+=M-x gitlab-export-json= writes the glab JSON answer of the current
+buffer into one read-only =js-json-mode= buffer named =*GitLab JSON*=.  A
+detail buffer exports one object and a list buffer exports one array.
+The command reuses the buffer, so a second export replaces its text.
+The buffer is a snapshot: a later refresh of the source buffer does not
+change it.  =revert-buffer= in the export buffer reads the source
+buffer again.
+
+Both display base modes remap =js-json-mode= to the export command, so
+a key or a menu that runs the JSON major mode exports the view instead.
+With evil, =y= exports in a detail buffer and in the normal state of a
+list buffer.
+The export keeps the raw =glab= output of the fetch, so empty arrays and
+false values stay as =glab= printed them.  The export adds one trailing
+newline when the raw text lacks one.
+
+A pipeline whose answer lacked the jobs array costs one more request,
+and the data layer merges two answers.  No single =glab= text describes
+that answer, so the export encodes the decoded data again.  A job log
+has no JSON answer, and the command signals a user error there.
 
 * Automatic refresh
 
@@ -175,6 +199,7 @@ emacs --batch -L . -L test -L "$EVIL" \
   -l gitlab-mode-tests.el \
   -l gitlab-merge-request-tests.el \
   -l gitlab-pipeline-tests.el \
+  -l gitlab-export-tests.el \
   -l gitlab-read-tests.el \
   -l gitlab-evil-tests.el \
   -l ol-gitlab-tests.el \

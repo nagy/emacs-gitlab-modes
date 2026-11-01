@@ -67,6 +67,7 @@
 (require 'gitlab-pipeline)
 
 (declare-function evil-define-minor-mode-key "evil" (state mode key def))
+(declare-function gitlab-export-json "gitlab-export" ())
 
 ;; Evil defines `evil-define-minor-mode-key' before it provides its
 ;; feature, and `evil-after-load-hook' runs between the two, so a plain
@@ -90,6 +91,7 @@ the bindings off until a user calls `gitlab-evil-mode'."
     ("gr" . revert-buffer)
     ([remap evil-paste-after] . gitlab-pop)
     ([remap evil-change] . gitlab-copy-id)
+    ([remap evil-yank] . gitlab-export-json)
     ([remap evil-forward-word-begin] . gitlab-open-web))
   "Keys that `gitlab-evil-mode' binds in detail buffers.
 A key is a key string, or a `[remap COMMAND]' vector for a command
@@ -103,6 +105,7 @@ that evil already binds.")
     ([remap evil-change-whole-line] . tabulated-list-sort)
     ([remap evil-change] . gitlab-list-copy-id)
     ([remap evil-yank-line] . gitlab-list-copy-id)
+    ([remap evil-yank] . gitlab-export-json)
     ([remap evil-forward-word-begin] . gitlab-list-open-web))
   "Keys that `gitlab-evil-mode' binds in list buffers.
 A key is a key string, or a `[remap COMMAND]' vector for a command

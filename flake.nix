@@ -156,6 +156,9 @@
                   the poll, and the fetch runs asynchronously, so Emacs
                   never waits for the network.
 
+                  gitlab-export-json writes the glab JSON answer of the
+                  current buffer into one reusable read-only buffer.
+
                   The package talks to GitLab through the glab command line
                   program (nixpkgs package glab).  The build substitutes
                   the default value of gitlab-program with the store path

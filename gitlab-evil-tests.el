@@ -21,6 +21,8 @@
 (require 'gitlab-test-helpers)
 (require 'gitlab-evil)
 
+(declare-function gitlab-export-json "gitlab-export" ())
+
 (ert-deftest gitlab-evil-mode-defined ()
   "The global mode and the three local modes exist."
   (should (fboundp 'gitlab-evil-mode))
@@ -84,6 +86,8 @@
                #'tabulated-list-sort))
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "gr")
                #'revert-buffer))
+   (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "y")
+               #'gitlab-export-json))
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "y" 'visual)
                #'gitlab-evil-list-copy-ids))))
 
@@ -93,7 +97,9 @@
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "RET")
                #'gitlab-open-at-point))
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "q")
-               #'quit-window))))
+               #'quit-window))
+   (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "y")
+               #'gitlab-export-json))))
 
 (ert-deftest gitlab-evil-job-log-keys-remap ()
   "The job log bindings reach the GitLab commands through a remap."

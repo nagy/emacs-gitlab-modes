@@ -336,7 +336,10 @@ jobs request in the `gitlab-cli-follow-up' property, so
                         (gitlab--cli-pipeline-jobs-arguments pipeline-id)
                         (lambda (jobs)
                           (gitlab-data-set-field "jobs" data jobs)
-                          (funcall success data))
+                          ;; Two answers merged: no single glab text
+                          ;; describes DATA.
+                          (let ((gitlab-cli-response-text nil))
+                            (funcall success data)))
                         error)))
                   (when (and (processp process) (processp jobs-process))
                     (process-put process 'gitlab-cli-follow-up jobs-process))

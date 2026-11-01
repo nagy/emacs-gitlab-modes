@@ -47,6 +47,10 @@
 ;; A non-zero exit status signals `gitlab-cli-error' with the stderr
 ;; text; a request that exceeds its timeout signals
 ;; `gitlab-cli-timeout'.
+;;
+;; The variable `gitlab-cli-response-text' carries the raw stdout of
+;; the asynchronous answer into its SUCCESS callback, so a caller can
+;; keep the exact glab text next to the decoded value.
 
 ;;; Code:
 
@@ -90,6 +94,13 @@ When non-nil, `gitlab-cli-stream' converts SGR sequences into
 text properties.  Set it to nil to keep the raw output."
   :type 'boolean
   :group 'gitlab)
+
+(defvar gitlab-cli-response-text nil
+  "Raw standard output of the request that produced the current answer.
+`gitlab-cli-request-async' binds this variable around its SUCCESS
+callback, so the callback reads the exact glab text next to the
+decoded answer.  A request chain that merges two answers binds nil,
+because no single text describes the merged answer.")
 
 (defcustom gitlab-cli-directory nil
   "Directory in which glab runs.
@@ -314,9 +325,10 @@ object, so a caller can cancel it."
                                     (format "glab did not finish in %s seconds"
                                             timeout)))
                    (if (zerop status)
-                       (condition-case err
-                           (funcall success (gitlab-cli--decode text parse))
-                         (error (funcall error err)))
+                       (let ((gitlab-cli-response-text text))
+                         (condition-case err
+                             (funcall success (gitlab-cli--decode text parse))
+                           (error (funcall error err))))
                        (funcall error
                                 (list 'gitlab-cli-error
                                       (gitlab-cli--failure-message
