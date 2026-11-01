@@ -69,6 +69,25 @@ does not start or end the span, and fewer than two stamped lines show
 no section.  The option =gitlab-job-log-show-region-duration=, on by
 default, turns the section off.
 
+A project can fetch merge request refs into its remote-tracking
+namespace:
+
+#+begin_src gitconfig
+[remote "origin"]
+    fetch = +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
+#+end_src
+
+With such a local ref, the merge request buffer lists the commits
+between the diff base and the fetched head.  Every commit line shows
+the short hash, the subject, the author and the date, and =RET= opens
+the commit.  The option =gitlab-merge-request-show-commits=, on by
+default, turns the list off, and =gitlab-git-commit-limit= caps it at
+50 commits.  A project without the ref shows no commit section.
+
+The commit view uses Magit when Magit is available.  Without Magit the
+package opens a read-only =diff-mode= buffer.  The package never loads
+Magit at startup and never fetches from the network for this view.
+
 The notes request and the jobs request ask for one page of 100 items.
 A merge request with more notes, or a pipeline with more jobs, shows
 the first page only.

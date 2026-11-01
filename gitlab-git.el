@@ -1,0 +1,244 @@
+;;; gitlab-git.el --- Local Git support for GitLab modes -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2026  Daniel Nagy
+
+;; Author: Daniel Nagy
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "30.1"))
+;; Keywords: tools, convenience
+;; URL: https://github.com/nagy/emacs-gitlab-modes
+
+;; This file is not part of GNU Emacs.
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License as
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+
+;; You should have received a copy of the GNU Affero General Public
+;; License along with this program.  If not, see
+;; <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Local Git reads for the merge request views.  The file fetches
+;; nothing from the network.  It reads the merge request refs that the
+;; user already fetched, so a project with this fetch refspec gets the
+;; richer view:
+;;
+;;   fetch = +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
+;;
+;; `gitlab-git-merge-request-commits' returns the commits between the
+;; merge base and the local head ref.  `gitlab-git-show-commit' opens
+;; one commit.  Both prefer Magit when it is available and fall back to
+;; a plain `diff-mode' buffer.
+;;
+;; The layer never runs a command that writes to the repository.  A
+;; missing ref, a missing object or a command failure returns nil, so a
+;; display buffer shows no section instead of a signal.
+
+;;; Code:
+
+(require 'seq)
+(require 'subr-x)
+(require 'gitlab-cli)
+(require 'gitlab-data)
+
+(declare-function magit-diff-range "magit-diff" (rev-or-range &optional args files))
+(declare-function magit-log-other "magit-log" (revs &optional args files))
+(declare-function magit-show-commit "magit-diff" (rev &optional args files module))
+
+(defcustom gitlab-git-program "git"
+  "Program name of the Git command line."
+  :type 'string
+  :group 'gitlab)
+
+(defcustom gitlab-git-use-magit t
+  "Whether the GitLab views use Magit when it is available.
+A nil value keeps every view in the plain `diff-mode' buffers of
+this package.  The package never requires Magit at load time."
+  :type 'boolean
+  :group 'gitlab)
+
+(defcustom gitlab-git-commit-limit 50
+  "Maximum number of local commits that a merge request view lists.
+A larger number keeps a very long merge request inside one buffer."
+  :type 'integer
+  :group 'gitlab)
+
+;;; Running Git
+
+(defun gitlab-git--run (arguments)
+  "Run git with ARGUMENTS and return its standard output.
+The command runs in `gitlab-cli-directory-of'.  Return nil when git
+exits with a non-zero status, so a missing ref never signals."
+  (let ((default-directory (gitlab-cli-directory-of))
+        (coding-system-for-read 'utf-8-unix)
+        (coding-system-for-write 'utf-8-unix)
+        (process-environment (cons "GIT_OPTIONAL_LOCKS=0"
+                                   process-environment)))
+    (with-temp-buffer
+      (when (eq 0 (apply #'process-file gitlab-git-program nil t nil
+                         arguments))
+        (buffer-string)))))
+
+(defun gitlab-git--lines (arguments)
+  "Run git with ARGUMENTS and return its output as a list of lines."
+  (when-let* ((output (gitlab-git--run arguments)))
+    (split-string output "\n" t)))
+
+(defun gitlab-git--rev (revision)
+  "Return the commit that REVISION names, or nil."
+  (when-let* ((output (gitlab-git--run
+                       (list "rev-parse" "--verify" "--quiet"
+                             (concat revision "^{commit}")))))
+    (string-trim output)))
+
+(defun gitlab-git--iid (iid)
+  "Return IID as a string of digits.
+Signal a user error for anything else, because the number becomes
+part of a ref name and of a git argument."
+  (let ((text (gitlab-data-id-string iid)))
+    (unless (string-match-p "\\`[0-9]+\\'" text)
+      (user-error "Invalid merge request IID: %s" iid))
+    text))
+
+;;; Merge request refs
+
+(defun gitlab-git-merge-request-head-ref (iid)
+  "Return the local head ref of merge request IID, or nil.
+Accept a remote-tracking ref such as
+refs/remotes/origin/merge-requests/12/head and a direct ref such as
+refs/merge-requests/12/head."
+  (let* ((iid (gitlab-git--iid iid))
+         (suffix (format "/merge-requests/%s/head" iid))
+         (direct (format "refs/merge-requests/%s/head" iid)))
+    (seq-find (lambda (ref)
+                (or (string= ref direct)
+                    (string-suffix-p suffix ref)))
+              (gitlab-git--lines
+               (list "for-each-ref" "--format=%(refname)"
+                     "refs/remotes" "refs/merge-requests")))))
+
+(defun gitlab-git--diff-refs-sha (data key)
+  "Return the commit that DATA gives for KEY, or nil.
+KEY names a field of the nested diff_refs object."
+  (let* ((refs (gitlab-data-field "diff_refs" data))
+         (sha (and refs (gitlab-data-field key refs))))
+    (and (stringp sha)
+         (not (string-empty-p sha))
+         (gitlab-git--rev sha))))
+
+(defun gitlab-git--merge-base (head target)
+  "Return the merge base of HEAD and TARGET, or nil."
+  (when-let* ((output (gitlab-git--run (list "merge-base" head target))))
+    (string-trim output)))
+
+(defun gitlab-git-merge-request-range (iid data)
+  "Return the local commit range of merge request IID in DATA.
+The value is a cons of the head commit and the base commit, or nil
+when the local ref or the base object is absent."
+  (when-let* ((ref (gitlab-git-merge-request-head-ref iid))
+              (head (gitlab-git--rev ref)))
+    (let ((base (or (gitlab-git--diff-refs-sha data "base_sha")
+                    (gitlab-git--diff-refs-sha data "start_sha")
+                    (when-let* ((target
+                                 (gitlab-data-field-string
+                                  "target_branch" data)))
+                      (unless (string-empty-p target)
+                        (gitlab-git--merge-base head target))))))
+      (when base
+        (cons head base)))))
+
+;;; Commits
+
+(defun gitlab-git--commit-entry (line)
+  "Return the commit record that LINE describes, or nil.
+LINE holds the five NUL separated fields that
+`gitlab-git-merge-request-commits' asks git to print."
+  (pcase-let ((`(,sha ,short ,author ,date ,subject)
+               (split-string line "\0")))
+    (when (and sha short)
+      (list (cons 'sha sha)
+            (cons 'short short)
+            (cons 'author author)
+            (cons 'date date)
+            (cons 'subject subject)))))
+
+(defun gitlab-git-merge-request-commits (iid data &optional limit)
+  "Return the local commits of merge request IID in DATA.
+LIMIT caps the number of commits and defaults to
+`gitlab-git-commit-limit'.  The value is a plist with
+:head, :base, :total and :commits.  Return nil when the local ref
+or the base object is absent."
+  (when-let* ((range (gitlab-git-merge-request-range iid data))
+              (head (car range))
+              (base (cdr range)))
+    (let* ((limit (or limit gitlab-git-commit-limit))
+           (revision (format "%s..%s" base head))
+           (total (gitlab-git--run (list "rev-list" "--count" revision)))
+           (format "%H%x00%h%x00%an%x00%aI%x00%s")
+           (commits (gitlab-git--lines
+                     (list "log"
+                           (format "--max-count=%d" limit)
+                           (format "--format=%s" format)
+                           revision))))
+      (list :head head
+            :base base
+            :total (if total (string-to-number (string-trim total)) 0)
+            :commits (delq nil (mapcar #'gitlab-git--commit-entry
+                                       commits))))))
+
+;;; Commit buffer
+
+(define-derived-mode gitlab-git-commit-mode diff-mode "GitLab Commit"
+  "Display one Git commit in a read-only `diff-mode' buffer.
+The buffer shows the commit message and the patch that the commit
+introduced.  It never loads a file."
+  :group 'gitlab
+  (setq-local buffer-read-only t)
+  (setq-local buffer-stale-function nil)
+  (setq-local truncate-lines t))
+
+(define-key gitlab-git-commit-mode-map (kbd "q") #'quit-window)
+
+(defun gitlab-git--show-commit-buffer (sha)
+  "Display SHA in a plain `diff-mode' buffer.
+The command returns the buffer."
+  (let* ((directory (gitlab-cli-directory-of))
+         (buffer (get-buffer-create
+                  (format "*GitLab Commit %s*" (substring sha 0 7))))
+         (text (gitlab-git--run
+                (list "show" "--no-color" "--stat" "--patch" sha))))
+    (with-current-buffer buffer
+      (setq-local default-directory directory)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (or text "")))
+      (gitlab-git-commit-mode)
+      (set-buffer-modified-p nil)
+      (goto-char (point-min)))
+    (pop-to-buffer buffer)))
+
+(defun gitlab-git-show-commit (sha)
+  "Display commit SHA in its own buffer.
+Use Magit when `gitlab-git-use-magit' is non-nil and Magit is
+available.  Signal a user error when SHA names no local commit."
+  (interactive
+   (list (or (get-text-property (point) 'gitlab-commit-sha)
+             (read-string "Commit: "))))
+  (let ((revision (gitlab-git--rev sha)))
+    (unless revision
+      (user-error "Unknown commit: %s" sha))
+    (if (and gitlab-git-use-magit (require 'magit nil t))
+        (magit-show-commit revision)
+      (gitlab-git--show-commit-buffer revision))))
+
+(provide 'gitlab-git)
+
+;;; gitlab-git.el ends here

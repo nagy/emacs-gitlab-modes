@@ -49,6 +49,7 @@
 
 (require 'subr-x)
 (require 'gitlab-data)
+(require 'gitlab-git)
 (require 'gitlab-mode)
 
 (declare-function gitlab-read-merge-request-iid "gitlab-read" (&optional prompt))
@@ -56,6 +57,17 @@
 (defcustom gitlab-merge-request-list-buffer-name "*GitLab Merge Requests*"
   "Buffer name of the merge request list."
   :type 'string
+  :group 'gitlab)
+
+(defcustom gitlab-merge-request-show-commits t
+  "Whether a merge request buffer lists the local commits.
+The list needs a fetched merge request ref, for example through
+this fetch refspec:
+
+  +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
+
+A project without the ref shows no commit section."
+  :type 'boolean
   :group 'gitlab)
 
 (defcustom gitlab-merge-request-list-arguments nil
@@ -171,7 +183,39 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
                               "(no title)"
                             title))
      data))
+  (gitlab-merge-request--insert-commits data)
   (gitlab-merge-request--insert-notes))
+
+(defun gitlab-merge-request--insert-commits (data)
+  "Insert the local commits of DATA below the merge request fields.
+Every line carries `gitlab-commit-sha', so RET opens the commit.
+The function inserts nothing without a local merge request ref."
+  (when gitlab-merge-request-show-commits
+    (when-let* ((info (gitlab-git-merge-request-commits gitlab--id data)))
+      (let ((inhibit-read-only t)
+            (commits (plist-get info :commits))
+            (total (plist-get info :total)))
+        (goto-char (point-max))
+        (insert "\n"
+                (propertize (format "Commits (%d)" total)
+                            'face 'gitlab-title)
+                "\n\n")
+        (if (null commits)
+            (insert "No commits.\n")
+          (dolist (commit commits)
+            (insert
+             (propertize
+              (format "%s %s  (%s, %s)\n"
+                      (alist-get 'short commit)
+                      (alist-get 'subject commit)
+                      (alist-get 'author commit)
+                      (gitlab--format-date (alist-get 'date commit)))
+              'gitlab-commit-sha (alist-get 'sha commit)
+              'mouse-face 'highlight
+              'help-echo "Open the commit"))))
+        (when (< (length commits) total)
+          (insert (format "\n%d more commits.\n"
+                          (- total (length commits)))))))))
 
 (defun gitlab-merge-request--insert-notes ()
   "Insert the fetched notes below the merge request fields."
@@ -227,8 +271,10 @@ stored notes without another request."
   "GitLab Merge Request"
   "Display one GitLab merge request.
 Every top-level field of the glab JSON answer appears in a field
-table.  `gitlab-merge-request-show-notes' loads the notes below the
-fields.  RET opens the pipeline or web page at point."
+table.  A local merge request ref adds the commit list below the
+fields, when `gitlab-merge-request-show-commits' is non-nil.
+`gitlab-merge-request-show-notes' loads the notes below the fields.
+RET opens the pipeline, the commit or the web page at point."
   :group 'gitlab
   (setq-local gitlab--kind 'merge-request)
   (setq-local gitlab--label "GitLab merge request")

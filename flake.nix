@@ -68,6 +68,9 @@
               # path into the defcustom, so the installed package works
               # without anything on PATH.
               glab ? pkgs.glab,
+              # The local Git tests build scratch repositories, so the
+              # check phase needs git.  A consumer can swap the binary.
+              git ? pkgs.git,
               # The optional gitlab-evil.el layer needs evil to compile and
               # test, but the package must not depend on it.  The check
               # phase supplies the elisp directory on the load path only.
@@ -105,6 +108,9 @@
               turnCompilationWarningToError = true;
 
               doCheck = true;
+              # The local Git tests build scratch repositories, so the
+              # check phase needs git on PATH.
+              nativeCheckInputs = [ git ];
               # No file lists here: the phase globs the tree.  Test files
               # carry the `-tests.el' suffix, which package-build excludes
               # from the tarball and the lint gate excludes from the ELPA
@@ -258,7 +264,11 @@
               # The store path that the package bakes in, so the shell runs
               # the same binary as the built package.
               pkgs.glab
-              (pkgs.emacsPackages.emacsWithPackages (p: [ p.evil ]))
+              pkgs.git
+              (pkgs.emacsPackages.emacsWithPackages (p: [
+                p.evil
+                p.magit
+              ]))
             ];
           };
         };

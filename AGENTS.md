@@ -22,6 +22,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit` and the plain `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the bookmark records and `gitlab-bookmark-jump`. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands and the notes command. |
@@ -83,6 +84,32 @@ without evil.  The suite never opens a network connection.
   Use `gitlab-data-set-field` to merge a missing field, because the
   built-in `alist-get` setter does not mutate a non-empty list for a
   missing key.
+- `gitlab-git.el` reads the merge request refs that the user already
+  fetched.  It finds a ref by suffix, so both
+  `refs/remotes/origin/merge-requests/IID/head` and
+  `refs/merge-requests/IID/head` work.  The merge request IID must be
+  digits only, because it becomes part of a ref name and a git
+  argument.  A missing ref, a missing object or a failed command
+  returns nil, so a display buffer shows no section instead of a
+  signal.  The base comes from `diff_refs.base_sha`, then from
+  `diff_refs.start_sha`, then from `git merge-base` against
+  `target_branch`.
+- `gitlab-git.el` never runs a command that writes to the repository
+  and never opens a network connection.  It calls `git` through
+  `process-file` with `GIT_OPTIONAL_LOCKS=0`, and it reads commit
+  records with `%x00` separators.  A literal NUL in an Elisp string
+  reaches `process-file` as the end of the argument.
+- `gitlab-git-show-commit`, the changes view and the log view prefer
+  Magit when `gitlab-git-use-magit` is non-nil and `(require 'magit
+  nil t)` succeeds.  They open a read-only `diff-mode` buffer
+  otherwise, so Magit stays out of `Package-Requires` and out of the
+  melpaBuild inputs.  Declare every Magit function with
+  `declare-function`.
+- The merge request detail lists the local commits after the field
+  table with `gitlab-commit-sha` on every line.  `gitlab-open-at-point`
+  reads that property first.  A commit limit shows "N more commits."
+  The section appears only with `gitlab-merge-request-show-commits`
+  and a local merge request ref.
 - The data cache serves prompts only.  `gitlab-cache-ttl` controls it;
   `gitlab-cache-clear` and `gitlab-cache-invalidate` drop entries.  A
   display buffer fetches fresh data on every refresh.
@@ -388,7 +415,7 @@ without evil.  The suite never opens a network connection.
 - `nix fmt` formats `flake.nix`.  Do not run nixfmt standalone.
 - `gitlabModes` in `flake.nix` calls `lib.makeOverridable` with one
   argument set: `emacs`, `emacsPackages`, `melpaBuild`, `version`,
-  `glab` and `evil`.  The flake passes the commit-derived `version`, and
+  `glab`, `git` and `evil`.  The flake passes the commit-derived `version`, and
   the argument defaults to `"0.1.0"` for a plain import.  Every other
   dependency derives from `emacs`, so one override moves them all.  A
   new build input becomes a new named argument, not a hard-coded

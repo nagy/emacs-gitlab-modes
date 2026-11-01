@@ -76,6 +76,7 @@
 (require 'gitlab-error)
 
 (declare-function gitlab-display-merge-request "gitlab-merge-request" (iid))
+(declare-function gitlab-git-show-commit "gitlab-git" (sha))
 (declare-function gitlab-display-pipeline "gitlab-pipeline" (pipeline-id))
 (declare-function gitlab-display-job-log "gitlab-pipeline" (job-id &optional name))
 (declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
