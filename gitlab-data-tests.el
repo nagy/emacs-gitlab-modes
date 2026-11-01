@@ -96,6 +96,13 @@
      (should (stringp text))
      (should (string-match-p "step 1" text)))))
 
+(ert-deftest gitlab-job-pipeline-id ()
+  "The job endpoint names the pipeline that holds the job."
+  (gitlab-test-with-environment
+   (should (equal "unit-tests"
+                  (gitlab-data-field "name" (gitlab-job-show 5001))))
+   (should (equal "1001" (gitlab-job-pipeline-id 5001)))))
+
 (ert-deftest gitlab-list-cache ()
   "A cached list keeps its answer until the cache is cleared."
   (gitlab-test-with-environment

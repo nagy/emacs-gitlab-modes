@@ -61,6 +61,11 @@
 ;; a pipeline, `gitlab-merge-request-iid' opens a merge request,
 ;; `gitlab-job-id' opens a job log and `gitlab-url' opens the browser.
 ;; RET and mouse-2 run `gitlab-open-at-point'.
+;;
+;; `gitlab-go-to-parent' walks up one level: a merge request or a
+;; pipeline opens its list, a job log opens the pipeline that holds
+;; the job.  A list buffer has no parent.  The detail and job log
+;; keymaps remap `dired-jump' and `dired-up-directory' to it.
 
 ;;; Code:
 
@@ -78,7 +83,8 @@
 (declare-function gitlab-display-merge-request "gitlab-merge-request" (iid))
 (declare-function gitlab-git-show-commit "gitlab-git" (sha))
 (declare-function gitlab-display-pipeline "gitlab-pipeline" (pipeline-id))
-(declare-function gitlab-display-job-log "gitlab-pipeline" (job-id &optional name))
+(declare-function gitlab-display-job-log "gitlab-pipeline"
+                  (job-id &optional name pipeline-id))
 (declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
 (declare-function gitlab-pipeline-list-mode "gitlab-pipeline" ())
 
@@ -271,6 +277,12 @@ The value is `merge-request', `pipeline' or `job'.")
 
 (defvar-local gitlab--label "GitLab"
   "Human name of the object kind in the current buffer.")
+
+(defvar-local gitlab--parent-function nil
+  "Function that opens the parent view of the current buffer.
+`gitlab-go-to-parent' calls it.  A list buffer leaves it nil,
+because a collection has no parent.  The merge request mode, the
+pipeline mode and the job log mode set it.")
 
 (defvar-local gitlab--fetch-function nil
   "Function that fetches the data of the current detail buffer.
@@ -845,6 +857,18 @@ its detail buffer and a web URL opens the browser."
   (mouse-set-point event)
   (gitlab-open-at-point))
 
+(defun gitlab-go-to-parent ()
+  "Open the view one level above the current GitLab buffer.
+A merge request opens the merge request list, a pipeline opens the
+pipeline list and a job log opens the pipeline that holds the job.
+A list buffer is already the top level, so it signals `user-error'.
+The buffer-local `gitlab--parent-function' names the command of
+each kind."
+  (interactive)
+  (if gitlab--parent-function
+      (funcall gitlab--parent-function)
+    (user-error "The current GitLab buffer has no parent")))
+
 (defun gitlab-copy-id ()
   "Copy the identifier of the current buffer to the kill ring."
   (interactive)
@@ -911,6 +935,9 @@ without blocking Emacs."
 (define-key gitlab-detail-mode-map (kbd "c") #'gitlab-copy-id)
 (define-key gitlab-detail-mode-map (kbd "w") #'gitlab-open-web)
 (define-key gitlab-detail-mode-map (kbd "p") #'gitlab-pop)
+(define-key gitlab-detail-mode-map [remap dired-jump] #'gitlab-go-to-parent)
+(define-key gitlab-detail-mode-map [remap dired-up-directory]
+  #'gitlab-go-to-parent)
 
 ;;; List mode
 
@@ -1229,7 +1256,8 @@ and has no snapshot."
       (pcase kind
         ('merge-request (gitlab-display-merge-request id))
         ('pipeline (gitlab-display-pipeline id))
-        ('job (gitlab-display-job-log id name))
+        ('job (gitlab-display-job-log
+               id name (bookmark-prop-get bookmark 'pipeline)))
         ('merge-request-list
          (gitlab-list--show
           gitlab-merge-request-list-buffer-name

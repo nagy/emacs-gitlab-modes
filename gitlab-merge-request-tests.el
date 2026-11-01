@@ -142,6 +142,20 @@
     (should (equal "2026-10-31 20:57:30" (aref row 6)))
     (should (eq 'gitlab-date (get-text-property 0 'face (aref row 6))))))
 
+(ert-deftest gitlab-merge-request-detail-parent ()
+  "A merge request detail buffer opens the merge request list."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR parent test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-merge-request-mode)
+           (setq-local gitlab--id "12")
+           (gitlab-go-to-parent)
+           (should (derived-mode-p 'gitlab-merge-request-list-mode)))
+       (kill-buffer buffer)
+       (when-let* ((list (get-buffer gitlab-merge-request-list-buffer-name)))
+         (kill-buffer list))))))
+
 (provide 'gitlab-merge-request-tests)
 
 ;;; gitlab-merge-request-tests.el ends here

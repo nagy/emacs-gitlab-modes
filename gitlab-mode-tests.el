@@ -338,6 +338,30 @@
     (should (equal "#5 failed" value))
     (should-not pipeline)))
 
+(ert-deftest gitlab-mode-go-to-parent-without-parent ()
+  "A buffer without a parent function signals a `user-error'."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (should-error (gitlab-go-to-parent) :type 'user-error))))
+
+(ert-deftest gitlab-mode-go-to-parent-keys ()
+  "The detail and job log modes remap `dired-jump'."
+  (dolist (mode '(gitlab-detail-mode gitlab-job-log-mode))
+    (with-temp-buffer
+      (funcall mode)
+      (should (eq #'gitlab-go-to-parent
+                  (key-binding (kbd "C-x C-j"))))
+      (dolist (command '(dired-jump dired-up-directory))
+        (should (eq #'gitlab-go-to-parent
+                    (command-remapping command)))))))
+
+(ert-deftest gitlab-mode-go-to-parent-list-keys ()
+  "A list buffer keeps the dired meaning of `dired-jump'."
+  (with-temp-buffer
+    (gitlab-list-mode)
+    (should (eq #'dired-jump (key-binding (kbd "C-x C-j"))))))
+
 (provide 'gitlab-mode-tests)
 
 ;;; gitlab-mode-tests.el ends here

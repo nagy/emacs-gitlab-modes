@@ -420,10 +420,45 @@ ARGUMENTS holds extra glab flags."
 
 ;;; Job log
 
+(defun gitlab--cli-job-show-arguments (job-id)
+  "Return the glab arguments for the details of JOB-ID."
+  (gitlab-cli--repository-arguments
+   (list "api"
+         (gitlab-cli-project-endpoint
+          (format "jobs/%s" (gitlab-data-id-string job-id))))))
+
 (defun gitlab--cli-job-trace-arguments (job-id)
   "Return the glab arguments for the trace of JOB-ID."
   (gitlab-cli--repository-arguments
    (list "ci" "trace" (gitlab-data-id-string job-id))))
+
+(defun gitlab-job-show (job-id)
+  "Return the details of JOB-ID.
+The answer holds the `pipeline' object that owns the job, so a
+caller can name the parent pipeline of a job log."
+  (gitlab--with-backend
+   (gitlab-cli-request (gitlab--cli-job-show-arguments job-id))))
+
+(defun gitlab-job-show-async (job-id success error)
+  "Fetch the details of JOB-ID and deliver them.
+SUCCESS receives the decoded answer, ERROR a condition.  Return
+the process object."
+  (gitlab--with-backend
+   (gitlab-cli-request-async
+    (gitlab--cli-job-show-arguments job-id)
+    success error)))
+
+(defun gitlab-job-pipeline-id (job-id)
+  "Return the ID of the pipeline that holds JOB-ID, or nil.
+The answer of the job endpoint names the pipeline, so a job log
+finds its parent without a stored ID.  The value is a string,
+ready for a glab argument.  A job without a pipeline field
+returns nil."
+  (let ((pipeline (gitlab-data-field "pipeline"
+                                     (gitlab-job-show job-id))))
+    (when pipeline
+      (let ((id (gitlab-data-field "id" pipeline)))
+        (and id (gitlab-data-id-string id))))))
 
 (defun gitlab-job-trace (job-id)
   "Return the complete trace of JOB-ID as text."

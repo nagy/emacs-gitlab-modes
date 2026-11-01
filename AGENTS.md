@@ -196,6 +196,26 @@ without evil.  The suite never opens a network connection.
   collection can arrive.  A manual `revert-buffer` still fetches, so a
   restarted job shows again; the settle check then applies to the new
   answer.
+- `gitlab-go-to-parent` walks one level up.  The buffer-local
+  `gitlab--parent-function` names the command of each kind: a merge
+  request opens `gitlab-list-merge-requests`, a pipeline opens
+  `gitlab-list-pipelines` and a job log opens the pipeline that holds
+  the job.  A list buffer leaves the variable nil, so the command
+  signals `user-error` and `dired-jump` keeps its dired meaning there,
+  because the directory of a list buffer is the project root.  The
+  detail keymap and the job log keymap remap `dired-jump` and
+  `dired-up-directory` to the command; `gitlab-evil.el` adds the same
+  two remaps to its detail and job log key lists.
+- A job log knows its parent pipeline in three steps.  The pipeline
+  detail buffer passes its own `gitlab--id` as the third argument of
+  `gitlab-display-job-log`, the bookmark record stores the ID under
+  `pipeline`, and `gitlab-job-log-pipeline-id` calls
+  `gitlab-job-pipeline-id` once when neither holds it, then keeps the
+  answer in `gitlab-job-log--pipeline-id`.  The data entry points
+  `gitlab-job-show`, `gitlab-job-show-async` and
+  `gitlab-job-pipeline-id` read the `pipeline` object of
+  `glab api projects/:id/jobs/JOB_ID`.  So a log that a bookmark, an
+  Org link or an xref definition opened still reaches its pipeline.
 - Display buffers are views.  `default-directory` is the project root
   of the buffer that opened the display, `buffer-modified-p` stays
   nil, and `kill-buffer` asks no question.  A new display path must
@@ -404,7 +424,8 @@ without evil.  The suite never opens a network connection.
   a load step.  `gitlab--init-display-buffer` sets
   `bookmark-make-record-function` to `gitlab--bookmark-make-record`,
   and `gitlab-job-log-mode` sets its own wrapper because it does not
-  run the display base mode; the wrapper adds the job name.
+  run the display base mode; the wrapper adds the job name, and the
+  pipeline ID when the buffer knows it.
   `gitlab--bookmark-make-record` stores `kind`, `id`, `location`,
   `repository`, `directory` and `target`, plus `arguments` and `sort`
   for a list buffer.  The kind of a list buffer is the collection kind

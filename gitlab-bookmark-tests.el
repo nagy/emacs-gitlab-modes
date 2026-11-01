@@ -167,7 +167,7 @@
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-bookmark-job-log-record ()
-  "A job log record adds the job name."
+  "A job log record adds the job name and the pipeline."
   (gitlab-test-with-environment
    (let ((buffer (generate-new-buffer "*GitLab Job bookmark test*")))
      (unwind-protect
@@ -175,13 +175,30 @@
            (gitlab-job-log-mode)
            (setq-local gitlab--id "5001")
            (setq-local gitlab-job-log--name "unit-tests")
+           (setq-local gitlab-job-log--pipeline-id "1001")
            (let ((record (gitlab-bookmark-tests--record)))
              (should (eq 'job (alist-get 'kind (cdr record))))
              (should (equal "5001" (alist-get 'id (cdr record))))
              (should (equal "unit-tests" (alist-get 'name (cdr record))))
+             (should (equal "1001" (alist-get 'pipeline (cdr record))))
              (should (equal "gitlab-job:5001"
                             (alist-get 'location (cdr record))))))
        (kill-buffer buffer)))))
+
+(ert-deftest gitlab-bookmark-jump-passes-pipeline ()
+  "A job log jump passes the stored pipeline to the display command."
+  (let (pipeline)
+    (cl-letf (((symbol-function 'gitlab-display-job-log)
+               (lambda (_id _name pipeline-id)
+                 (setq pipeline pipeline-id))))
+      (gitlab-bookmark-jump
+       (list "GitLab Job gitlab-job:5001"
+             (list (cons 'kind 'job)
+                   (cons 'id "5001")
+                   (cons 'name "unit-tests")
+                   (cons 'pipeline "1001")
+                   (cons 'handler 'gitlab-bookmark-jump)))))
+    (should (equal "1001" pipeline))))
 
 ;;; Targets
 

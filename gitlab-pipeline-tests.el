@@ -162,7 +162,7 @@
     (goto-char (point-min))
     (let (opened name)
       (cl-letf (((symbol-function 'gitlab-display-job-log)
-                 (lambda (id job-name)
+                 (lambda (id job-name _pipeline-id)
                    (setq opened id name job-name))))
         (gitlab-pipeline-open-job-at-point))
       (should (equal "5001" opened))
@@ -445,6 +445,65 @@
            (with-current-buffer buffer
              (should (equal "5001" list-buffers-directory))))
        (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-log-parent-stored ()
+  "A job log that knows its pipeline opens the pipeline buffer."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log
+                  "5001" "unit-tests" "1001")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (should (equal "1001" (gitlab-job-log-pipeline-id)))
+           (gitlab-go-to-parent)
+           (should (derived-mode-p 'gitlab-pipeline-mode))
+           (should (equal "1001" gitlab--id)))
+       (kill-buffer buffer)
+       (when-let* ((pipeline (get-buffer "*GitLab Pipeline #1001*")))
+         (kill-buffer pipeline))))))
+
+(ert-deftest gitlab-pipeline-job-log-parent-fetched ()
+  "A job log without a stored pipeline asks GitLab for the parent."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log "5001" "unit-tests")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (should (equal "1001" (gitlab-job-log-pipeline-id)))
+           (should (equal "1001" gitlab-job-log--pipeline-id))
+           (gitlab-go-to-parent)
+           (should (derived-mode-p 'gitlab-pipeline-mode))
+           (should (equal "1001" gitlab--id)))
+       (kill-buffer buffer)
+       (when-let* ((pipeline (get-buffer "*GitLab Pipeline #1001*")))
+         (kill-buffer pipeline))))))
+
+(ert-deftest gitlab-pipeline-job-log-job-row-passes-pipeline ()
+  "RET on a job row passes the pipeline to the log buffer."
+  (let (pipeline)
+    (cl-letf (((symbol-function 'gitlab-display-job-log)
+               (lambda (_id _name pipeline-id)
+                 (setq pipeline pipeline-id))))
+      (with-temp-buffer
+        (gitlab-pipeline-mode)
+        (setq-local gitlab--id "1001")
+        (let ((inhibit-read-only t))
+          (insert (propertize "unit-tests" 'gitlab-job-id "5001")))
+        (goto-char (point-min))
+        (gitlab-pipeline-open-job-at-point)))
+    (should (equal "1001" pipeline))))
+
+(ert-deftest gitlab-pipeline-detail-parent ()
+  "A pipeline detail buffer opens the pipeline list."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab pipeline parent test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-pipeline-mode)
+           (setq-local gitlab--id "1001")
+           (gitlab-go-to-parent)
+           (should (derived-mode-p 'gitlab-pipeline-list-mode)))
+       (kill-buffer buffer)
+       (when-let* ((list (get-buffer gitlab-pipeline-list-buffer-name)))
+         (kill-buffer list))))))
 
 (provide 'gitlab-pipeline-tests)
 

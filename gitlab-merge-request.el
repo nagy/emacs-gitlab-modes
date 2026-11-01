@@ -280,6 +280,7 @@ RET opens the pipeline, the commit or the web page at point."
   :group 'gitlab
   (setq-local gitlab--kind 'merge-request)
   (setq-local gitlab--label "GitLab merge request")
+  (setq-local gitlab--parent-function #'gitlab-list-merge-requests)
   (setq-local gitlab--fetch-function #'gitlab-merge-request--fetch)
   (setq-local gitlab--render-function #'gitlab-merge-request--render)
   (setq-local gitlab-merge-request--notes nil)

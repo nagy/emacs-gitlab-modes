@@ -49,17 +49,18 @@
 ;; key keeps the GitLab behaviour on the new key.  A key with no evil
 ;; command, such as gr, stays a plain key binding.
 ;;
-;; Detail buffers: RET opens the pipeline, merge request or web page
-;; at point; q quits the window; gr refreshes; p pops back; c copies
-;; the ID; w opens the web page.
+;; Detail buffers: RET opens the pipeline, merge request, web page
+;; or commit at point; q quits the window; gr refreshes; p pops back;
+;; C-x C-j opens the parent list; c copies the ID; w opens the web
+;; page.
 ;;
 ;; List buffers: RET opens the row; c or Y copies its ID; w opens its
 ;; web page; S sorts the current column.  A visual line selection
 ;; followed by y copies every selected row ID, one per line.
 ;;
 ;; Job log buffers: q quits; gr restarts the trace; ~ toggles the
-;; timestamps; c copies the job ID; G and gg reach the end and the
-;; start.
+;; timestamps; C-x C-j opens the pipeline; c copies the job ID; G and
+;; gg reach the end and the start.
 
 ;;; Code:
 
@@ -91,6 +92,8 @@ the bindings off until a user calls `gitlab-evil-mode'."
     ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
     ([remap evil-paste-after] . gitlab-pop)
+    ([remap dired-jump] . gitlab-go-to-parent)
+    ([remap dired-up-directory] . gitlab-go-to-parent)
     ([remap evil-change] . gitlab-copy-id)
     ([remap evil-yank] . gitlab-export-json)
     ([remap evil-forward-word-begin] . gitlab-open-web))
@@ -121,6 +124,8 @@ that evil already binds.")
 (defvar gitlab-evil-job-log-keys
   '(([remap evil-record-macro] . quit-window)
     ("gr" . gitlab-job-log-restart)
+    ([remap dired-jump] . gitlab-go-to-parent)
+    ([remap dired-up-directory] . gitlab-go-to-parent)
     ([remap evil-invert-char] . gitlab-job-log-toggle-timestamps)
     ([remap evil-change] . gitlab-copy-id))
   "Keys that `gitlab-evil-mode' binds in job log buffers.

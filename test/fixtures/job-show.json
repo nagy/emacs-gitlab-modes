@@ -1,0 +1,16 @@
+{
+  "id": 5001,
+  "name": "unit-tests",
+  "stage": "test",
+  "status": "success",
+  "duration": 100.234765,
+  "allow_failure": false,
+  "web_url": "https://gitlab.example/group/project/-/jobs/5001",
+  "pipeline": {
+    "id": 1001,
+    "ref": "main",
+    "sha": "1111111111111111111111111111111111111111",
+    "status": "success",
+    "web_url": "https://gitlab.example/group/project/-/pipelines/1001"
+  }
+}

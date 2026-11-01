@@ -27,6 +27,7 @@ installed package works without =glab= on =PATH=.
 | =gitlab-list-pipelines=               | Pipeline list.  A prefix argument reads flags.     |
 | =gitlab-display-pipeline=             | Pipeline fields at the top and jobs below.         |
 | =gitlab-display-job-log=              | Live =glab ci trace= output for one job.             |
+| =gitlab-go-to-parent=                 | The list, or the pipeline, one level above.        |
 | =gitlab-export-json=                  | The glab JSON answer of the buffer, in one buffer.  |
 
 The package installs as =gitlab-modes=, the same name as its entry
@@ -113,6 +114,7 @@ Both detail modes provide these keys:
 | =c=         | =gitlab-copy-id=           |
 | =w=         | =gitlab-open-web=          |
 | =p=         | =gitlab-pop=               |
+| =C-x C-j=   | =gitlab-go-to-parent=      |
 | =q=         | =quit-window=              |
 
 A merge request buffer also binds =n= for the notes, =d= for the local
@@ -130,6 +132,25 @@ sort indicator of =tabulated-list-mode=.  A date column carries the
 =thing-at-point 'url= on a row returns the upstream web URL of that
 merge request or pipeline, so =browse-url-at-point= and every caller
 that reads a URL work on the table.
+
+* Parent views
+
+=M-x gitlab-go-to-parent= opens the view one level above the current
+buffer.  A merge request opens the merge request list, a pipeline
+opens the pipeline list and a job log opens the pipeline that holds
+the job.  A list buffer is already the top level, so the command
+signals a user error there.
+
+The detail modes and the job log mode remap =dired-jump= and
+=dired-up-directory= to the command, so =C-x C-j= walks up in a GitLab
+buffer.  A list buffer keeps the dired meaning, because its
+=default-directory= is the project root.
+
+A job log learns its pipeline in three ways.  A log opened from a
+pipeline buffer receives the pipeline ID.  A bookmark record stores
+the same ID.  A log that neither knows, for example one opened from
+an Org link, asks GitLab once for the details of the job and keeps the
+answer.
 
 * JSON export
 

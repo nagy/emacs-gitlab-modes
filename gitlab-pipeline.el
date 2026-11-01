@@ -54,6 +54,11 @@
 ;; `gitlab-job-log-toggle-timestamps' decide whether the buffer shows
 ;; it.  The prefix stays in the buffer as text with a `display'
 ;; property, so a toggle never asks GitLab again.
+;;
+;; A job log knows its parent pipeline: the display command passes the
+;; ID, the bookmark record keeps it, and `gitlab-job-pipeline-id' asks
+;; GitLab once when neither holds it.  `gitlab-go-to-parent' opens the
+;; pipeline buffer.
 
 ;;; Code:
 
@@ -236,7 +241,7 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
   (let ((id (gitlab-pipeline-job-id-at-point))
         (name (get-text-property (point) 'gitlab-job-name)))
     (if id
-        (gitlab-display-job-log id name)
+        (gitlab-display-job-log id name gitlab--id)
       (user-error "No job at point"))))
 
 (define-derived-mode gitlab-pipeline-mode gitlab-detail-mode
@@ -248,6 +253,7 @@ pipeline and its jobs."
   :group 'gitlab
   (setq-local gitlab--kind 'pipeline)
   (setq-local gitlab--label "GitLab pipeline")
+  (setq-local gitlab--parent-function #'gitlab-list-pipelines)
   (setq-local gitlab--fetch-function #'gitlab-pipeline--fetch)
   (setq-local gitlab--render-function #'gitlab-pipeline--render))
 
@@ -296,6 +302,12 @@ and disappears while no region is active."
 
 (defvar-local gitlab-job-log--name nil
   "Human name of the job in the current job log buffer.")
+
+(defvar-local gitlab-job-log--pipeline-id nil
+  "ID of the pipeline that holds the job of the current job log.
+A job log opened from a pipeline buffer or restored from a
+bookmark knows its pipeline.  A nil value asks GitLab once, in
+`gitlab-job-log-pipeline-id'.")
 
 (defvar-local gitlab-job-log--finished nil
   "Non-nil when the trace process of the current buffer finished.")
@@ -569,6 +581,27 @@ it to the lines that the buffer already holds."
   (message "Job log prefix %s"
            (if gitlab-job-log-show-timestamps "shown" "hidden")))
 
+(defun gitlab-job-log-pipeline-id ()
+  "Return the ID of the pipeline that holds the current job, or nil.
+The function prefers `gitlab-job-log--pipeline-id', which the
+display command and a bookmark jump fill without a request.  A
+nil value asks GitLab once for the details of the job and keeps
+the answer, so the parent command works in a log that a bookmark,
+an Org link or an xref definition opened."
+  (unless gitlab-job-log--pipeline-id
+    (setq-local gitlab-job-log--pipeline-id
+                (gitlab-job-pipeline-id gitlab--id)))
+  gitlab-job-log--pipeline-id)
+
+(defun gitlab-job-log-go-to-parent ()
+  "Open the pipeline buffer that holds the current job.
+Signal `user-error' when GitLab names no pipeline for the job."
+  (interactive)
+  (let ((pipeline-id (gitlab-job-log-pipeline-id)))
+    (if pipeline-id
+        (gitlab-display-pipeline pipeline-id)
+      (user-error "No pipeline for job %s" gitlab--id))))
+
 (defun gitlab-job-log--start ()
   "Clear the current buffer and start the trace process."
   (gitlab-job-log--kill)
@@ -620,13 +653,17 @@ function with the two `revert-buffer' arguments."
 (defun gitlab-job-log--bookmark-make-record ()
   "Return a bookmark record for the current job log buffer.
 The record adds the job name, so the header line of the restored
-log names the job.  A job log restarts its trace on a jump,
-because a trace streams and has no snapshot."
+log names the job, and the pipeline, so the restored log can walk
+up to its pipeline without a request.  A job log restarts its
+trace on a jump, because a trace streams and has no snapshot."
   (let ((record (gitlab--bookmark-make-record)))
     (cons (car record)
           (append (cdr record)
                   (when gitlab-job-log--name
-                    (list (cons 'name gitlab-job-log--name)))))))
+                    (list (cons 'name gitlab-job-log--name)))
+                  (let ((pipeline-id gitlab-job-log--pipeline-id))
+                    (when pipeline-id
+                      (list (cons 'pipeline pipeline-id))))))))
 
 (define-derived-mode gitlab-job-log-mode special-mode "GitLab Job Log"
   "Display the live trace of one GitLab CI job.
@@ -636,7 +673,8 @@ g restarts the trace and ~ toggles the timestamp prefix of every
 line, which holds the timestamp and the stream identifier.  An
 active region adds the number of selected trace lines and
 their duration to the right edge of the mode line, when
-`gitlab-job-log-show-region-duration' is non-nil.  Killing the
+`gitlab-job-log-show-region-duration' is non-nil.  The parent
+command opens the pipeline that holds the job.  Killing the
 buffer deletes the process."
   :group 'gitlab
   (gitlab--use-project-directory)
@@ -644,6 +682,7 @@ buffer deletes the process."
               #'gitlab-job-log--bookmark-make-record)
   (setq-local gitlab--kind 'job)
   (setq-local gitlab--label "GitLab job")
+  (setq-local gitlab--parent-function #'gitlab-job-log-go-to-parent)
   (setq-local buffer-stale-function nil)
   (setq-local revert-buffer-function #'gitlab-job-log-restart)
   (setq-local truncate-lines t)
@@ -656,14 +695,20 @@ buffer deletes the process."
   (add-hook 'kill-buffer-hook #'gitlab-job-log--kill nil t))
 
 (define-key gitlab-job-log-mode-map (kbd "~") #'gitlab-job-log-toggle-timestamps)
+(define-key gitlab-job-log-mode-map [remap dired-jump] #'gitlab-go-to-parent)
+(define-key gitlab-job-log-mode-map [remap dired-up-directory]
+  #'gitlab-go-to-parent)
 
-(defun gitlab-pipeline--prepare-job-log (job-id &optional name)
+(defun gitlab-pipeline--prepare-job-log (job-id &optional name pipeline-id)
   "Prepare the job log buffer of JOB-ID and return it.
-NAME is the optional job name for the header line.  The function
-captures the directory in which glab must run, starts `glab ci
-trace JOB-ID' and does not display the buffer."
+NAME is the optional job name for the header line.  PIPELINE-ID is
+the optional ID of the pipeline that holds the job, so the parent
+command costs no request.  The function captures the directory in
+which glab must run, starts `glab ci trace JOB-ID' and does not
+display the buffer."
   (let* ((directory (gitlab-cli-directory-of))
          (id (gitlab-data-id-string job-id))
+         (pipeline (and pipeline-id (gitlab-data-id-string pipeline-id)))
          (buffer (get-buffer-create (format "*GitLab Job %s*" id))))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
@@ -674,17 +719,19 @@ trace JOB-ID' and does not display the buffer."
       (gitlab--use-project-directory directory)
       (setq-local gitlab--id id)
       (setq-local gitlab-job-log--name name)
+      (setq-local gitlab-job-log--pipeline-id pipeline)
       (gitlab--update-list-buffers-directory)
       (gitlab-job-log--start))
     buffer))
 
 ;;;###autoload
-(defun gitlab-display-job-log (job-id &optional name)
+(defun gitlab-display-job-log (job-id &optional name pipeline-id)
   "Display the live log of JOB-ID in its own buffer.
-NAME is the optional job name for the header line.  The command
+NAME is the optional job name for the header line.  PIPELINE-ID is
+the optional ID of the pipeline that holds the job.  The command
 starts `glab ci trace JOB-ID' and returns immediately."
   (interactive (list (gitlab-read-job-id)))
-  (pop-to-buffer (gitlab-pipeline--prepare-job-log job-id name)))
+  (pop-to-buffer (gitlab-pipeline--prepare-job-log job-id name pipeline-id)))
 
 (provide 'gitlab-pipeline)
 

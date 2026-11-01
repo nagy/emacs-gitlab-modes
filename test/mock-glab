@@ -25,6 +25,7 @@ case "$arguments" in
     fi
     ;;
   *"pipelines/"*"/jobs"*) cat "$fixture_dir/pipeline-jobs.json" ;;
+  *"jobs/"*) cat "$fixture_dir/job-show.json" ;;
   *"ci trace"*) cat "$fixture_dir/job-trace.txt" ;;
   *)
     printf 'mock-glab: unknown arguments: %s\n' "$arguments" >&2
