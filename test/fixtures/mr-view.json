@@ -1,28 +1,28 @@
 {
-  "id": 559000946,
-  "iid": 8285,
-  "title": "Make file extension match the export type",
+  "id": 101,
+  "iid": 12,
+  "title": "Add the export dialog",
   "state": "opened",
-  "source_branch": "export-dialog-fix",
+  "source_branch": "feature-branch",
   "target_branch": "master",
-  "author": {"id": 405008, "username": "tavmjong", "name": "Tavmjong Bah"},
+  "author": {"id": 201, "username": "alice", "name": "Alice"},
   "assignees": [],
-  "reviewers": [{"id": 259700, "username": "mikix", "name": "Michael Terry"}],
+  "reviewers": [{"id": 202, "username": "bob", "name": "Bob"}],
   "labels": ["UX"],
   "milestone": {
-    "id": 4490171,
+    "id": 301,
     "iid": 16,
-    "title": "Inkscape 1.5",
+    "title": "Milestone One",
     "state": "active",
-    "web_url": "https://gitlab.example/groups/inkscape/-/milestones/16"
+    "web_url": "https://gitlab.example/groups/group/-/milestones/16"
   },
-  "description": "Fix for #4238",
+  "description": "Fix for #1",
   "draft": false,
   "has_conflicts": false,
   "detailed_merge_status": "discussions_not_resolved",
   "user_notes_count": 6,
-  "web_url": "https://gitlab.example/inkscape/inkscape/-/merge_requests/8285",
-  "references": {"short": "!8285", "relative": "!8285", "full": "inkscape/inkscape!8285"},
+  "web_url": "https://gitlab.example/group/project/-/merge_requests/12",
+  "references": {"short": "!12", "relative": "!12", "full": "group/project!12"},
   "time_stats": {
     "human_time_estimate": "",
     "human_total_time_spent": "1h",
@@ -31,25 +31,25 @@
   },
   "task_completion_status": {"count": 2, "completed_count": 1},
   "pipeline": {
-    "id": 3011498032,
-    "iid": 473,
+    "id": 1002,
+    "iid": 31,
     "status": "success",
-    "ref": "export-dialog-fix",
-    "sha": "7d9bcb773538d451b1efe3f424872639499e7db2",
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3011498032"
+    "ref": "feature-branch",
+    "sha": "3333333333333333333333333333333333333333",
+    "web_url": "https://gitlab.example/group/project/-/pipelines/1002"
   },
   "head_pipeline": {
-    "id": 3010647305,
-    "iid": 35812,
+    "id": 1001,
+    "iid": 21,
     "status": "success",
-    "ref": "refs/merge-requests/8285/merge",
-    "sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3010647305"
+    "ref": "refs/merge-requests/12/merge",
+    "sha": "1111111111111111111111111111111111111111",
+    "web_url": "https://gitlab.example/group/project/-/pipelines/1001"
   },
   "diff_refs": {
-    "base_sha": "abe630c22258c2cd550b931fc302c04e75086c66",
-    "head_sha": "3f2a7e72bad47691794babcc4efae36eac184e44",
-    "start_sha": "9207342e5fa93d144277f827b923bdbf3ec5e4af"
+    "base_sha": "4444444444444444444444444444444444444444",
+    "head_sha": "5555555555555555555555555555555555555555",
+    "start_sha": "2222222222222222222222222222222222222222"
   },
   "created_at": "2026-10-30T23:10:10.429Z",
   "updated_at": "2026-10-31T20:57:30.763Z"

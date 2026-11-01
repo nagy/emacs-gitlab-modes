@@ -29,9 +29,17 @@
 ;; Optional xref backend.  Load this file to make the xref command
 ;; open a GitLab object from an identifier:
 ;;
-;;   mr:8285          a merge request
-;;   pipeline:3010647305
-;;   job:17624043693
+;;   mr:12              a merge request
+;;   pipeline:1001      a pipeline
+;;   job:5001           a job log
+;;
+;; A path names its project when it holds one, with the sigil of
+;; `gitlab-data-identifier', so the same text serves an Org link and a
+;; bookmark location:
+;;
+;;   mr:group/project!12
+;;   pipeline:group/project#1001
+;;   job:group/project&5001
 ;;
 ;; The backend reads the text properties that the renderers attach
 ;; first, so xref on a pipeline, merge request or job row in a display
@@ -58,17 +66,26 @@ property may carry the sigil.  The glab command needs the number."
 
 (defun gitlab-xref--property-identifier ()
   "Return the identifier that a text property at point names."
-  (cond
-   ((get-text-property (point) 'gitlab-merge-request-iid)
-    (format "mr:%s"
-            (gitlab-xref--merge-request-iid
-             (get-text-property (point) 'gitlab-merge-request-iid))))
-   ((get-text-property (point) 'gitlab-pipeline-id)
-    (format "pipeline:%s"
-            (get-text-property (point) 'gitlab-pipeline-id)))
-   ((get-text-property (point) 'gitlab-job-id)
-    (format "job:%s"
-            (get-text-property (point) 'gitlab-job-id)))))
+  (let ((repository gitlab-repository))
+    (cond
+     ((get-text-property (point) 'gitlab-merge-request-iid)
+      (format "mr:%s"
+              (gitlab-data-identifier
+               'merge-request
+               (gitlab-xref--merge-request-iid
+                (get-text-property (point) 'gitlab-merge-request-iid))
+               repository)))
+     ((get-text-property (point) 'gitlab-pipeline-id)
+      (format "pipeline:%s"
+              (gitlab-data-identifier
+               'pipeline
+               (get-text-property (point) 'gitlab-pipeline-id)
+               repository)))
+     ((get-text-property (point) 'gitlab-job-id)
+      (format "job:%s"
+              (gitlab-data-identifier
+               'job (get-text-property (point) 'gitlab-job-id)
+               repository))))))
 
 (defun gitlab-xref--text-identifier ()
   "Return the prefixed GitLab identifier under point, or nil."
@@ -79,7 +96,7 @@ property may carry the sigil.  The glab command needs the number."
       (goto-char (line-beginning-position))
       (while (and (not found)
                   (re-search-forward
-                   "\\(mr\\|pipeline\\|job\\):[0-9]+"
+                   "\\(mr\\|pipeline\\|job\\):[^][(){}<>[:space:]]+"
                    (line-end-position) t))
         (when (and (<= (match-beginning 0) point)
                    (<= point (match-end 0)))
@@ -105,27 +122,37 @@ property may carry the sigil.  The glab command needs the number."
 
 (cl-defmethod xref-backend-definitions ((_backend (eql gitlab)) identifier)
   "Return the GitLab definition of IDENTIFIER.
-The function prepares the display buffer without popping to it,
-so a definition does not move the window configuration."
+IDENTIFIER is a prefixed form of `gitlab-data-identifier', so it
+names the project when it holds one.  The function prepares the
+display buffer without popping to it, so a definition does not
+move the window configuration."
   (let ((case-fold-search nil))
     (cond
      ((string-match "\\`mr:\\(.+\\)\\'" identifier)
-      (let* ((iid (gitlab-xref--merge-request-iid
-                   (match-string 1 identifier)))
+      (let* ((parts (gitlab-data-identifier-split
+                     'merge-request (match-string 1 identifier)))
+             (iid (gitlab-xref--merge-request-iid (cdr parts)))
+             (gitlab-repository (or (car parts) gitlab-repository))
              (buffer (gitlab--prepare-detail
                       (gitlab-merge-request--buffer-name iid)
                       #'gitlab-merge-request-mode iid)))
         (list (gitlab-xref--buffer-item
                (format "Merge request !%s" iid) buffer))))
      ((string-match "\\`pipeline:\\(.+\\)\\'" identifier)
-      (let* ((id (match-string 1 identifier))
+      (let* ((parts (gitlab-data-identifier-split
+                     'pipeline (match-string 1 identifier)))
+             (id (cdr parts))
+             (gitlab-repository (or (car parts) gitlab-repository))
              (buffer (gitlab--prepare-detail
                       (gitlab-pipeline--buffer-name id)
                       #'gitlab-pipeline-mode id)))
         (list (gitlab-xref--buffer-item
                (format "Pipeline #%s" id) buffer))))
      ((string-match "\\`job:\\(.+\\)\\'" identifier)
-      (let* ((id (match-string 1 identifier))
+      (let* ((parts (gitlab-data-identifier-split
+                     'job (match-string 1 identifier)))
+             (id (cdr parts))
+             (gitlab-repository (or (car parts) gitlab-repository))
              (buffer (gitlab-pipeline--prepare-job-log id)))
         (list (gitlab-xref--buffer-item
                (format "Job %s" id) buffer))))
@@ -133,16 +160,23 @@ so a definition does not move the window configuration."
 
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql gitlab)))
   "Return the known GitLab identifiers."
-  (let (identifiers)
+  (let ((repository gitlab-repository)
+        identifiers)
     (dolist (merge-request (gitlab-merge-request-list-cached))
       (push (format "mr:%s"
-                    (gitlab-data-id-string
-                     (gitlab-data-field "iid" merge-request)))
+                    (gitlab-data-identifier
+                     'merge-request
+                     (gitlab-data-id-string
+                      (gitlab-data-field "iid" merge-request))
+                     repository))
             identifiers))
     (dolist (pipeline (gitlab-pipeline-list-cached))
       (push (format "pipeline:%s"
-                    (gitlab-data-id-string
-                     (gitlab-data-field "id" pipeline)))
+                    (gitlab-data-identifier
+                     'pipeline
+                     (gitlab-data-id-string
+                      (gitlab-data-field "id" pipeline))
+                     repository))
             identifiers))
     (nreverse identifiers)))
 

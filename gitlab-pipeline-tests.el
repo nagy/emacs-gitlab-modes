@@ -45,9 +45,9 @@
            (gitlab-list--refresh)
            (should (gitlab-test-wait
                     (lambda () (= 2 (length tabulated-list-entries)))))
-           (should (string-match-p "3012272453" (buffer-string)))
+           (should (string-match-p "1003" (buffer-string)))
            (should (string-match-p "running" (buffer-string)))
-           (should (string-match-p "export-dialog-fix" (buffer-string))))
+           (should (string-match-p "feature-branch" (buffer-string))))
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-pipeline-detail-render ()
@@ -58,21 +58,21 @@
          (progn
            (with-current-buffer buffer
              (gitlab-pipeline-mode)
-             (setq-local gitlab--id "3010647305")
+             (setq-local gitlab--id "1001")
              (gitlab--refresh))
            (should (gitlab-pipeline-tests--wait-for
-                    buffer "media-check"))
+                    buffer "unit-tests"))
            (with-current-buffer buffer
-             (should (string-match-p "Pipeline #3010647305 success"
+             (should (string-match-p "Pipeline #1001 success"
                                      (buffer-string)))
-             (should (string-match-p "Tavmjong Bah (@tavmjong)"
+             (should (string-match-p "Alice (@alice)"
                                      (buffer-string)))
              (should (string-match-p "Jobs" (buffer-string)))
-             (should (string-match-p "clangtidy:linux" (buffer-string)))
+             (should (string-match-p "lint:linux" (buffer-string)))
              (should (string-match-p "1m 40s" (buffer-string)))
              (goto-char (point-min))
-             (should (search-forward "media-check" nil t))
-             (should (equal "17624043693"
+             (should (search-forward "unit-tests" nil t))
+             (should (equal "5001"
                             (gitlab-pipeline-job-id-at-point)))))
        (kill-buffer buffer)))))
 
@@ -84,14 +84,14 @@
          (progn
            (with-current-buffer buffer
              (gitlab-pipeline-mode)
-             (setq-local gitlab--id "3010647305")
+             (setq-local gitlab--id "1001")
              (gitlab--refresh))
            (should (gitlab-pipeline-tests--wait-for
-                    buffer "clangtidy:linux"))
+                    buffer "lint:linux"))
            (with-current-buffer buffer
-             (gitlab-pipeline--goto-job "17624043692")
+             (gitlab-pipeline--goto-job "5002")
              (gitlab--force-render)
-             (should (equal "17624043692"
+             (should (equal "5002"
                             (gitlab-pipeline-job-id-at-point)))))
        (kill-buffer buffer)))))
 
@@ -103,10 +103,10 @@
          (progn
            (with-current-buffer buffer
              (gitlab-pipeline-mode)
-             (setq-local gitlab--id "3010647305")
+             (setq-local gitlab--id "1001")
              (gitlab--refresh))
            (should (gitlab-pipeline-tests--wait-for
-                    buffer "clangtidy:linux"))
+                    buffer "lint:linux"))
            (with-current-buffer buffer
              (gitlab--goto-field 'status)
              (gitlab--force-render)
@@ -116,16 +116,16 @@
 (ert-deftest gitlab-pipeline-open-job ()
   "RET on a job row opens the job log."
   (with-temp-buffer
-    (insert (propertize "row\n" 'gitlab-job-id "17624043693"
-                        'gitlab-job-name "media-check"))
+    (insert (propertize "row\n" 'gitlab-job-id "5001"
+                        'gitlab-job-name "unit-tests"))
     (goto-char (point-min))
     (let (opened name)
       (cl-letf (((symbol-function 'gitlab-display-job-log)
                  (lambda (id job-name)
                    (setq opened id name job-name))))
         (gitlab-pipeline-open-job-at-point))
-      (should (equal "17624043693" opened))
-      (should (equal "media-check" name)))))
+      (should (equal "5001" opened))
+      (should (equal "unit-tests" name)))))
 
 (ert-deftest gitlab-pipeline-job-log-stream ()
   "The job log fills from the trace process and reports its end."
@@ -135,7 +135,7 @@
          (progn
            (with-current-buffer buffer
              (gitlab-job-log-mode)
-             (setq-local gitlab--id "17624043693")
+             (setq-local gitlab--id "5001")
              (gitlab-job-log--start))
            (should (gitlab-test-wait
                     (lambda ()
@@ -155,7 +155,7 @@
   "`revert-buffer' restarts the trace of a job log buffer."
   (gitlab-test-with-environment
    (let ((buffer (gitlab-pipeline--prepare-job-log
-                  "17624043693" "media-check")))
+                  "5001" "unit-tests")))
      (unwind-protect
          (progn
            (should
@@ -178,11 +178,11 @@
 (ert-deftest gitlab-pipeline-job-log-open-twice ()
   "Opening a job log again replaces the old trace."
   (gitlab-test-with-environment
-   (let ((first (gitlab-pipeline--prepare-job-log "17624043693" "media-check")))
+   (let ((first (gitlab-pipeline--prepare-job-log "5001" "unit-tests")))
      (gitlab-test-wait
       (lambda () (with-current-buffer first gitlab-job-log--finished)))
      (let ((second (gitlab-pipeline--prepare-job-log
-                    "17624043693" "media-check")))
+                    "5001" "unit-tests")))
        (should (eq first second))
        (gitlab-test-wait
         (lambda () (with-current-buffer second gitlab-job-log--finished)))
@@ -196,7 +196,7 @@
   "The job log hides the banner that glab prints before the trace."
   (gitlab-test-with-environment
    (let ((buffer (gitlab-pipeline--prepare-job-log
-                  "17624043693" "media-check")))
+                  "5001" "unit-tests")))
      (unwind-protect
          (progn
            (should
@@ -216,7 +216,7 @@
   "The job log keeps timestamps and the toggle hides them."
   (gitlab-test-with-environment
    (let ((buffer (gitlab-pipeline--prepare-job-log
-                  "17624043693" "media-check")))
+                  "5001" "unit-tests")))
      (unwind-protect
          (progn
            (should

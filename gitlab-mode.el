@@ -50,6 +50,12 @@
 ;; bookmarks no file, `buffer-modified-p' stays nil and the buffer asks
 ;; no question on kill.
 ;;
+;; A display buffer carries a bookmark record function, so
+;; `bookmark-set' names the object, the project and the field line, job
+;; row or list row at point.  The record stores the same identifier text
+;; that an Org link and an xref identifier use, and
+;; `gitlab-bookmark-jump' rebuilds the buffer from that record.
+;;
 ;; The renderers attach text properties that the navigation commands
 ;; read: `gitlab-field' names a field line, `gitlab-pipeline-id' opens
 ;; a pipeline, `gitlab-merge-request-iid' opens a merge request,
@@ -59,6 +65,7 @@
 ;;; Code:
 
 (require 'autorevert)
+(require 'bookmark)
 (require 'browse-url)
 (require 'cl-lib)
 (require 'json)
@@ -70,6 +77,13 @@
 (declare-function gitlab-display-merge-request "gitlab-merge-request" (iid))
 (declare-function gitlab-display-pipeline "gitlab-pipeline" (pipeline-id))
 (declare-function gitlab-display-job-log "gitlab-pipeline" (job-id &optional name))
+(declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
+(declare-function gitlab-pipeline-list-mode "gitlab-pipeline" ())
+
+;; The bookmark handler names the list buffer of each family.  These
+;; variables live in the resource files, which load after this one.
+(defvar gitlab-merge-request-list-buffer-name)
+(defvar gitlab-pipeline-list-buffer-name)
 
 ;;; Customization
 
@@ -215,6 +229,20 @@ collection kind in KIND and nil in ID."
 (defvar-local gitlab--id nil
   "Identifier of the object in the current display buffer.")
 
+(defvar-local gitlab--target nil
+  "Position target of the current display buffer, or nil.
+A cons of the symbol `field' and a field name, of `job' and a job
+ID, or of `row' and a list row ID.  A bookmark jump stores it
+before the first fetch, and `gitlab--apply-target' moves point
+there after that render.")
+
+(defvar gitlab--pending-target nil
+  "Position target that the next display buffer must honor.
+A bookmark jump binds this variable around the display command,
+because the target belongs to the new buffer and not to the
+caller.  `gitlab--init-display-buffer' copies it into the
+buffer-local `gitlab--target'.")
+
 (defvar-local gitlab--kind nil
   "Kind of the object in the current display buffer.
 The value is `merge-request', `pipeline' or `job'.")
@@ -301,11 +329,20 @@ DIRECTORY defaults to `gitlab-cli-directory-of'.  The function
 sets both `default-directory' and the buffer-local
 `gitlab-cli-directory' to the project root that project.el
 reports, because glab must run in the project.  A directory that
-belongs to no project stays as it is."
+belongs to no project stays as it is.
+
+The function also captures `gitlab-repository' buffer-locally.  A
+bookmark jump or an xref definition binds another project around
+the display command, and a later auto refresh must read that
+project again.  A value of an earlier display in the same buffer
+is dropped first, so the capture sees the binding of the caller."
   (let ((root (gitlab-cli--project-directory
                (or directory (gitlab-cli-directory-of)))))
-    (setq-local default-directory root)
-    (setq-local gitlab-cli-directory root)))
+    (kill-local-variable 'gitlab-repository)
+    (let ((repository gitlab-repository))
+      (setq-local default-directory root)
+      (setq-local gitlab-cli-directory root)
+      (setq-local gitlab-repository repository))))
 
 (defun gitlab--status-state (data)
   "Return the status text of the decoded object DATA."
@@ -477,7 +514,8 @@ line or the mode line."
   "Render `gitlab--last-data' in the current buffer."
   (let ((inhibit-read-only t))
     (funcall (or gitlab--render-function #'gitlab--render-default)
-             gitlab--id gitlab--last-data)))
+             gitlab--id gitlab--last-data))
+  (gitlab--apply-target))
 
 (defun gitlab--force-render ()
   "Render the last data again, even when it did not change.
@@ -642,13 +680,23 @@ tooltip both work."
 
 (defun gitlab--goto-field (field)
   "Move point to the first line of FIELD."
+  (gitlab--goto-property 'gitlab-field field))
+
+(defun gitlab--goto-property (property value)
+  "Move point to the first line whose PROPERTY equals VALUE.
+Return non-nil when the function found a line.  The renderers
+attach the text properties that this helper reads, so a bookmark
+can name a field line or a job row instead of a buffer position."
   (goto-char (point-min))
   (let ((found nil))
     (while (and (not found) (not (eobp)))
-      (when (eq (get-text-property (point) 'gitlab-field) field)
+      (when (equal (get-text-property (point) property) value)
         (setq found t))
       (unless found (forward-line 1)))
-    (when found (beginning-of-line))))
+    (if found
+        (beginning-of-line)
+      (goto-char (point-min)))
+    found))
 
 (defun gitlab--insert-fields (data &optional keys)
   "Insert the field table of DATA into the current buffer.
@@ -762,6 +810,9 @@ its detail buffer and a web URL opens the browser."
   "Wire the current buffer into the asynchronous refresh pipeline."
   (gitlab--kill-pending)
   (gitlab--use-project-directory)
+  (setq-local bookmark-make-record-function #'gitlab--bookmark-make-record)
+  (when gitlab--pending-target
+    (setq-local gitlab--target gitlab--pending-target))
   (setq-local revert-buffer-function #'gitlab--revert-buffer)
   (setq-local buffer-stale-function #'gitlab--buffer-stale-p)
   (add-hook 'kill-buffer-hook #'gitlab--kill-pending nil t)
@@ -900,6 +951,20 @@ and `gitlab-list--open-function'.  The mode wires
   "Return the row ID at point, or nil."
   (tabulated-list-get-id))
 
+(defun gitlab-list--goto-id (id)
+  "Move point to the row of ID.
+Return non-nil when the function found the row."
+  (goto-char (point-min))
+  (let ((found nil))
+    (while (and (not found) (not (eobp)))
+      (when (equal (gitlab-list--id-at-point) id)
+        (setq found t))
+      (unless found (forward-line 1)))
+    (if found
+        (beginning-of-line)
+      (goto-char (point-min)))
+    found))
+
 (defun gitlab-list--row-at-point ()
   "Return the decoded row data at point, or nil."
   (when-let* ((id (gitlab-list--id-at-point)))
@@ -962,6 +1027,159 @@ a merge request IID carries a leading !, so keep the digits only."
 (define-key gitlab-list-mode-map [mouse-2] #'gitlab-list-mouse-open)
 (define-key gitlab-list-mode-map (kbd "c") #'gitlab-list-copy-id)
 (define-key gitlab-list-mode-map (kbd "w") #'gitlab-list-open-web)
+
+;;; Bookmarks
+
+(defconst gitlab--bookmark-labels
+  '((merge-request . "GitLab MR")
+    (pipeline . "GitLab Pipeline")
+    (job . "GitLab Job")
+    (merge-request-list . "GitLab Merge Requests")
+    (pipeline-list . "GitLab Pipelines"))
+  "Name prefix of each bookmarkable GitLab buffer kind.")
+
+(defconst gitlab--bookmark-link-types
+  '((merge-request . "gitlab-mr")
+    (pipeline . "gitlab-pipeline")
+    (job . "gitlab-job")
+    (merge-request-list . "gitlab-mr-list")
+    (pipeline-list . "gitlab-pipeline-list"))
+  "Org link type of each bookmarkable GitLab buffer kind.
+A bookmark stores the same text as its location, so a bookmark
+record, an Org link and an xref identifier name one object with
+one syntax.")
+
+(defun gitlab--bookmark-base-kind (kind)
+  "Return the object kind of the list KIND, or KIND itself."
+  (intern (string-remove-suffix "-list" (symbol-name kind))))
+
+(defun gitlab--bookmark-repository ()
+  "Return the project of the current buffer in identifier form."
+  (let ((repository (string-trim (or gitlab-repository "") "/+" "/+")))
+    (unless (string-empty-p repository) repository)))
+
+(defun gitlab--bookmark-location (kind id)
+  "Return the Org link text of KIND with ID.
+A list KIND takes no ID and names the project alone, so a
+collection bookmark keeps its meaning when the table changes."
+  (let ((path (gitlab-data-identifier (gitlab--bookmark-base-kind kind)
+                                      id
+                                      (gitlab--bookmark-repository))))
+    (if path
+        (concat (alist-get kind gitlab--bookmark-link-types) ":" path)
+      (alist-get kind gitlab--bookmark-link-types))))
+
+(defun gitlab--bookmark-target ()
+  "Return the position target of the current display buffer, or nil.
+A list buffer returns its row, a pipeline buffer the job row or
+the field line at point, and any other detail buffer the field
+line at point."
+  (cond
+   ((derived-mode-p 'gitlab-list-mode)
+    (when-let* ((id (gitlab-list--id-at-point)))
+      (cons 'row (gitlab-data-id-string id))))
+   (t
+    (or (when-let* ((job (get-text-property (point) 'gitlab-job-id)))
+          (cons 'job job))
+        (when-let* ((field (gitlab--field-at-point)))
+          (cons 'field field))))))
+
+(defun gitlab--bookmark-make-record ()
+  "Return a bookmark record for the current GitLab display buffer.
+Intended for use as `bookmark-make-record-function'.  The record
+names the object or the collection, the project, the directory in
+which glab runs and the field line, job row or list row at point.
+A list record adds the fetch arguments and the sort column, so a
+filtered table comes back the same."
+  (let* ((list-p (derived-mode-p 'gitlab-list-mode))
+         (kind (if list-p
+                   (intern (format "%s-list" gitlab-list--kind))
+                 gitlab--kind))
+         (id (unless list-p gitlab--id))
+         (location (gitlab--bookmark-location kind id))
+         (target (gitlab--bookmark-target)))
+    (cons (format "%s %s" (alist-get kind gitlab--bookmark-labels)
+                  location)
+          (append
+           `((kind . ,kind)
+             (id . ,id)
+             (handler . gitlab-bookmark-jump)
+             (location . ,location)
+             (repository . ,(gitlab--bookmark-repository))
+             (directory . ,(gitlab-cli-directory-of)))
+           (when list-p
+             `((arguments . ,gitlab-list--arguments)
+               (sort . ,tabulated-list-sort-key)))
+           (when target
+             (list (cons 'target target)))))))
+
+(defun gitlab--apply-target ()
+  "Move point to `gitlab--target' and clear it.
+A bookmark jump stores the field line, job row or list row of the
+saved view there, because the first render erases the buffer and
+moves point to its start.  A later refresh keeps point through the
+text property that the renderer reads."
+  (when gitlab--target
+    (let ((target (prog1 gitlab--target
+                    (setq gitlab--target nil))))
+      (pcase target
+        (`(field . ,name) (gitlab--goto-property 'gitlab-field name))
+        (`(job . ,id) (gitlab--goto-property 'gitlab-job-id id))
+        (`(row . ,id) (gitlab-list--goto-id id))))))
+
+(defun gitlab--bookmark-list-setup (arguments sort)
+  "Return a setup function for a list buffer.
+ARGUMENTS and SORT come from a bookmark record.  The list mode
+sets its own sort column, so the setup runs after the mode and
+replaces it."
+  (lambda ()
+    (setq-local gitlab-list--arguments arguments)
+    (when sort
+      (setq-local tabulated-list-sort-key sort))))
+
+;;;###autoload
+(defun gitlab-bookmark-jump (bookmark)
+  "Open the GitLab buffer that BOOKMARK names.
+BOOKMARK is a bookmark record, not a bookmark name, so
+`bookmark-jump' passes it here.  The jump restores the project,
+the directory in which glab runs, the collection arguments and the
+sort column, then moves point to the saved field line, job row or
+list row.  A job log restarts its trace, because a trace streams
+and has no snapshot."
+  (interactive
+   (let ((bookmark-alist
+          (cl-remove-if-not (lambda (record)
+                              (bookmark-prop-get record 'kind))
+                            bookmark-alist)))
+     (list (bookmark-get-bookmark
+            (bookmark-completing-read "GitLab bookmark")))))
+  (let ((kind (bookmark-prop-get bookmark 'kind))
+        (id (bookmark-prop-get bookmark 'id))
+        (repository (bookmark-prop-get bookmark 'repository))
+        (directory (bookmark-prop-get bookmark 'directory))
+        (name (bookmark-prop-get bookmark 'name))
+        (arguments (bookmark-prop-get bookmark 'arguments))
+        (sort (bookmark-prop-get bookmark 'sort)))
+    (let ((gitlab-repository repository)
+          (gitlab-cli-directory (or directory gitlab-cli-directory))
+          (gitlab--pending-target (bookmark-prop-get bookmark 'target)))
+      (pcase kind
+        ('merge-request (gitlab-display-merge-request id))
+        ('pipeline (gitlab-display-pipeline id))
+        ('job (gitlab-display-job-log id name))
+        ('merge-request-list
+         (gitlab-list--show
+          gitlab-merge-request-list-buffer-name
+          #'gitlab-merge-request-list-mode
+          (gitlab--bookmark-list-setup arguments sort)))
+        ('pipeline-list
+         (gitlab-list--show
+          gitlab-pipeline-list-buffer-name
+          #'gitlab-pipeline-list-mode
+          (gitlab--bookmark-list-setup arguments sort)))
+        (_ (user-error "Unknown GitLab bookmark kind: %S" kind))))))
+
+(put 'gitlab-bookmark-jump 'bookmark-handler-type "GitLab")
 
 ;;; Detail display helper
 

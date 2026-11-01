@@ -224,13 +224,7 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
 
 (defun gitlab-pipeline--goto-job (job-id)
   "Move point to the row of JOB-ID."
-  (goto-char (point-min))
-  (let ((found nil))
-    (while (and (not found) (not (eobp)))
-      (when (equal (get-text-property (point) 'gitlab-job-id) job-id)
-        (setq found t))
-      (unless found (forward-line 1)))
-    (when found (beginning-of-line))))
+  (gitlab--goto-property 'gitlab-job-id job-id))
 
 (defun gitlab-pipeline-job-id-at-point ()
   "Return the job ID at point in a pipeline buffer, or nil."
@@ -455,6 +449,17 @@ function with the two `revert-buffer' arguments."
   (interactive)
   (gitlab-job-log--start))
 
+(defun gitlab-job-log--bookmark-make-record ()
+  "Return a bookmark record for the current job log buffer.
+The record adds the job name, so the header line of the restored
+log names the job.  A job log restarts its trace on a jump,
+because a trace streams and has no snapshot."
+  (let ((record (gitlab--bookmark-make-record)))
+    (cons (car record)
+          (append (cdr record)
+                  (when gitlab-job-log--name
+                    (list (cons 'name gitlab-job-log--name)))))))
+
 (define-derived-mode gitlab-job-log-mode special-mode "GitLab Job Log"
   "Display the live trace of one GitLab CI job.
 The buffer is read-only and fills while `glab ci trace' runs.  The
@@ -463,6 +468,8 @@ g restarts the trace and ~ toggles the timestamp prefix of every
 line.  Killing the buffer deletes the process."
   :group 'gitlab
   (gitlab--use-project-directory)
+  (setq-local bookmark-make-record-function
+              #'gitlab-job-log--bookmark-make-record)
   (setq-local gitlab--kind 'job)
   (setq-local gitlab--label "GitLab job")
   (setq-local buffer-stale-function nil)

@@ -1,19 +1,19 @@
 {
-  "id": 3010647305,
-  "iid": 35812,
-  "project_id": 3472737,
+  "id": 1001,
+  "iid": 21,
+  "project_id": 1,
   "status": "success",
   "source": "merge_request_event",
-  "ref": "refs/merge-requests/8285/merge",
+  "ref": "refs/merge-requests/12/merge",
   "name": "",
-  "sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
-  "before_sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
+  "sha": "1111111111111111111111111111111111111111",
+  "before_sha": "1111111111111111111111111111111111111111",
   "tag": false,
   "yaml_errors": "",
   "user": {
-    "id": 405008,
-    "username": "tavmjong",
-    "name": "Tavmjong Bah"
+    "id": 201,
+    "username": "alice",
+    "name": "Alice"
   },
   "updated_at": "2026-10-30T23:18:59.126Z",
   "created_at": "2026-10-30T23:10:14.82Z",
@@ -23,7 +23,7 @@
   "duration": 522,
   "queued_duration": 1,
   "coverage": "",
-  "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3010647305",
+  "web_url": "https://gitlab.example/group/project/-/pipelines/1001",
   "detailed_status": {
     "icon": "status_success",
     "text": "Passed",

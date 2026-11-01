@@ -26,7 +26,7 @@
   (gitlab-test-with-environment
    (let ((data (gitlab-cli-request '("mr" "list" "--output" "json"))))
      (should (= 2 (length data)))
-     (should (equal 8285 (gitlab-data-field "iid" (car data)))))))
+     (should (equal 12 (gitlab-data-field "iid" (car data)))))))
 
 (ert-deftest gitlab-cli-request-text ()
   "A nil PARSE returns the raw text."

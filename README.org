@@ -105,6 +105,34 @@ and the data layer merges two answers.  No single =glab= text describes
 that answer, so the export encodes the decoded data again.  A job log
 has no JSON answer, and the command signals a user error there.
 
+* Bookmarks
+
+=C-x r m= in a GitLab buffer saves the object and the view.  The
+record names the project, the object and the point in the buffer.
+
+A jump restores:
+
+- the project and the directory in which =glab= runs,
+- the field line, job row or list row at point,
+- the list arguments and the sort column of a list buffer.
+
+A job log restarts its trace, because a trace streams and has no
+snapshot.  =bookmark-bmenu= shows the GitLab type in its type column.
+
+A record stores the object as an identifier.  The identifier holds the
+project path and a sigil:
+
+| Kind          | Identifier           |
+|---------------+----------------------|
+| Merge request | =group/project!12=   |
+| Pipeline      | =group/project#1001= |
+| Job           | =group/project&5001= |
+
+A record without a project keeps the bare ID and reads the project from
+=gitlab-repository= or from the directory of the jump.  An Org link and
+an xref identifier use the same text, so one syntax names one object
+everywhere.
+
 * Automatic refresh
 
 =gitlab-mode.el= sets three buffer-local variables:
@@ -131,6 +159,10 @@ asks =project.el= for the project root of the buffer that opened it,
 and uses that root as =default-directory= and as
 =gitlab-cli-directory=.  glab therefore runs in the right project, and
 project commands in the display buffer see the same project too.
+
+The display buffer also keeps =gitlab-repository= buffer-locally.  A
+bookmark jump or an xref definition of another project therefore keeps
+that project on every later refresh.
 
 * Optional layers
 
@@ -174,15 +206,32 @@ link.  HTML, markdown and LaTeX export write a web URL when
 =gitlab-repository= is set.  Every other backend writes the URL after
 the description text.
 
+A path names its project when it holds one, with the sigil of the
+bookmark identifier:
+
+#+begin_example
+[[gitlab-mr:group/project!12][Fix the dialog]]
+[[gitlab-pipeline:group/project#1001][Run]]
+[[gitlab-job:group/project&5001][Log]]
+#+end_example
+
+A bare ID keeps its meaning and reads the project from
+=gitlab-repository= or from the buffer that opens the link.  A point on
+a job row of a pipeline buffer stores a =gitlab-job:= link to that job.
+
 ** Xref
 
 #+begin_src elisp
 (require 'gitlab-xref)
 #+end_src
 
-=M-.= opens =mr:8285=, =pipeline:3010647305= or =job:17624043693=.  In a
+=M-.= opens =mr:12=, =pipeline:1001= or =job:5001=.  In a
 display buffer the text properties win, so a job row opens its log
 without a typed prefix.
+
+An identifier names its project when it holds one, for example
+=mr:group/project!12=.  Completion writes the project form when
+=gitlab-repository= is set.
 
 * Nix
 
@@ -211,6 +260,7 @@ emacs --batch -L . -L test -L "$EVIL" \
   -l gitlab-evil-tests.el \
   -l ol-gitlab-tests.el \
   -l gitlab-xref-tests.el \
+  -l gitlab-bookmark-tests.el \
   -f ert-run-tests-batch-and-exit
 #+end_src
 

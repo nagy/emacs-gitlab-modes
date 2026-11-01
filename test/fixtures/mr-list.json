@@ -1,23 +1,23 @@
 [
   {
-    "id": 559000946,
-    "iid": 8285,
-    "title": "Make file extension match the export type",
+    "id": 101,
+    "iid": 12,
+    "title": "Add the export dialog",
     "state": "opened",
-    "source_branch": "export-dialog-fix",
+    "source_branch": "feature-branch",
     "target_branch": "master",
-    "author": {"id": 405008, "username": "tavmjong", "name": "Tavmjong Bah"},
+    "author": {"id": 201, "username": "alice", "name": "Alice"},
     "assignees": [],
-    "reviewers": [{"id": 259700, "username": "mikix", "name": "Michael Terry"}],
+    "reviewers": [{"id": 202, "username": "bob", "name": "Bob"}],
     "labels": ["UX"],
     "draft": false,
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/merge_requests/8285",
+    "web_url": "https://gitlab.example/group/project/-/merge_requests/12",
     "created_at": "2026-10-30T23:10:10.429Z",
     "updated_at": "2026-10-31T20:57:30.763Z"
   },
   {
-    "id": 559000947,
-    "iid": 8286,
+    "id": 102,
+    "iid": 13,
     "title": "Closed change",
     "state": "closed",
     "source_branch": "old-branch",
@@ -27,7 +27,7 @@
     "reviewers": [],
     "labels": [],
     "draft": true,
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/merge_requests/8286",
+    "web_url": "https://gitlab.example/group/project/-/merge_requests/13",
     "created_at": "2026-10-29T10:00:00.000Z",
     "updated_at": "2026-10-30T10:00:00.000Z"
   }

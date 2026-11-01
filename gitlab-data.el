@@ -133,6 +133,56 @@ ID is a number, a string or a symbol."
    ((numberp id) (number-to-string id))
    (t (format "%s" id))))
 
+;;; Identifiers
+
+(defconst gitlab-data-identifier-signs
+  '((merge-request . "!")
+    (pipeline . "#")
+    (job . "&"))
+  "Sigil that separates a repository from the ID of each kind.
+A GitLab project path holds letters, digits, dots, hyphens and
+underscores only, so a sigil never appears in a path.")
+
+(defun gitlab-data-identifier-sign (kind)
+  "Return the sigil of KIND.
+KIND is `merge-request', `pipeline' or `job'.  Signal `gitlab-error'
+for another value."
+  (or (alist-get kind gitlab-data-identifier-signs)
+      (signal 'gitlab-error
+              (list (format "Unknown GitLab kind: %S" kind)))))
+
+(defun gitlab-data-identifier (kind id &optional repository)
+  "Return the identifier text of KIND and ID in REPOSITORY.
+The text reads REPOSITORY<SIGIL>ID, or ID alone without a
+repository.  Org links, bookmarks and xref share the form, so one
+parser serves all three.  KIND is `merge-request', `pipeline' or
+`job'.  A nil ID returns the repository path alone, which names a
+collection rather than one object."
+  (let ((id (and id (gitlab-data-id-string id))))
+    (cond
+     ((or (null id) (string-empty-p id))
+      (and repository (string-trim repository "/+" "/+")))
+     ((or (null repository) (string-empty-p repository)) id)
+     (t (concat (string-trim repository "/+" "/+")
+                (gitlab-data-identifier-sign kind)
+                id)))))
+
+(defun gitlab-data-identifier-split (kind text)
+  "Return a cons of REPOSITORY and ID parsed from KIND and TEXT.
+TEXT is an identifier of `gitlab-data-identifier'.  A TEXT without
+the sigil of KIND yields ID alone, so an older Org link or
+bookmark stays valid; REPOSITORY is nil then.  A TEXT that holds
+the sigil in the first position yields an empty repository, which
+the caller reads as nil."
+  (let* ((text (string-trim (or text "")))
+         (sign (gitlab-data-identifier-sign kind))
+         (position (cl-search sign text :from-end t)))
+    (cond
+     ((null position) (cons nil text))
+     ((zerop position) (cons nil (substring text (length sign))))
+     (t (cons (substring text 0 position)
+              (substring text (+ position (length sign))))))))
+
 ;;; Cache
 
 (defvar gitlab--cache (make-hash-table :test #'equal)
@@ -394,23 +444,25 @@ object."
 
 ;;; Web URLs
 
-(defun gitlab-web-url (kind id)
+(defun gitlab-web-url (kind id &optional repository)
   "Return a GitLab web URL for KIND and ID, or nil.
-KIND is `merge-request', `pipeline' or `job'.  The function needs
-`gitlab-repository'; display buffers prefer the web_url field of
-their own data."
-  (when gitlab-repository
-    (let ((base (string-trim-right gitlab-web-base-url "/"))
-          (path (pcase kind
-                  ('merge-request "merge_requests")
-                  ('pipeline "pipelines")
-                  ('job "jobs")
-                  (_ (signal 'gitlab-error
-                             (list (format "Unknown GitLab kind: %S" kind)))))))
-      (format "%s/%s/-/%s/%s" base
-              (string-trim gitlab-repository "/")
-              path
-              (gitlab-data-id-string id)))))
+KIND is `merge-request', `pipeline' or `job'.  REPOSITORY
+defaults to `gitlab-repository', because the URL needs the project
+path; display buffers prefer the web_url field of their own data."
+  (let ((repository (or repository gitlab-repository)))
+    (when (and repository (not (string-empty-p repository)))
+      (let ((base (string-trim-right gitlab-web-base-url "/"))
+            (path (pcase kind
+                    ('merge-request "merge_requests")
+                    ('pipeline "pipelines")
+                    ('job "jobs")
+                    (_ (signal 'gitlab-error
+                               (list (format "Unknown GitLab kind: %S"
+                                             kind)))))))
+        (format "%s/%s/-/%s/%s" base
+                (string-trim repository "/+" "/+")
+                path
+                (gitlab-data-id-string id))))))
 
 (provide 'gitlab-data)
 

@@ -21,15 +21,15 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu and the navigation commands. |
+| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the bookmark records and `gitlab-bookmark-jump`. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands and the notes command. |
 | `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer, the fallback encoder and the `js-json-mode` remaps of both display base modes. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
-| `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export. |
-| `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers.  Text properties win over a typed identifier. |
+| `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
+| `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
 | `test/gitlab-test-helpers.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
 | `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection. |
 | `test/fixtures/` | Minimal glab JSON, a job trace and a pipeline without a jobs array. |
@@ -57,7 +57,8 @@ emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helpers.el \
   -l gitlab-mode-tests.el -l gitlab-merge-request-tests.el \
   -l gitlab-pipeline-tests.el -l gitlab-export-tests.el \
   -l gitlab-read-tests.el -l gitlab-evil-tests.el -l ol-gitlab-tests.el \
-  -l gitlab-xref-tests.el -f ert-run-tests-batch-and-exit
+  -l gitlab-xref-tests.el -l gitlab-bookmark-tests.el \
+  -f ert-run-tests-batch-and-exit
 ```
 
 `EVIL` is the directory that holds `evil.el`.  All other tests run
@@ -149,6 +150,12 @@ without evil.  The suite never opens a network connection.
   project.el answer.  Call it in `gitlab--prepare-detail`,
   `gitlab-list--show` and `gitlab-pipeline--prepare-job-log`, so a
   second display of the same buffer never captures an old project.
+  The same helper captures `gitlab-repository` buffer-locally: a
+  bookmark jump and an xref definition bind another project around the
+  display command, and a later auto refresh must read that project
+  again.  It kills the previous buffer-local value first, so the
+  capture reads the binding of the caller and not the value of an
+  earlier display in the same buffer.
 - `gitlab--prepare-detail` and `gitlab-pipeline--prepare-job-log`
   return a buffer without displaying it.  The xref backend uses them, so
   a definition never moves the window configuration.
@@ -280,6 +287,43 @@ without evil.  The suite never opens a network connection.
   `mr:`, `pipeline:` or `job:` identifier.  A merge request list cell
   shows `!IID`, so the backend strips the sigil before it names a
   buffer or a glab argument.
+- One identifier syntax names one object.  `gitlab-data-identifier`
+  builds `REPOSITORY<SIGIL>ID` and `gitlab-data-identifier-split`
+  parses it back; the sigils come from `gitlab-data-identifier-signs`
+  (`!` merge request, `#` pipeline, `&` job).  A GitLab project path
+  holds letters, digits, dots, hyphens and underscores only, so a
+  sigil never appears in a path.  A text without the sigil is a bare
+  ID, so an older Org link or bookmark keeps its meaning, and
+  `gitlab-web-url` takes the repository as an optional third argument.
+  Bookmarks, Org links and xref use this syntax in all three places;
+  do not add a second spelling.  `string-trim` takes a regexp, so trim
+  both ends with `"/+"` twice, not with one `"/"`.
+- Bookmarks live in the display layer, so every user has them without
+  a load step.  `gitlab--init-display-buffer` sets
+  `bookmark-make-record-function` to `gitlab--bookmark-make-record`,
+  and `gitlab-job-log-mode` sets its own wrapper because it does not
+  run the display base mode; the wrapper adds the job name.
+  `gitlab--bookmark-make-record` stores `kind`, `id`, `location`,
+  `repository`, `directory` and `target`, plus `arguments` and `sort`
+  for a list buffer.  The kind of a list buffer is the collection kind
+  with a `-list` suffix, and `gitlab--bookmark-base-kind` gives the
+  object kind back.  A new bookmarkable kind needs one entry in
+  `gitlab--bookmark-labels`, one in `gitlab--bookmark-link-types` and
+  one `pcase` branch in `gitlab-bookmark-jump`.
+- A target names a field line, a job row or a list row, never a buffer
+  position, because the first render erases the buffer and moves point
+  to its start.  `gitlab--goto-property` and `gitlab-list--goto-id`
+  find the target again, and both fall back to `point-min` when the
+  object is gone.  `gitlab--target` belongs to the display buffer, so a
+  jump binds the dynamic `gitlab--pending-target` and
+  `gitlab--init-display-buffer` copies it; the handler must not
+  `setq-local` in the caller.  `gitlab--apply-target` runs at the end
+  of `gitlab--render` and clears the target, so a later auto refresh
+  keeps point through the text property instead of jumping back.
+  `gitlab-bookmark-jump` restores the project and the directory by
+  binding `gitlab-repository` and `gitlab-cli-directory`, then
+  dispatches on the kind and sets `bookmark-handler-type` for the type
+  column of `bookmark-bmenu`.
 - Tests run offline.  Mock at the process level with `test/mock-glab`;
   never call a real GitLab.  A new command needs an ERT test and, when
   it adds a file, a line in `checkPhase` only if the glob misses it.

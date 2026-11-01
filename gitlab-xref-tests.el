@@ -32,12 +32,12 @@
 (ert-deftest gitlab-xref-merge-request-sigil ()
   "A list row property with a leading ! yields a plain IID."
   (with-temp-buffer
-    (insert (propertize "!8285" 'gitlab-merge-request-iid "!8285"))
+    (insert (propertize "!12" 'gitlab-merge-request-iid "!12"))
     (goto-char (point-min))
-    (should (equal "mr:8285" (gitlab-xref--property-identifier)))))
+    (should (equal "mr:12" (gitlab-xref--property-identifier)))))
 
 (ert-deftest gitlab-xref-merge-request-definition-strips-sigil ()
-  "A typed mr:!8285 identifier reaches glab without the sigil."
+  "A typed mr:!12 identifier reaches glab without the sigil."
   (let ((buffer (generate-new-buffer "*GitLab xref sigil test*"))
         prepared)
     (unwind-protect
@@ -46,18 +46,18 @@
                      (lambda (_buffer _mode id)
                        (setq prepared id)
                        buffer)))
-            (xref-backend-definitions 'gitlab "mr:!8285"))
-          (should (equal "8285" prepared)))
+            (xref-backend-definitions 'gitlab "mr:!12"))
+          (should (equal "12" prepared)))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-xref-text-identifier ()
   "The backend finds a prefixed ID under point."
   (with-temp-buffer
-    (insert "see mr:8285 now")
+    (insert "see mr:12 now")
     (search-backward "mr:")
     (goto-char (+ (point) 3))
-    (should (equal "mr:8285" (gitlab-xref--text-identifier)))
-    (should (equal "mr:8285"
+    (should (equal "mr:12" (gitlab-xref--text-identifier)))
+    (should (equal "mr:12"
                    (xref-backend-identifier-at-point 'gitlab)))))
 
 (ert-deftest gitlab-xref-definitions ()
@@ -67,18 +67,51 @@
         (cl-letf (((symbol-function 'gitlab--prepare-detail)
                    (lambda (_buffer _mode _id) buffer)))
           (let ((items (xref-backend-definitions
-                        'gitlab "mr:8285")))
+                        'gitlab "mr:12")))
             (should (= 1 (length items)))
-            (should (string-match-p "Merge request !8285"
+            (should (string-match-p "Merge request !12"
                                     (xref-item-summary (car items))))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-xref-text-identifier-repository ()
+  "The backend finds a project-qualified identifier under point."
+  (with-temp-buffer
+    (insert "see mr:group/project!12 now")
+    (search-backward "mr:")
+    (goto-char (+ (point) 3))
+    (should (equal "mr:group/project!12"
+                   (gitlab-xref--text-identifier)))))
+
+(ert-deftest gitlab-xref-definitions-repository ()
+  "A project-qualified identifier binds the project for the fetch."
+  (let ((buffer (generate-new-buffer "*GitLab xref repository test*"))
+        prepared repository)
+    (unwind-protect
+        (progn
+          (cl-letf (((symbol-function 'gitlab--prepare-detail)
+                     (lambda (_buffer _mode id)
+                       (setq prepared id
+                             repository gitlab-repository)
+                       buffer)))
+            (xref-backend-definitions 'gitlab "mr:group/project!12"))
+          (should (equal "12" prepared))
+          (should (equal "group/project" repository)))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-xref-completion-table ()
   "Completion lists merge requests and pipelines from the cache."
   (gitlab-test-with-environment
    (let ((ids (xref-backend-identifier-completion-table 'gitlab)))
-     (should (member "mr:8285" ids))
-     (should (member "pipeline:3012272453" ids)))))
+     (should (member "mr:12" ids))
+     (should (member "pipeline:1003" ids)))))
+
+(ert-deftest gitlab-xref-completion-table-repository ()
+  "Completion names the project when one is set."
+  (gitlab-test-with-environment
+   (let ((gitlab-repository "group/project"))
+     (let ((ids (xref-backend-identifier-completion-table 'gitlab)))
+       (should (member "mr:group/project!12" ids))
+       (should (member "pipeline:group/project#1003" ids))))))
 
 (provide 'gitlab-xref-tests)
 

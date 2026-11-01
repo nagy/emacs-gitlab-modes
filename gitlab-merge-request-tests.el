@@ -38,8 +38,8 @@
            (should (gitlab-test-wait
                     (lambda () (= 2 (length tabulated-list-entries)))))
            (should (= 2 (length gitlab-list--rows)))
-           (should (string-match-p "!8285" (buffer-string)))
-           (should (string-match-p "Make file extension" (buffer-string)))
+           (should (string-match-p "!12" (buffer-string)))
+           (should (string-match-p "Add the export dialog" (buffer-string)))
            (should (string-match-p "closed" (buffer-string))))
        (kill-buffer buffer)))))
 
@@ -51,16 +51,16 @@
          (progn
            (with-current-buffer buffer
              (gitlab-merge-request-mode)
-             (setq-local gitlab--id "8285")
+             (setq-local gitlab--id "12")
              (gitlab--refresh))
            (should (gitlab-merge-request-tests--wait-for
-                    buffer "Make file extension match the export type"))
+                    buffer "Add the export dialog"))
            (with-current-buffer buffer
-             (should (string-match-p "Tavmjong Bah (@tavmjong)"
+             (should (string-match-p "Alice (@alice)"
                                      (buffer-string)))
-             (should (string-match-p "Inkscape 1.5 (!16)" (buffer-string)))
-             (should (string-match-p "#3010647305 success" (buffer-string)))
-             (should (string-match-p "Fix for #4238" (buffer-string)))))
+             (should (string-match-p "Milestone One (!16)" (buffer-string)))
+             (should (string-match-p "#1001 success" (buffer-string)))
+             (should (string-match-p "Fix for #1" (buffer-string)))))
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-merge-request-notes-command ()
@@ -71,10 +71,10 @@
          (progn
            (with-current-buffer buffer
              (gitlab-merge-request-mode)
-             (setq-local gitlab--id "8285")
+             (setq-local gitlab--id "12")
              (gitlab--refresh))
            (should (gitlab-merge-request-tests--wait-for
-                    buffer "Make file extension match the export type"))
+                    buffer "Add the export dialog"))
            (with-current-buffer buffer
              (gitlab-merge-request-show-notes))
            (should (gitlab-merge-request-tests--wait-for

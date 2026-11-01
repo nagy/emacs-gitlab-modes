@@ -27,9 +27,9 @@
   (should (equal "no" (gitlab--format-value :false)))
   (should (equal "yes" (gitlab--format-value t)))
   (should (equal "UX, CLI" (gitlab--format-value '("UX" "CLI"))))
-  (should (equal "Tavmjong Bah (@tavmjong)"
+  (should (equal "Alice (@alice)"
                  (gitlab--format-value
-                  '((username . "tavmjong") (name . "Tavmjong Bah"))))))
+                  '((username . "alice") (name . "Alice"))))))
 
 (ert-deftest gitlab-mode-format-object-pipeline ()
   "A nested pipeline becomes text with a navigation property."
@@ -248,11 +248,11 @@
                  [("IID" 7 gitlab-list--number-sort)
                   ("Title" 20 t)])
      (setq-local tabulated-list-entries
-                 '(("8286" ["!8286" "b"])
-                   ("8285" ["!8285" "a"])))
+                 '(("13" ["!13" "b"])
+                   ("12" ["!12" "a"])))
      (setq-local tabulated-list-sort-key '("IID" . nil))
      (tabulated-list-print t)
-     (should (equal '("8285" "8286")
+     (should (equal '("12" "13")
                     (mapcar #'car tabulated-list-entries))))))
 
 (ert-deftest gitlab-mode-list-change-hook-kind ()

@@ -1,27 +1,27 @@
 [
   {
-    "id": 3012272453,
-    "iid": 35816,
-    "project_id": 3472737,
+    "id": 1003,
+    "iid": 22,
+    "project_id": 1,
     "status": "success",
     "source": "push",
     "ref": "master",
-    "sha": "9207342e5fa93d144277f827b923bdbf3ec5e4af",
+    "sha": "2222222222222222222222222222222222222222",
     "name": "",
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3012272453",
+    "web_url": "https://gitlab.example/group/project/-/pipelines/1003",
     "updated_at": "2026-10-31T16:46:10.295Z",
     "created_at": "2026-10-31T16:36:58.999Z"
   },
   {
-    "id": 3012272454,
-    "iid": 35817,
-    "project_id": 3472737,
+    "id": 1004,
+    "iid": 23,
+    "project_id": 1,
     "status": "running",
     "source": "merge_request_event",
-    "ref": "export-dialog-fix",
-    "sha": "f63c849a62ea64bd2cbde7df84a5d1affde56dc1",
+    "ref": "feature-branch",
+    "sha": "1111111111111111111111111111111111111111",
     "name": "build",
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/pipelines/3012272454",
+    "web_url": "https://gitlab.example/group/project/-/pipelines/1004",
     "updated_at": "2026-10-31T16:50:10.295Z",
     "created_at": "2026-10-31T16:40:58.999Z"
   }

@@ -49,13 +49,13 @@
   (gitlab-test-with-environment
    (let ((data (gitlab-merge-request-list)))
      (should (= 2 (length data)))
-     (should (equal 8285 (gitlab-data-field "iid" (car data)))))))
+     (should (equal 12 (gitlab-data-field "iid" (car data)))))))
 
 (ert-deftest gitlab-merge-request-show ()
   "Fetch one merge request."
   (gitlab-test-with-environment
-   (let ((data (gitlab-merge-request-show 8285)))
-     (should (equal "Make file extension match the export type"
+   (let ((data (gitlab-merge-request-show 12)))
+     (should (equal "Add the export dialog"
                     (gitlab-data-field "title" data)))
      (should (equal "success"
                     (gitlab-data-field "status"
@@ -64,7 +64,7 @@
 (ert-deftest gitlab-merge-request-notes ()
   "Fetch the notes of a merge request."
   (gitlab-test-with-environment
-   (let ((notes (gitlab-merge-request-notes 8285)))
+   (let ((notes (gitlab-merge-request-notes 12)))
      (should (= 2 (length notes)))
      (should (equal "Looks good to me."
                     (gitlab-data-field "body" (car notes)))))))
@@ -73,7 +73,7 @@
   "Fetch the pipeline list and one pipeline with its jobs."
   (gitlab-test-with-environment
    (let* ((pipelines (gitlab-pipeline-list))
-          (pipeline (gitlab-pipeline-show 3010647305)))
+          (pipeline (gitlab-pipeline-show 1001)))
      (should (= 2 (length pipelines)))
      (should (equal "success" (gitlab-data-field "status" pipeline)))
      (should (= 3 (length (gitlab-data-field "jobs" pipeline)))))))
@@ -83,16 +83,16 @@
   (gitlab-test-with-environment
    (let ((process-environment
           (cons "GITLAB_TEST_NO_JOBS=1" process-environment)))
-     (let ((pipeline (gitlab-pipeline-show 3010647305)))
+     (let ((pipeline (gitlab-pipeline-show 1001)))
        (should (= 2 (length (gitlab-data-field "jobs" pipeline))))
-       (should (equal "media-check"
+       (should (equal "unit-tests"
                       (gitlab-data-field
                        "name" (car (gitlab-data-field "jobs" pipeline)))))))))
 
 (ert-deftest gitlab-job-trace ()
   "Fetch a job trace as text."
   (gitlab-test-with-environment
-   (let ((text (gitlab-job-trace 17624043693)))
+   (let ((text (gitlab-job-trace 5001)))
      (should (stringp text))
      (should (string-match-p "step 1" text)))))
 

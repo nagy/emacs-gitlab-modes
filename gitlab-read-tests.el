@@ -22,7 +22,7 @@
 
 (ert-deftest gitlab-read-strip ()
   "A leading ! or # goes away."
-  (should (equal "8285" (gitlab-read--strip "!8285" '(?! ?#))))
+  (should (equal "12" (gitlab-read--strip "!12" '(?! ?#))))
   (should (equal "301" (gitlab-read--strip "#301" '(?! ?#))))
   (should (equal "plain" (gitlab-read--strip "plain" '(?! ?#)))))
 
@@ -36,15 +36,15 @@
   "The prompt completes from the cached list, or accepts typed input."
   (gitlab-test-with-environment
    (cl-letf (((symbol-function 'completing-read)
-              (lambda (&rest _arguments) "!8285")))
-     (should (equal "8285" (gitlab-read-merge-request-iid))))))
+              (lambda (&rest _arguments) "!12")))
+     (should (equal "12" (gitlab-read-merge-request-iid))))))
 
 (ert-deftest gitlab-read-pipeline-id ()
   "The pipeline prompt accepts a typed ID."
   (gitlab-test-with-environment
    (cl-letf (((symbol-function 'completing-read)
-              (lambda (&rest _arguments) "3010647305")))
-     (should (equal "3010647305" (gitlab-read-pipeline-id))))))
+              (lambda (&rest _arguments) "1001")))
+     (should (equal "1001" (gitlab-read-pipeline-id))))))
 
 (ert-deftest gitlab-read-job-id ()
   "The job prompt reads a pipeline first, then a job."
@@ -53,8 +53,8 @@
      (cl-letf (((symbol-function 'completing-read)
                 (lambda (&rest _arguments)
                   (setq calls (1+ calls))
-                  (if (= calls 1) "3010647305" "17624043693"))))
-       (should (equal "17624043693" (gitlab-read-job-id)))
+                  (if (= calls 1) "1001" "5001"))))
+       (should (equal "5001" (gitlab-read-job-id)))
        (should (= 2 calls))))))
 
 (provide 'gitlab-read-tests)

@@ -91,6 +91,16 @@ so an error here would break `org-store-link' everywhere."
         (kill-buffer buffer))
       (delete-file file))))
 
+(ert-deftest ol-gitlab-export-qualified-path ()
+  "A path with a project exports a web URL without a global repository."
+  (let ((gitlab-repository nil))
+    (should (equal
+             "<a href=\"https://gitlab.com/group/project/-/merge_requests/12\">Review</a>"
+             (gitlab-org--export "gitlab-mr" "group/project!12"
+                                 "Review" 'html)))
+    (should (equal "Review"
+                   (gitlab-org--export "gitlab-mr" "12" "Review" 'html)))))
+
 (ert-deftest ol-gitlab-follow ()
   "Follow calls the display command."
   (let (opened)
@@ -98,6 +108,41 @@ so an error here would break `org-store-link' everywhere."
                (lambda (iid) (setq opened iid))))
       (gitlab-org--follow-mr "12" nil))
     (should (equal "12" opened))))
+
+(ert-deftest ol-gitlab-follow-repository ()
+  "A path with a project binds the project around the display command."
+  (let (opened repository)
+    (cl-letf (((symbol-function 'gitlab-display-merge-request)
+               (lambda (iid)
+                 (setq opened iid
+                       repository gitlab-repository))))
+      (gitlab-org--follow-mr "group/project!12" nil))
+    (should (equal "12" opened))
+    (should (equal "group/project" repository))))
+
+(ert-deftest ol-gitlab-follow-empty-path ()
+  "A path without an ID signals a `user-error'."
+  (should-error (gitlab-org--follow-pipeline "group/project#" nil)
+                :type 'user-error))
+
+(ert-deftest ol-gitlab-store-repository ()
+  "A set repository yields a project-qualified link."
+  (let ((gitlab-repository "group/project"))
+    (should (equal "gitlab-mr:group/project!12"
+                   (gitlab-org--link "gitlab-mr" "12")))))
+
+(ert-deftest ol-gitlab-store-job-row ()
+  "A point on a job row of a pipeline buffer stores the job link."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-pipeline-mode)
+     (let ((inhibit-read-only t))
+       (insert (propertize "row" 'gitlab-job-id "176"
+                           'gitlab-job-name "unit-tests")))
+     (goto-char (point-min))
+     (let ((org-stored-links nil))
+       (org-store-link nil t)
+       (should (equal "gitlab-job:176" (car (car org-stored-links))))))))
 
 (provide 'ol-gitlab-tests)
 

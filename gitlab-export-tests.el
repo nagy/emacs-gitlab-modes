@@ -65,7 +65,7 @@
          (progn
            (with-current-buffer buffer
              (gitlab-merge-request-mode)
-             (setq-local gitlab--id "8285")
+             (setq-local gitlab--id "12")
              (gitlab--refresh))
            (should (gitlab-export-tests--wait-for-render buffer))
            (with-current-buffer buffer
@@ -108,7 +108,7 @@
          (progn
            (with-current-buffer buffer
              (gitlab-pipeline-mode)
-             (setq-local gitlab--id "3010647305")
+             (setq-local gitlab--id "1001")
              (gitlab--refresh))
            (should (gitlab-export-tests--wait-for-render buffer))
            (with-current-buffer buffer
@@ -183,7 +183,7 @@
          (progn
            (with-current-buffer buffer
              (gitlab-pipeline-mode)
-             (setq-local gitlab--id "3010647305")
+             (setq-local gitlab--id "1001")
              (gitlab--refresh))
            (should (gitlab-export-tests--wait-for-render buffer))
            (with-current-buffer buffer
@@ -193,7 +193,7 @@
                    (with-current-buffer export
                      (should (string-match-p "\"jobs\":"
                                              (buffer-string)))
-                     (should (string-match-p "media-check"
+                     (should (string-match-p "unit-tests"
                                              (buffer-string))))
                  (kill-buffer export)))))
        (kill-buffer buffer)))))

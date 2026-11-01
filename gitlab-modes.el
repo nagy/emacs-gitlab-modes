@@ -47,6 +47,10 @@
 ;; All reads go through glab.  Set `gitlab-program' to another binary
 ;; path, or `gitlab-repository' to OWNER/REPO when the current
 ;; directory is not a Git checkout of the wanted project.
+;;
+;; A display buffer carries a bookmark record, so `C-x r m' saves the
+;; object, its project and the point in the buffer, and a jump rebuilds
+;; the buffer from the record.
 
 ;;; Code:
 

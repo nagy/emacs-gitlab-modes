@@ -1,18 +1,18 @@
 [
   {
-    "id": 17624043693,
-    "name": "media-check",
+    "id": 5001,
+    "name": "unit-tests",
     "stage": "test",
     "status": "success",
     "duration": 100.234765,
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/jobs/17624043693"
+    "web_url": "https://gitlab.example/group/project/-/jobs/5001"
   },
   {
-    "id": 17624043692,
-    "name": "clangtidy:linux",
+    "id": 5002,
+    "name": "lint:linux",
     "stage": "test",
     "status": "failed",
     "duration": 106.277279,
-    "web_url": "https://gitlab.example/inkscape/inkscape/-/jobs/17624043692"
+    "web_url": "https://gitlab.example/group/project/-/jobs/5002"
   }
 ]
