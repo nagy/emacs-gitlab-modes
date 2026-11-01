@@ -26,11 +26,16 @@
 
 ;;; Commentary:
 
-;; Optional evil integration.  The file requires evil but the package
-;; does not declare it, so a user without evil installs nothing:
+;; Optional evil integration.  The file needs evil, but the package
+;; does not declare it, so a user without evil installs nothing.  The
+;; entry library enables the mode as soon as evil loads:
 ;;
 ;;   (require 'gitlab-evil)
 ;;   (gitlab-evil-mode 1)
+;;
+;; Both lines are optional.  When `gitlab-evil-auto-enable' is non-nil,
+;; which is the default, the autoloaded `gitlab-evil-auto-setup'
+;; enables `gitlab-evil-mode' once evil is loaded.
 ;;
 ;; The mode installs one local minor mode per GitLab buffer.  Evil
 ;; state maps take precedence over a major mode map, so every command
@@ -57,10 +62,26 @@
 
 ;;; Code:
 
-(require 'evil)
 (require 'gitlab-mode)
 (require 'gitlab-merge-request)
 (require 'gitlab-pipeline)
+
+(declare-function evil-define-minor-mode-key "evil" (state mode key def))
+
+;; Evil defines `evil-define-minor-mode-key' before it provides its
+;; feature, and `evil-after-load-hook' runs between the two, so a plain
+;; `require' of evil recurses at that moment.  Load evil only when its
+;; functions are absent.
+(unless (fboundp 'evil-define-minor-mode-key)
+  (require 'evil))
+
+(defcustom gitlab-evil-auto-enable t
+  "Whether to install the evil bindings without an explicit call.
+When non-nil, `gitlab-evil-auto-setup' enables `gitlab-evil-mode'
+once evil loads.  Set this option to nil before evil loads to keep
+the bindings off until a user calls `gitlab-evil-mode'."
+  :type 'boolean
+  :group 'gitlab)
 
 (defvar gitlab-evil-detail-keys
   '(([remap evil-ret] . gitlab-open-at-point)
@@ -184,11 +205,20 @@ passes through unchanged."
   (gitlab-evil-job-log-mode -1))
 
 ;;;###autoload
+(defun gitlab-evil-auto-setup ()
+  "Enable `gitlab-evil-mode' when the option allows it.
+The entry library puts this function on `evil-after-load-hook', so a
+user who has no evil loads no evil code."
+  (when gitlab-evil-auto-enable
+    (gitlab-evil-mode 1)))
+
+;;;###autoload
 (define-minor-mode gitlab-evil-mode
   "Install the evil bindings of the GitLab modes.
 The mode is global; it enables one local minor mode in each
 GitLab buffer and follows new buffers through the major mode
-hook.  It does not load evil for a user who never calls it."
+hook.  The package never requires evil.  The autoloaded
+`gitlab-evil-auto-setup' calls this mode once evil is loaded."
   :global t
   :group 'gitlab
   (if gitlab-evil-mode

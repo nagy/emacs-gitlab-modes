@@ -37,8 +37,11 @@
 ;;
 ;; The optional layers keep their own libraries and stay out of this
 ;; one: `gitlab-evil' adds evil bindings, `ol-gitlab' adds Org link
-;; types and `gitlab-xref' adds the xref backend.  They change global
-;; state, so a user opts into each one.
+;; types and `gitlab-xref' adds the xref backend.  The autoloaded form
+;; below loads the evil layer when evil loads and enables the bindings
+;; unless the option `gitlab-evil-auto-enable' is nil.  The plain form
+;; covers the other load order, when evil is already loaded.  A user
+;; without evil loads nothing extra.
 ;;
 ;; All reads go through glab.  Set `gitlab-program' to another binary
 ;; path, or `gitlab-repository' to OWNER/REPO when the current
@@ -53,6 +56,14 @@
 (require 'gitlab-read)
 (require 'gitlab-merge-request)
 (require 'gitlab-pipeline)
+
+(declare-function gitlab-evil-auto-setup "gitlab-evil" ())
+
+;;;###autoload
+(add-hook 'evil-after-load-hook #'gitlab-evil-auto-setup)
+
+(when (featurep 'evil)
+  (gitlab-evil-auto-setup))
 
 (provide 'gitlab-modes)
 

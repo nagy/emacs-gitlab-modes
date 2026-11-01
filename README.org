@@ -102,6 +102,17 @@ runs in the right project.
 
 ** Evil
 
+The key bindings install themselves.  If evil is on the load path and
+something loads it, =gitlab-modes= loads =gitlab-evil= and enables
+=gitlab-evil-mode=.  No extra line is necessary.  To keep the bindings
+off, set the option before evil loads:
+
+#+begin_src elisp
+(setq gitlab-evil-auto-enable nil)
+#+end_src
+
+A user can still turn the bindings on by hand:
+
 #+begin_src elisp
 (require 'gitlab-evil)
 (gitlab-evil-mode 1)

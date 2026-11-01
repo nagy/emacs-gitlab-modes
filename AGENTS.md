@@ -18,7 +18,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 
 | File | Purpose |
 |---|---|
-| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts and both resource families.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  The optional layers stay out. |
+| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts and both resource families.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, argument helpers.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
@@ -26,7 +26,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands and the notes command. |
 | `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, and the streaming job log mode. |
-| `gitlab-evil.el` | Optional evil layer: global `gitlab-evil-mode` and three local minor modes.  The package does not depend on evil. |
+| `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers.  Text properties win over a typed identifier. |
 | `test/gitlab-test-helpers.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
@@ -196,9 +196,23 @@ without evil.  The suite never opens a network connection.
   the key, and a user who moves `evil-ret` elsewhere keeps the
   behaviour.  A key without an evil command, such as `gr`, stays a
   key string.  `gitlab-evil--key-sequence` passes a vector unchanged
-  and parses a string.  Do not add evil to `Package-Requires` or
-  `packageRequires`; the check phase and the `preInstall` compile put
-  evil on the load path instead.
+  and parses a string.  Do not `require` evil at the top of the file:
+  evil runs `evil-after-load-hook` before it provides its feature, so
+  a plain `require` recurses there.  The file requires evil only when
+  `evil-define-minor-mode-key` is absent, and it declares that
+  function for the byte compiler.  Do not add evil to
+  `Package-Requires` or `packageRequires`; the check phase and the
+  `preInstall` compile put evil on the load path instead.
+- `gitlab-modes.el` carries one autoloaded `add-hook` form for
+  `evil-after-load-hook` and one plain `(when (featurep 'evil) ...)`
+  form.  Together they load `gitlab-evil` and call the autoloaded
+  `gitlab-evil-auto-setup`, which enables `gitlab-evil-mode` unless
+  the option `gitlab-evil-auto-enable` is nil.  The hook covers a load
+  of evil after this library, the plain form covers the other order.
+  A user without evil loads nothing extra.  Do not use
+  `with-eval-after-load` or `after-load-functions` here: package-lint
+  warns about the first, and the second fired during a byte-compile
+  scan and caused a recursive load.
 - `ol-gitlab.el` registers the link types at load.  A `:store`
   function calls `org-link-store-props` and returns nil outside a
   GitLab buffer, because Org calls every store function in every

@@ -120,6 +120,42 @@
      (evil-normal-state)
      (should (eq (key-binding (kbd "RET")) #'evil-ret)))))
 
+(ert-deftest gitlab-evil-auto-enable-default ()
+  "The bindings install without an explicit call by default."
+  (should (default-value 'gitlab-evil-auto-enable)))
+
+(ert-deftest gitlab-evil-auto-setup-on ()
+  "The auto setup turns the global mode on when the option allows it."
+  (gitlab-test-with-environment
+   (let ((gitlab-evil-auto-enable t))
+     (unwind-protect
+         (progn
+           (gitlab-evil-auto-setup)
+           (should gitlab-evil-mode))
+       (gitlab-evil-mode -1)))))
+
+(ert-deftest gitlab-evil-auto-setup-off ()
+  "The auto setup leaves the global mode off when the option says no."
+  (gitlab-test-with-environment
+   (let ((gitlab-evil-auto-enable nil))
+     (unwind-protect
+         (progn
+           (gitlab-evil-auto-setup)
+           (should-not gitlab-evil-mode))
+       (gitlab-evil-mode -1)))))
+
+(ert-deftest gitlab-evil-auto-setup-runs-from-hook ()
+  "The load hook of evil enables the global mode."
+  (gitlab-test-with-environment
+   (let ((gitlab-evil-auto-enable t))
+     (unwind-protect
+         (progn
+           (add-hook 'evil-after-load-hook #'gitlab-evil-auto-setup)
+           (run-hooks 'evil-after-load-hook)
+           (should gitlab-evil-mode))
+       (remove-hook 'evil-after-load-hook #'gitlab-evil-auto-setup)
+       (gitlab-evil-mode -1)))))
+
 (provide 'gitlab-evil-tests)
 
 ;;; gitlab-evil-tests.el ends here
