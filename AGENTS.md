@@ -20,7 +20,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 |---|---|
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
-| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the project.el directory helper, argument helpers.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
+| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu and the navigation commands. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
@@ -117,7 +117,12 @@ without evil.  The suite never opens a network connection.
 - A stream has no timeout by default.  `gitlab-cli-stream` takes a
   TIMEOUT only when a caller wants one, because a job trace can run for
   hours.  The synchronous and asynchronous requests keep
-  `gitlab-cli-timeout`.
+  `gitlab-cli-timeout`.  The last optional argument is a chunk filter:
+  it receives the process and one chunk and writes the chunk itself, so
+  the job log can assemble lines before it inserts them.
+  `gitlab-cli--insert-chunk` inserts text, applies ANSI colors and
+  clears the modified flag, and it returns the start position of the
+  text.
 - Errors signal a condition that derives from `gitlab-error`.  A public
   function documents the conditions it raises.  An asynchronous error
   callback receives a condition list, not a string.
@@ -171,6 +176,24 @@ without evil.  The suite never opens a network connection.
   so a second display of the same job never appends a second trace.
   `gitlab-job-log-restart` serves as `revert-buffer-function`, so it
   accepts and ignores the two `revert-buffer` arguments.
+- The job log installs a chunk filter, because a process filter
+  receives arbitrary chunks.  `gitlab-job-log--write` joins the tail of
+  the previous chunk (`gitlab-job-log--pending`), so a line that a
+  chunk cut in two reaches the buffer as one line.  Both callbacks of
+  the stream flush the pending tail.  The filter drops the banner that
+  `glab ci trace` prints on every run ("Getting job trace..." and
+  "Showing logs for NAME job #ID."), and the empty lines before the
+  first trace line, so the header line is the only place that names the
+  job.
+- GitLab prefixes a trace line with an ISO 8601 timestamp and a stream
+  identifier (00O, 01O, 01E) when the job enables runner timestamps.
+  `gitlab-job-log--apply-timestamps` marks the timestamp with the text
+  property `gitlab-job-log-timestamp` and hides it with a `display`
+  property when `gitlab-job-log-show-timestamps` is nil.  The text
+  stays in the buffer, so `gitlab-job-log-toggle-timestamps`, bound to
+  `~` and to the evil remap of `evil-invert-char`, never fetches again.
+  The prefix is marked after the ANSI conversion, because a trace line
+  starts with the escape sequences of the server.
 - List modes derive from `gitlab-list-mode`, which derives from
   `tabulated-list-mode`.  A derived mode sets
   `gitlab-list--fetch-function`, `gitlab-list--entries-function`,
@@ -222,7 +245,9 @@ without evil.  The suite never opens a network connection.
   the key, and a user who moves `evil-ret` elsewhere keeps the
   behaviour.  A key without an evil command, such as `gr`, stays a
   key string.  `gitlab-evil--key-sequence` passes a vector unchanged
-  and parses a string.  `gitlab-export-json` takes the `evil-yank`
+  and parses a string.  `gitlab-job-log-toggle-timestamps` takes the
+  `evil-invert-char` remap, so `~` toggles the timestamps of a job log
+  in normal state.  `gitlab-export-json` takes the `evil-yank`
   remap, so `y` exports the JSON of a detail buffer or of a list
   buffer in normal state, and visual state keeps the ID copy.  Do not
   `require` evil at the top of the file:

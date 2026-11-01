@@ -21,6 +21,12 @@
 (require 'gitlab-test-helpers)
 (require 'gitlab-pipeline)
 
+(defvar gitlab-pipeline-tests--trace-text
+  (concat "2026-10-30T20:59:37.687111Z 00O Running job\n"
+          "2026-10-30T20:59:38.687139Z 00O step 1\n"
+          "2026-10-30T20:59:39.687142Z 01O step 2\n")
+  "Trace text that the fixture gives to the job log buffer.")
+
 (defun gitlab-pipeline-tests--wait-for (buffer text)
   "Wait until BUFFER contains TEXT."
   (gitlab-test-wait
@@ -163,7 +169,7 @@
                (lambda ()
                  (with-current-buffer buffer
                    gitlab-job-log--finished))))
-             (should (equal "Running job\nstep 1\nstep 2\n"
+             (should (equal gitlab-pipeline-tests--trace-text
                             (gitlab-test-buffer-string buffer)))))
        (with-current-buffer buffer
          (set-buffer-modified-p nil))
@@ -181,10 +187,69 @@
        (gitlab-test-wait
         (lambda () (with-current-buffer second gitlab-job-log--finished)))
        (with-current-buffer second
-         (should (equal "Running job\nstep 1\nstep 2\n"
+         (should (equal gitlab-pipeline-tests--trace-text
                         (gitlab-test-buffer-string second)))
          (should-not (buffer-modified-p))))
      (kill-buffer first))))
+
+(ert-deftest gitlab-pipeline-job-log-drops-banner ()
+  "The job log hides the banner that glab prints before the trace."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log
+                  "17624043693" "media-check")))
+     (unwind-protect
+         (progn
+           (should
+            (gitlab-test-wait
+             (lambda ()
+               (with-current-buffer buffer gitlab-job-log--finished))))
+           (with-current-buffer buffer
+             (should-not (string-match-p "Getting job trace"
+                                         (buffer-string)))
+             (should-not (string-match-p "Showing logs for"
+                                         (buffer-string)))
+             (should (string-prefix-p "2026-10-30T20:59:37"
+                                      (gitlab-test-buffer-string buffer)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-log-timestamps ()
+  "The job log keeps timestamps and the toggle hides them."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log
+                  "17624043693" "media-check")))
+     (unwind-protect
+         (progn
+           (should
+            (gitlab-test-wait
+             (lambda ()
+               (with-current-buffer buffer gitlab-job-log--finished))))
+           (with-current-buffer buffer
+             (should gitlab-job-log-show-timestamps)
+             (should (string-match-p "2026-10-30T20:59:38\\.687139Z"
+                                     (gitlab-test-buffer-string buffer)))
+             (should-not (get-text-property (point-min) 'display))
+             (call-interactively #'gitlab-job-log-toggle-timestamps)
+             (should-not gitlab-job-log-show-timestamps)
+             (should (equal "" (get-text-property (point-min) 'display)))
+             (should (string-match-p "step 1"
+                                     (gitlab-test-buffer-string buffer)))
+             (gitlab-job-log-toggle-timestamps)
+             (should gitlab-job-log-show-timestamps)
+             (should-not (get-text-property (point-min) 'display))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-log-split-chunk ()
+  "A chunk that cuts a line keeps the rest for the next chunk."
+  (with-temp-buffer
+    (gitlab-job-log-mode)
+    (gitlab-job-log--write "Getting job trace...\nstep ")
+    (should (equal "" (gitlab-test-buffer-string (current-buffer))))
+    (gitlab-job-log--write "1\nstep 2")
+    (should (equal "step 1\n"
+                   (gitlab-test-buffer-string (current-buffer))))
+    (gitlab-job-log--flush)
+    (should (equal "step 1\nstep 2\n"
+                   (gitlab-test-buffer-string (current-buffer))))))
 
 (ert-deftest gitlab-pipeline-entries-fields ()
   "A pipeline row carries ID, status, ref and source."

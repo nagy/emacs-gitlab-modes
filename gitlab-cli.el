@@ -345,27 +345,38 @@ object, so a caller can cancel it."
 
 ;;; Streaming request
 
+(defun gitlab-cli--insert-chunk (text)
+  "Insert TEXT at the end of the current buffer.
+The buffer may be read-only and stays unmodified.  With
+`gitlab-cli-ansi-color', SGR sequences become faces.  Return the
+start position of the inserted text."
+  (let ((inhibit-read-only t)
+        (start (point-max)))
+    (goto-char (point-max))
+    (insert text)
+    (when gitlab-cli-ansi-color
+      (ansi-color-apply-on-region start (point-max)))
+    (set-buffer-modified-p nil)
+    start))
+
 (defun gitlab-cli--insert-filter (process chunk)
   "Insert a chunk of PROCESS output into its buffer.
-CHUNK holds the text.  The buffer may be read-only.  With
-`gitlab-cli-ansi-color', SGR sequences become faces."
+CHUNK holds the text."
   (let ((buffer (process-buffer process)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
-        (let ((inhibit-read-only t)
-              (start (point-max)))
-          (goto-char (point-max))
-          (insert chunk)
-          (when gitlab-cli-ansi-color
-            (ansi-color-apply-on-region start (point-max)))
-          (set-buffer-modified-p nil))))))
+        (gitlab-cli--insert-chunk chunk)))))
 
-(defun gitlab-cli-stream (arguments buffer success error &optional timeout)
+(defun gitlab-cli-stream (arguments buffer success error
+                                    &optional timeout chunk-filter)
   "Run glab with ARGUMENTS and stream its output into BUFFER.
 SUCCESS runs when glab exits with status zero.  ERROR receives a
 condition list on a non-zero exit or on TIMEOUT.  A nil TIMEOUT,
 the default, streams until glab exits, because a job trace can
-run for hours.  The function returns the process object."
+run for hours.  CHUNK-FILTER replaces the insertion of the
+output: it receives the process and one chunk of text and writes
+the chunk itself, so a caller can assemble lines or transform the
+text.  The function returns the process object."
   (let* ((stderr (generate-new-buffer " *gitlab-cli-stderr*"))
          (timer nil)
          process)
@@ -382,7 +393,7 @@ run for hours.  The function returns the process object."
            :connection-type 'pipe
            :coding 'utf-8-unix
              :noquery t
-             :filter #'gitlab-cli--insert-filter
+             :filter (or chunk-filter #'gitlab-cli--insert-filter)
              :sentinel
              (lambda (proc _event)
              (when (and (memq (process-status proc) '(exit signal))

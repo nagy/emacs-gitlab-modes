@@ -53,6 +53,13 @@ The log buffer keeps ANSI colors, stays read-only and kills its process
 when the buffer dies.  The log has no timeout and streams until =glab=
 exits, so a long job keeps writing.  =g= restarts the trace.
 
+The log buffer drops the banner that =glab ci trace= prints before the
+trace, because the header line already names the job.  GitLab puts an
+ISO 8601 timestamp in front of every line when the job enables runner
+timestamps.  The option =gitlab-job-log-show-timestamps=, on by
+default, shows the timestamps, and =~= hides or shows them in the
+current buffer.
+
 The notes request and the jobs request ask for one page of 100 items.
 A merge request with more notes, or a pipeline with more jobs, shows
 the first page only.

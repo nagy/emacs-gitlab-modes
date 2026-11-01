@@ -44,6 +44,16 @@
 ;; The job log streams `glab ci trace JOB-ID' into a read-only buffer.
 ;; ANSI colors become faces.  Killing the buffer deletes the process.
 ;; A finished log stays readable; `g' starts the trace again.
+;;
+;; The trace arrives in arbitrary chunks, so the job log filter
+;; assembles whole lines before it writes them.  It drops the banner
+;; that glab prints on every run, because the header line already
+;; names the job.  GitLab prefixes a trace line with an ISO 8601
+;; timestamp when the job enables runner timestamps; the option
+;; `gitlab-job-log-show-timestamps' and the command
+;; `gitlab-job-log-toggle-timestamps' decide whether the buffer shows
+;; it.  The prefix stays in the buffer as text with a `display'
+;; property, so a toggle never asks GitLab again.
 
 ;;; Code:
 
@@ -54,6 +64,7 @@
 
 (declare-function gitlab-read-pipeline-id "gitlab-read" (&optional prompt))
 (declare-function gitlab-read-job-id "gitlab-read" (&optional prompt))
+(declare-function gitlab-cli--insert-chunk "gitlab-cli" (text))
 
 (defcustom gitlab-pipeline-list-buffer-name "*GitLab Pipelines*"
   "Buffer name of the pipeline list."
@@ -266,6 +277,15 @@ pipeline and its jobs."
 
 ;;; Job log
 
+(defcustom gitlab-job-log-show-timestamps t
+  "Whether the job log shows the timestamp prefix of a trace line.
+GitLab writes an ISO 8601 timestamp in front of every line when
+the job enables runner timestamps.  A nil value hides the prefix
+without dropping the received text, so
+`gitlab-job-log-toggle-timestamps' shows it again."
+  :type 'boolean
+  :group 'gitlab)
+
 (defvar-local gitlab-job-log--process nil
   "Streaming trace process of the current job log buffer.")
 
@@ -274,6 +294,31 @@ pipeline and its jobs."
 
 (defvar-local gitlab-job-log--finished nil
   "Non-nil when the trace process of the current buffer finished.")
+
+(defvar-local gitlab-job-log--pending nil
+  "Tail of the trace that waits for the end of its line.
+A process filter receives arbitrary chunks, so an incomplete line
+stays here until the next chunk or until the process ends.")
+
+(defvar-local gitlab-job-log--banner t
+  "Non-nil while the buffer holds no line of the trace itself.
+The empty lines before the first trace line belong to the banner
+of glab and never reach the buffer.")
+
+(defconst gitlab-job-log--banner-regexps
+  '("\\`Getting job trace\\.\\.\\.\\'"
+    "\\`Showing logs for .+ job #[0-9]+\\.\\'")
+  "Lines that `glab ci trace' writes before the trace itself.
+The command prints them on every run, so the buffer drops them.")
+
+(defconst gitlab-job-log--timestamp-regexp
+  (concat "\\(?:\\r\\)?"
+          "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}"
+          "T[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}"
+          "\\(?:\\.[0-9]+\\)?Z\\)[ \t]")
+  "Regexp that matches the timestamp prefix of a trace line.
+GitLab prefixes a line with an ISO 8601 timestamp and a stream
+identifier such as 00O.  Group 1 is the timestamp.")
 
 (defun gitlab-job-log--kill ()
   "Delete the streaming process of the current job log buffer."
@@ -288,12 +333,90 @@ pipeline and its jobs."
   (setq-local header-line-format
               (propertize (format " %s" text) 'face face)))
 
+(defun gitlab-job-log--banner-line-p (line)
+  "Return non-nil when LINE is a line of the banner of glab."
+  (cl-some (lambda (regexp) (string-match-p regexp line))
+           gitlab-job-log--banner-regexps))
+
+(defun gitlab-job-log--apply-timestamps (start end)
+  "Apply the timestamp option to the lines between START and END.
+The helper marks the timestamp of each line with the text
+property `gitlab-job-log-timestamp' and hides it when
+`gitlab-job-log-show-timestamps' is nil."
+  (save-excursion
+    (let ((inhibit-read-only t))
+      (goto-char start)
+      (while (< (point) end)
+        (when (looking-at gitlab-job-log--timestamp-regexp)
+          (let ((prefix (match-beginning 1))
+                (prefix-end (match-end 1)))
+            (add-text-properties prefix prefix-end
+                                 '(gitlab-job-log-timestamp t))
+            (if gitlab-job-log-show-timestamps
+                (remove-list-of-text-properties prefix prefix-end
+                                                '(display))
+              (put-text-property prefix prefix-end 'display ""))))
+        (forward-line 1)))))
+
+(defun gitlab-job-log--insert-line (line)
+  "Insert one complete LINE of trace output into the current buffer.
+The helper drops the banner of glab and, according to
+`gitlab-job-log-show-timestamps', the timestamp of the line."
+  (unless (or (gitlab-job-log--banner-line-p line)
+              (and gitlab-job-log--banner (string-blank-p line)))
+    (setq gitlab-job-log--banner nil)
+    (let ((start (gitlab-cli--insert-chunk (concat line "\n"))))
+      (gitlab-job-log--apply-timestamps start (point-max))
+      (set-buffer-modified-p nil))))
+
+(defun gitlab-job-log--write (chunk)
+  "Write one CHUNK of trace output into the current buffer.
+The helper keeps the tail of the previous chunk, so a line that a
+chunk cut in two reaches the buffer as one line."
+  (let* ((text (concat gitlab-job-log--pending chunk))
+         (lines (split-string text "\n"))
+         (tail (car (last lines))))
+    (setq gitlab-job-log--pending tail)
+    (dolist (line (butlast lines))
+      (gitlab-job-log--insert-line line))))
+
+(defun gitlab-job-log--flush ()
+  "Write the incomplete line that waits for its end."
+  (let ((line gitlab-job-log--pending))
+    (setq gitlab-job-log--pending nil)
+    (when (and line (not (string-empty-p line)))
+      (gitlab-job-log--insert-line line))))
+
+(defun gitlab-job-log--filter (process chunk)
+  "Write the output of PROCESS that arrives in CHUNK into its buffer."
+  (let ((buffer (process-buffer process)))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (gitlab-job-log--write chunk)))))
+
+(defun gitlab-job-log-toggle-timestamps ()
+  "Show or hide the timestamp prefix of every trace line.
+The command sets the buffer-local value of
+`gitlab-job-log-show-timestamps' and applies it to the lines that
+the buffer already holds."
+  (interactive)
+  (setq-local gitlab-job-log-show-timestamps
+              (not gitlab-job-log-show-timestamps))
+  (let ((inhibit-read-only t))
+    (with-silent-modifications
+      (gitlab-job-log--apply-timestamps (point-min) (point-max))))
+  (message "Job log timestamps %s"
+           (if gitlab-job-log-show-timestamps "shown" "hidden")))
+
 (defun gitlab-job-log--start ()
   "Clear the current buffer and start the trace process."
   (gitlab-job-log--kill)
-  (setq gitlab-job-log--finished nil)
+  (setq gitlab-job-log--finished nil
+        gitlab-job-log--pending nil
+        gitlab-job-log--banner t)
   (let ((inhibit-read-only t))
     (erase-buffer))
+  (set-buffer-modified-p nil)
   (gitlab-job-log--set-header
    (format "Job %s%s - streaming"
            gitlab--id
@@ -308,6 +431,7 @@ pipeline and its jobs."
            (lambda ()
              (when (buffer-live-p buffer)
                (with-current-buffer buffer
+                 (gitlab-job-log--flush)
                  (setq gitlab-job-log--finished t
                        gitlab-job-log--process nil)
                  (gitlab-job-log--set-header
@@ -316,11 +440,13 @@ pipeline and its jobs."
            (lambda (error)
              (when (buffer-live-p buffer)
                (with-current-buffer buffer
+                 (gitlab-job-log--flush)
                  (setq gitlab-job-log--process nil)
                  (gitlab-job-log--set-header
                   (format "Job %s - %s" gitlab--id
                           (gitlab--error-message error))
-                  'gitlab-error))))))))
+                  'gitlab-error))))
+           #'gitlab-job-log--filter))))
 
 (defun gitlab-job-log-restart (&rest _arguments)
   "Clear the current job log and stream the trace again.
@@ -331,8 +457,10 @@ function with the two `revert-buffer' arguments."
 
 (define-derived-mode gitlab-job-log-mode special-mode "GitLab Job Log"
   "Display the live trace of one GitLab CI job.
-The buffer is read-only and fills while `glab ci trace' runs.  g
-restarts the trace.  Killing the buffer deletes the process."
+The buffer is read-only and fills while `glab ci trace' runs.  The
+banner that glab prints before the trace never reaches the buffer.
+g restarts the trace and ~ toggles the timestamp prefix of every
+line.  Killing the buffer deletes the process."
   :group 'gitlab
   (gitlab--use-project-directory)
   (setq-local gitlab--kind 'job)
@@ -341,6 +469,8 @@ restarts the trace.  Killing the buffer deletes the process."
   (setq-local revert-buffer-function #'gitlab-job-log-restart)
   (setq-local truncate-lines t)
   (add-hook 'kill-buffer-hook #'gitlab-job-log--kill nil t))
+
+(define-key gitlab-job-log-mode-map (kbd "~") #'gitlab-job-log-toggle-timestamps)
 
 (defun gitlab-pipeline--prepare-job-log (job-id &optional name)
   "Prepare the job log buffer of JOB-ID and return it.

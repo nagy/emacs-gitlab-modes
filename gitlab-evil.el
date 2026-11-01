@@ -57,8 +57,9 @@
 ;; web page; S sorts the current column.  A visual line selection
 ;; followed by y copies every selected row ID, one per line.
 ;;
-;; Job log buffers: q quits; gr restarts the trace; c copies the job
-;; ID; G and gg reach the end and the start.
+;; Job log buffers: q quits; gr restarts the trace; ~ toggles the
+;; timestamps; c copies the job ID; G and gg reach the end and the
+;; start.
 
 ;;; Code:
 
@@ -120,6 +121,7 @@ that evil already binds.")
 (defvar gitlab-evil-job-log-keys
   '(([remap evil-record-macro] . quit-window)
     ("gr" . gitlab-job-log-restart)
+    ([remap evil-invert-char] . gitlab-job-log-toggle-timestamps)
     ([remap evil-change] . gitlab-copy-id))
   "Keys that `gitlab-evil-mode' binds in job log buffers.
 A key is a key string, or a `[remap COMMAND]' vector for a command

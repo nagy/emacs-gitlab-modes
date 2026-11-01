@@ -381,14 +381,16 @@ ARGUMENTS holds extra glab flags."
    (gitlab-cli-request
     (gitlab--cli-job-trace-arguments job-id) 'text)))
 
-(defun gitlab-job-trace-stream (job-id buffer success error)
+(defun gitlab-job-trace-stream (job-id buffer success error &optional chunk-filter)
   "Stream the trace of JOB-ID into BUFFER.
 SUCCESS runs when glab exits cleanly, ERROR receives a condition
-on failure.  Return the process object."
+on failure.  CHUNK-FILTER replaces the insertion of the streamed
+text, as `gitlab-cli-stream' documents.  Return the process
+object."
   (gitlab--with-backend
    (gitlab-cli-stream
     (gitlab--cli-job-trace-arguments job-id)
-    buffer success error)))
+    buffer success error nil chunk-filter)))
 
 ;;; Web URLs
 
