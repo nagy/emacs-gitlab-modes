@@ -256,13 +256,19 @@ without evil.  The suite never opens a network connection.
   first trace line, so the header line is the only place that names the
   job.
 - GitLab prefixes a trace line with an ISO 8601 timestamp and a stream
-  identifier (00O, 01O, 01E) when the job enables runner timestamps.
-  `gitlab-job-log--apply-timestamps` marks the timestamp with the text
-  property `gitlab-job-log-timestamp` and hides it with a `display`
-  property when `gitlab-job-log-show-timestamps` is nil.  The text
-  stays in the buffer, so `gitlab-job-log-toggle-timestamps`, bound to
-  `~` and to the evil remap of `evil-invert-char`, never fetches again.
-  The prefix is marked after the ANSI conversion, because a trace line
+  identifier (00O, 01O, 01E, 00O+) when the job enables runner
+  timestamps.  `gitlab-job-log--apply-timestamps` marks the whole
+  prefix with the text property `gitlab-job-log-timestamp` and hides
+  it with a `display` property when
+  `gitlab-job-log-show-timestamps` is nil.  The hidden range ends at
+  `gitlab-job-log--prefix-end`: the stream identifier from
+  `gitlab-job-log--stream-regexp` plus its one separator, or the one
+  separator of the timestamp when no identifier follows.  The text of
+  the line then starts at column 0, and every further space stays,
+  because such a space belongs to the text.  The text stays in the
+  buffer, so `gitlab-job-log-toggle-timestamps`, bound to `~` and to
+  the evil remap of `evil-invert-char`, never fetches again.  The
+  prefix is marked after the ANSI conversion, because a trace line
   starts with the escape sequences of the server.
 - A job log shows the duration of the active region on the right edge
   of the mode line.  `gitlab-job-log--region-span` reads the first and

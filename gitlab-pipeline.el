@@ -272,11 +272,13 @@ pipeline and its jobs."
 ;;; Job log
 
 (defcustom gitlab-job-log-show-timestamps t
-  "Whether the job log shows the timestamp prefix of a trace line.
+  "Whether the job log shows the prefix of a trace line.
 GitLab writes an ISO 8601 timestamp in front of every line when
-the job enables runner timestamps.  A nil value hides the prefix
+the job enables runner timestamps.  A stream identifier such as
+00O, 01O, 01E or 00O+ follows the timestamp.  A nil value hides
+the timestamp, the identifier and the space before the text,
 without dropping the received text, so
-`gitlab-job-log-toggle-timestamps' shows it again."
+`gitlab-job-log-toggle-timestamps' shows the prefix again."
   :type 'boolean
   :group 'gitlab)
 
@@ -336,6 +338,13 @@ The command prints them on every run, so the buffer drops them.")
 GitLab prefixes a line with an ISO 8601 timestamp and a stream
 identifier such as 00O.  Group 1 is the timestamp.")
 
+(defconst gitlab-job-log--stream-regexp
+  "[ \t]+\\([0-9][0-9][A-Z]\\+?\\)[ \t]?"
+  "Regexp that matches the stream identifier after a timestamp.
+GitLab writes 00O for the runner, 01O for the standard output,
+01E for the standard error and 00O+ for the boundary of a
+section.  Group 1 is the identifier.")
+
 (defun gitlab-job-log--kill ()
   "Delete the streaming process of the current job log buffer."
   (when (processp gitlab-job-log--process)
@@ -354,10 +363,25 @@ identifier such as 00O.  Group 1 is the timestamp.")
   (cl-some (lambda (regexp) (string-match-p regexp line))
            gitlab-job-log--banner-regexps))
 
+(defun gitlab-job-log--prefix-end (timestamp-end)
+  "Return the end of the trace prefix that starts with a timestamp.
+TIMESTAMP-END bounds the timestamp itself.  A stream identifier
+such as 00O, 01O, 01E or 00O+ follows the timestamp.  Without an
+identifier the prefix holds the one separator that the timestamp
+regexp consumed, so the text of the line starts at column 0.  The
+helper keeps every further space, because such a space belongs to
+the text."
+  (save-excursion
+    (goto-char timestamp-end)
+    (if (looking-at gitlab-job-log--stream-regexp)
+        (match-end 0)
+      (1+ timestamp-end))))
+
 (defun gitlab-job-log--apply-timestamps (start end)
   "Apply the timestamp option to the lines between START and END.
-The helper marks the timestamp of each line with the text
-property `gitlab-job-log-timestamp' and hides it when
+The helper marks the prefix of each trace line, the timestamp and
+the stream identifier, with the text property
+`gitlab-job-log-timestamp' and hides it when
 `gitlab-job-log-show-timestamps' is nil."
   (save-excursion
     (let ((inhibit-read-only t))
@@ -365,7 +389,7 @@ property `gitlab-job-log-timestamp' and hides it when
       (while (< (point) end)
         (when (looking-at gitlab-job-log--timestamp-regexp)
           (let ((prefix (match-beginning 1))
-                (prefix-end (match-end 1)))
+                (prefix-end (gitlab-job-log--prefix-end (match-end 1))))
             (add-text-properties prefix prefix-end
                                  '(gitlab-job-log-timestamp t))
             (if gitlab-job-log-show-timestamps
@@ -377,7 +401,7 @@ property `gitlab-job-log-timestamp' and hides it when
 (defun gitlab-job-log--insert-line (line)
   "Insert one complete LINE of trace output into the current buffer.
 The helper drops the banner of glab and, according to
-`gitlab-job-log-show-timestamps', the timestamp of the line."
+`gitlab-job-log-show-timestamps', the prefix of the line."
   (unless (or (gitlab-job-log--banner-line-p line)
               (and gitlab-job-log--banner (string-blank-p line)))
     (setq gitlab-job-log--banner nil)
@@ -532,16 +556,17 @@ point or a new trace line reaches the mode line without a redraw."
 
 (defun gitlab-job-log-toggle-timestamps ()
   "Show or hide the timestamp prefix of every trace line.
-The command sets the buffer-local value of
-`gitlab-job-log-show-timestamps' and applies it to the lines that
-the buffer already holds."
+The prefix holds the timestamp and the stream identifier, so the
+command leaves the text of each line at column 0.  It sets the
+buffer-local value of `gitlab-job-log-show-timestamps' and applies
+it to the lines that the buffer already holds."
   (interactive)
   (setq-local gitlab-job-log-show-timestamps
               (not gitlab-job-log-show-timestamps))
   (let ((inhibit-read-only t))
     (with-silent-modifications
       (gitlab-job-log--apply-timestamps (point-min) (point-max))))
-  (message "Job log timestamps %s"
+  (message "Job log prefix %s"
            (if gitlab-job-log-show-timestamps "shown" "hidden")))
 
 (defun gitlab-job-log--start ()
@@ -608,7 +633,8 @@ because a trace streams and has no snapshot."
 The buffer is read-only and fills while `glab ci trace' runs.  The
 banner that glab prints before the trace never reaches the buffer.
 g restarts the trace and ~ toggles the timestamp prefix of every
-line.  An active region adds the number of selected trace lines and
+line, which holds the timestamp and the stream identifier.  An
+active region adds the number of selected trace lines and
 their duration to the right edge of the mode line, when
 `gitlab-job-log-show-region-duration' is non-nil.  Killing the
 buffer deletes the process."

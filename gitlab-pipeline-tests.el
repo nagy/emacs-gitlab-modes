@@ -24,7 +24,8 @@
 (defvar gitlab-pipeline-tests--trace-text
   (concat "2026-10-30T20:59:37.687111Z 00O Running job\n"
           "2026-10-30T20:59:38.687139Z 00O step 1\n"
-          "2026-10-30T20:59:39.687142Z 01O step 2\n")
+          "2026-10-30T20:59:39.687142Z 01O step 2\n"
+          "2026-10-30T20:59:39.687200Z 00O+Section start\n")
   "Trace text that the fixture gives to the job log buffer.")
 
 (defun gitlab-pipeline-tests--wait-for (buffer text)
@@ -277,6 +278,43 @@
              (should gitlab-job-log-show-timestamps)
              (should-not (get-text-property (point-min) 'display))))
        (kill-buffer buffer)))))
+
+(defun gitlab-pipeline-tests--visible-line-text ()
+  "Return the text of the current line after a hidden prefix."
+  (let ((end (line-end-position))
+        (start (point)))
+    (while (and (< start end)
+                (equal "" (get-text-property start 'display)))
+      (setq start (1+ start)))
+    (buffer-substring start end)))
+
+(ert-deftest gitlab-pipeline-job-log-prefix-stream-identifier ()
+  "The toggle hides the stream identifier and keeps text spaces."
+  (let* ((shown (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                        "2026-10-30T20:59:38.000Z 00O+Section\n"
+                        "2026-10-30T20:59:39.000Z 01E   indented\n"
+                        "2026-10-30T20:59:40.000Z 01O\ttabbed\n"))
+         (buffer (gitlab-pipeline-tests--job-log-with-trace shown)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (call-interactively #'gitlab-job-log-toggle-timestamps)
+          (goto-char (point-min))
+          (should (equal "one" (gitlab-pipeline-tests--visible-line-text)))
+          (forward-line 1)
+          (should (equal "Section"
+                         (gitlab-pipeline-tests--visible-line-text)))
+          (forward-line 1)
+          (should (equal "  indented"
+                         (gitlab-pipeline-tests--visible-line-text)))
+          (forward-line 1)
+          (should (equal "tabbed"
+                         (gitlab-pipeline-tests--visible-line-text)))
+          (should (eq t (get-text-property (point-min)
+                                           'gitlab-job-log-timestamp)))
+          (gitlab-job-log-toggle-timestamps)
+          (should-not (get-text-property (point-min) 'display))
+          (should (equal shown (gitlab-test-buffer-string buffer))))
+      (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-duration-string ()
   "A duration keeps three decimals and grows by minutes and hours."

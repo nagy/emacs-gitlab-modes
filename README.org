@@ -58,9 +58,13 @@ exits, so a long job keeps writing.  =g= restarts the trace.
 The log buffer drops the banner that =glab ci trace= prints before the
 trace, because the header line already names the job.  GitLab puts an
 ISO 8601 timestamp in front of every line when the job enables runner
-timestamps.  The option =gitlab-job-log-show-timestamps=, on by
-default, shows the timestamps, and =~= hides or shows them in the
-current buffer.
+timestamps.  A stream identifier follows the timestamp: =00O= for the
+runner, =01O= for the standard output, =01E= for the standard error and
+=00O+= for the boundary of a section.  The option
+=gitlab-job-log-show-timestamps=, on by default, shows the prefix, and
+=~= hides or shows the timestamp, the identifier and the space before
+the text in the current buffer.  A hidden prefix leaves the text of
+the line at column 0 and keeps every space that belongs to the text.
 
 An active region adds a section to the right edge of the mode line.
 It shows how many selected trace lines carry a timestamp, and the time
