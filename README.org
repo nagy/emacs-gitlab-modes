@@ -62,6 +62,13 @@ timestamps.  The option =gitlab-job-log-show-timestamps=, on by
 default, shows the timestamps, and =~= hides or shows them in the
 current buffer.
 
+An active region adds a section to the right edge of the mode line.
+It shows how many selected trace lines carry a timestamp, and the time
+between the first and the last of them.  A line without a timestamp
+does not start or end the span, and fewer than two stamped lines show
+no section.  The option =gitlab-job-log-show-region-duration=, on by
+default, turns the section off.
+
 The notes request and the jobs request ask for one page of 100 items.
 A merge request with more notes, or a pipeline with more jobs, shows
 the first page only.

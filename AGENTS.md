@@ -217,6 +217,24 @@ without evil.  The suite never opens a network connection.
   `~` and to the evil remap of `evil-invert-char`, never fetches again.
   The prefix is marked after the ANSI conversion, because a trace line
   starts with the escape sequences of the server.
+- A job log shows the duration of the active region on the right edge
+  of the mode line.  `gitlab-job-log--region-span` reads the first and
+  the last trace line in the region that carries a timestamp and
+  returns their count and their difference.  A line without a
+  timestamp neither starts nor ends the span, and fewer than two
+  stamped lines leave the section off.  The section appears only
+  while `use-region-p` holds and
+  `gitlab-job-log-show-region-duration` is non-nil.  The mode captures
+  `mode-line-format` in `gitlab-job-log--mode-line-base` and appends
+  the literal symbol `mode-line-format-right-align` and the text, so
+  the section sits on the right.  `post-command-hook` and the chunk
+  filter call `gitlab-job-log--mode-line-maybe-update`, which rebuilds
+  the format only when the region signature changes.  The signature
+  holds the region bounds and `buffer-chars-modified-tick`.  The
+  hidden timestamp text stays in the buffer, so the section measures
+  a region while `gitlab-job-log-show-timestamps` is nil.  Do not put
+  `mode-line-format-right-align` in an `:eval` form: `format-mode-line`
+  reads the symbol as a variable and the alignment stops working.
 - List modes derive from `gitlab-list-mode`, which derives from
   `tabulated-list-mode`.  A derived mode sets
   `gitlab-list--fetch-function`, `gitlab-list--entries-function`,

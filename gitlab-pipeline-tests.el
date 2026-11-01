@@ -278,6 +278,93 @@
              (should-not (get-text-property (point-min) 'display))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-job-log-duration-string ()
+  "A duration keeps three decimals and grows by minutes and hours."
+  (should (equal "1.234s" (gitlab-job-log--duration-string 1.234)))
+  (should (equal "2m 3.456s" (gitlab-job-log--duration-string 123.456)))
+  (should (equal "1h 2m 3.456s" (gitlab-job-log--duration-string 3723.456)))
+  (should (equal "1m 0.000s" (gitlab-job-log--duration-string 59.9996))))
+
+(defun gitlab-pipeline-tests--job-log-with-trace (text)
+  "Return a job log buffer that holds TEXT and select the whole text."
+  (let ((buffer (generate-new-buffer "*GitLab job log mode line test*")))
+    (with-current-buffer buffer
+      (gitlab-job-log-mode)
+      (let ((inhibit-read-only t))
+        (insert text))
+      (set-buffer-modified-p nil)
+      (goto-char (point-min))
+      (set-mark (point-max))
+      (activate-mark))
+    buffer))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-region-duration ()
+  "The mode line sums the duration of the stamped region lines."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "no timestamp here\n"
+                  "2026-10-30T20:59:38.250Z 00O two\n"
+                  "2026-10-30T20:59:40.750Z 00O three\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [3 in region, 3.750s]"
+                         gitlab-job-log--mode-line-cache))
+          (should (eq 'mode-line-format-right-align
+                      (nth (- (length mode-line-format) 2)
+                           mode-line-format)))
+          (should (equal gitlab-job-log--mode-line-cache
+                         (car (last mode-line-format)))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-without-region ()
+  "The mode line drops the region section when the region is gone."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          "2026-10-30T20:59:37.000Z 00O one\n")))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log--update-mode-line)
+          (should (equal "" gitlab-job-log--mode-line-cache))
+          (deactivate-mark)
+          (gitlab-job-log--mode-line-maybe-update)
+          (should (equal "" gitlab-job-log--mode-line-cache))
+          (should-not (memq 'mode-line-format-right-align
+                            mode-line-format)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-option-off ()
+  "The option turns the region section off."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:38.000Z 00O two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (setq-local gitlab-job-log-show-region-duration nil)
+          (gitlab-job-log--update-mode-line)
+          (should (equal "" gitlab-job-log--mode-line-cache)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-hidden-timestamps ()
+  "A hidden timestamp still measured the region."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:38.500Z 00O two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (call-interactively #'gitlab-job-log-toggle-timestamps)
+          (should-not gitlab-job-log-show-timestamps)
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [2 in region, 1.500s]"
+                         gitlab-job-log--mode-line-cache))
+          (deactivate-mark)
+          (gitlab-job-log--update-mode-line)
+          (should (equal "" gitlab-job-log--mode-line-cache)))
+      (kill-buffer buffer))))
+
 (ert-deftest gitlab-pipeline-job-log-split-chunk ()
   "A chunk that cuts a line keeps the rest for the next chunk."
   (with-temp-buffer

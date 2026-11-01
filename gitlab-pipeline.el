@@ -280,6 +280,15 @@ without dropping the received text, so
   :type 'boolean
   :group 'gitlab)
 
+(defcustom gitlab-job-log-show-region-duration t
+  "Whether the job log shows the duration of the active region.
+When a region is active, the mode line shows the number of trace
+lines that carry a timestamp and the time between the first and the
+last of them.  The section sits on the right edge of the mode line
+and disappears while no region is active."
+  :type 'boolean
+  :group 'gitlab)
+
 (defvar-local gitlab-job-log--process nil
   "Streaming trace process of the current job log buffer.")
 
@@ -298,6 +307,19 @@ stays here until the next chunk or until the process ends.")
   "Non-nil while the buffer holds no line of the trace itself.
 The empty lines before the first trace line belong to the banner
 of glab and never reach the buffer.")
+
+(defvar-local gitlab-job-log--mode-line-base nil
+  "Mode line format of the job log buffer without the region section.
+`gitlab-job-log--update-mode-line' appends the section to this list.")
+
+(defvar-local gitlab-job-log--mode-line-cache ""
+  "Region section of the mode line, as last installed.
+An unchanged string never rebuilds `mode-line-format'.")
+
+(defvar-local gitlab-job-log--mode-line-region nil
+  "Region state that `gitlab-job-log--mode-line-cache' was built from.
+`gitlab-job-log--mode-line-maybe-update' compares it against the
+current state.")
 
 (defconst gitlab-job-log--banner-regexps
   '("\\`Getting job trace\\.\\.\\.\\'"
@@ -372,14 +394,16 @@ chunk cut in two reaches the buffer as one line."
          (tail (car (last lines))))
     (setq gitlab-job-log--pending tail)
     (dolist (line (butlast lines))
-      (gitlab-job-log--insert-line line))))
+      (gitlab-job-log--insert-line line))
+    (gitlab-job-log--mode-line-maybe-update)))
 
 (defun gitlab-job-log--flush ()
   "Write the incomplete line that waits for its end."
   (let ((line gitlab-job-log--pending))
     (setq gitlab-job-log--pending nil)
     (when (and line (not (string-empty-p line)))
-      (gitlab-job-log--insert-line line))))
+      (gitlab-job-log--insert-line line)))
+  (gitlab-job-log--mode-line-maybe-update))
 
 (defun gitlab-job-log--filter (process chunk)
   "Write the output of PROCESS that arrives in CHUNK into its buffer."
@@ -387,6 +411,124 @@ chunk cut in two reaches the buffer as one line."
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (gitlab-job-log--write chunk)))))
+
+(defun gitlab-job-log--timestamp-value (timestamp)
+  "Return TIMESTAMP as a time value in seconds.
+TIMESTAMP has the form that `gitlab-job-log--timestamp-regexp'
+matches, so the fields sit at fixed offsets."
+  (let ((fraction (if (string-match "\\.\\([0-9]+\\)" timestamp)
+                      (string-to-number
+                       (concat "0." (match-string 1 timestamp)))
+                    0)))
+    (float-time
+     (encode-time
+      (list (+ (string-to-number (substring timestamp 17 19)) fraction)
+            (string-to-number (substring timestamp 14 16))
+            (string-to-number (substring timestamp 11 13))
+            (string-to-number (substring timestamp 8 10))
+            (string-to-number (substring timestamp 5 7))
+            (string-to-number (substring timestamp 0 4))
+            nil t t)))))
+
+(defun gitlab-job-log--line-time ()
+  "Return the timestamp at the start of the current line, or nil."
+  (when (looking-at gitlab-job-log--timestamp-regexp)
+    (gitlab-job-log--timestamp-value (match-string 1))))
+
+(defun gitlab-job-log--region-span ()
+  "Return the count and the duration of the active region as a cons.
+The count holds the trace lines with a timestamp, and the duration
+runs from the first such line to the last.  Return nil without an
+active region, with the option off, or with fewer than two stamped
+lines.  A line without a timestamp neither starts nor ends the
+span."
+  (when (and gitlab-job-log-show-region-duration (use-region-p))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (let* ((start (progn (goto-char (region-beginning))
+                             (line-beginning-position)))
+               (end (progn (goto-char (region-end))
+                           (line-end-position)))
+               (first nil)
+               (last nil)
+               (count 0))
+          (goto-char start)
+          (while (and (< (point) end) (not (eobp)))
+            (let ((time (gitlab-job-log--line-time)))
+              (when time
+                (setq count (1+ count))
+                (unless first
+                  (setq first time))
+                (setq last time)))
+            (forward-line 1))
+          (when (and first last (> count 1))
+            (cons count (- last first))))))))
+
+(defun gitlab-job-log--duration-string (seconds)
+  "Return SECONDS as a compact duration string.
+Keep three decimals, so a short step and a long job both read
+exactly.  The form grows by hours and minutes only when needed."
+  (let* ((milliseconds (round (* 1000 (max 0 seconds))))
+         (millis (% milliseconds 1000))
+         (total (/ (- milliseconds millis) 1000))
+         (secs (% total 60))
+         (total-minutes (/ (- total secs) 60))
+         (minutes (% total-minutes 60))
+         (hours (/ (- total-minutes minutes) 60)))
+    (cond
+     ((> hours 0)
+      (format "%dh %dm %d.%03ds" hours minutes secs millis))
+     ((> minutes 0)
+      (format "%dm %d.%03ds" minutes secs millis))
+     (t (format "%d.%03ds" secs millis)))))
+
+(defun gitlab-job-log--escape-mode-line (text)
+  "Return TEXT with every percent sign doubled.
+The mode line reads a percent sign as the start of a substitution."
+  (replace-regexp-in-string "%" "%%" text t t))
+
+(defun gitlab-job-log--mode-line-text ()
+  "Return the region section of the mode line, or the empty string."
+  (let ((span (gitlab-job-log--region-span)))
+    (if (null span)
+        ""
+      (format " [%d in region, %s]"
+              (car span)
+              (gitlab-job-log--duration-string (cdr span))))))
+
+(defun gitlab-job-log--region-signature ()
+  "Return a value that changes when the active region changes.
+The mode line reports the region, so point motion inside an active
+region and a new trace line both change this value."
+  (when (use-region-p)
+    (list (region-beginning) (region-end) (buffer-chars-modified-tick))))
+
+(defun gitlab-job-log--update-mode-line ()
+  "Rebuild the region section of the mode line and install it.
+The section right-aligns, so it sits on the right edge of the mode
+line.  The helper rebuilds the format only when the text changes,
+because `post-command-hook' runs it after every command."
+  (setq gitlab-job-log--mode-line-region
+        (gitlab-job-log--region-signature))
+  (let ((text (gitlab-job-log--escape-mode-line
+               (gitlab-job-log--mode-line-text))))
+    (unless (equal text gitlab-job-log--mode-line-cache)
+      (setq gitlab-job-log--mode-line-cache text)
+      (setq mode-line-format
+            (if (string-empty-p text)
+                gitlab-job-log--mode-line-base
+              (append gitlab-job-log--mode-line-base
+                      (list 'mode-line-format-right-align text))))))
+  (force-mode-line-update))
+
+(defun gitlab-job-log--mode-line-maybe-update ()
+  "Rebuild the region section when the active region changed.
+`gitlab-job-log-mode' runs this from `post-command-hook', so a moved
+point or a new trace line reaches the mode line without a redraw."
+  (unless (equal (gitlab-job-log--region-signature)
+                 gitlab-job-log--mode-line-region)
+    (gitlab-job-log--update-mode-line)))
 
 (defun gitlab-job-log-toggle-timestamps ()
   "Show or hide the timestamp prefix of every trace line.
@@ -411,6 +553,7 @@ the buffer already holds."
   (let ((inhibit-read-only t))
     (erase-buffer))
   (set-buffer-modified-p nil)
+  (gitlab-job-log--mode-line-maybe-update)
   (gitlab-job-log--set-header
    (format "Job %s%s - streaming"
            gitlab--id
@@ -465,7 +608,10 @@ because a trace streams and has no snapshot."
 The buffer is read-only and fills while `glab ci trace' runs.  The
 banner that glab prints before the trace never reaches the buffer.
 g restarts the trace and ~ toggles the timestamp prefix of every
-line.  Killing the buffer deletes the process."
+line.  An active region adds the number of selected trace lines and
+their duration to the right edge of the mode line, when
+`gitlab-job-log-show-region-duration' is non-nil.  Killing the
+buffer deletes the process."
   :group 'gitlab
   (gitlab--use-project-directory)
   (setq-local bookmark-make-record-function
@@ -475,6 +621,12 @@ line.  Killing the buffer deletes the process."
   (setq-local buffer-stale-function nil)
   (setq-local revert-buffer-function #'gitlab-job-log-restart)
   (setq-local truncate-lines t)
+  (setq-local gitlab-job-log--mode-line-base
+              (default-value 'mode-line-format))
+  (setq-local gitlab-job-log--mode-line-cache "")
+  (setq-local gitlab-job-log--mode-line-region nil)
+  (setq-local mode-line-format gitlab-job-log--mode-line-base)
+  (add-hook 'post-command-hook #'gitlab-job-log--mode-line-maybe-update nil t)
   (add-hook 'kill-buffer-hook #'gitlab-job-log--kill nil t))
 
 (define-key gitlab-job-log-mode-map (kbd "~") #'gitlab-job-log-toggle-timestamps)
