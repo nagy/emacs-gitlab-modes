@@ -23,11 +23,11 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records and `gitlab-bookmark-jump`. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
-| `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer, the fallback encoder and the `js-json-mode` remaps of both display base modes. |
+| `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
@@ -531,8 +531,11 @@ without evil.  The suite never opens a network connection.
   serves every export.  It stays read-only, unmodified and a snapshot.
   Both display base modes remap `js-json-mode` to the command, and the
   job log mode does not, because a trace has no JSON answer.  The
-  export layer lives in `gitlab-export.el` and loads from
-  `gitlab-modes.el`.
+  remap lives in `gitlab-mode.el` and not in `gitlab-export.el`: an
+  autoloaded display command loads the display layer alone, so a key
+  that `gitlab-export` installs at its own load never appears.  The
+  remap target stays the symbol, so the first key that reaches it
+  loads the export layer through its autoload cookie.
 - Every face inherits a standard face and lives in `gitlab-mode.el`.
   Status faces come from `gitlab-status-faces`; do not apply a
   font-lock face in a renderer.

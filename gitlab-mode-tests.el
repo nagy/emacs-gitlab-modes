@@ -447,6 +447,22 @@ The fake header line and the empty rows contribute nothing."
     (should-not (command-completion-default-include-p
                  #'gitlab-copy-id (current-buffer)))))
 
+(ert-deftest gitlab-mode-remaps-the-json-major-mode ()
+  "The display layer remaps `js-json-mode' to the export command.
+The binding lives in this layer and not in `gitlab-export', because
+an autoloaded display command loads `gitlab-mode' alone.  The
+target stays a symbol, so the export layer loads on the first key
+that reaches it."
+  (dolist (mode '(gitlab-detail-mode gitlab-list-mode))
+    (with-temp-buffer
+      (funcall mode)
+      (should (eq (command-remapping 'js-json-mode)
+                  'gitlab-export-json))))
+  (should (eq (lookup-key gitlab-detail-mode-map [remap js-json-mode])
+              'gitlab-export-json))
+  (should (eq (lookup-key gitlab-list-mode-map [remap js-json-mode])
+              'gitlab-export-json)))
+
 (provide 'gitlab-mode-tests)
 
 ;;; gitlab-mode-tests.el ends here

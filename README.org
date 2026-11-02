@@ -275,6 +275,9 @@ buffer again.
 
 Both display base modes remap =js-json-mode= to the export command, so
 a key or a menu that runs the JSON major mode exports the view instead.
+The display layer installs that remap, so it works for a package that
+loads through autoloads.  The export command carries an autoload
+cookie, so the first such key loads the export layer.
 With evil, =y= exports in a detail buffer and in the normal state of a
 list buffer.
 The export keeps the raw =glab= output of the fetch, so empty arrays and

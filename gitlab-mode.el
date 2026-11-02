@@ -110,6 +110,7 @@
                   (job-id &optional name pipeline-id))
 (declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
 (declare-function gitlab-pipeline-list-mode "gitlab-pipeline" ())
+(declare-function gitlab-export-json "gitlab-export" ())
 
 ;; The bookmark handler names the list buffer of each family.  These
 ;; variables live in the resource files, which load after this one.
@@ -1140,6 +1141,14 @@ without blocking Emacs."
 (define-key gitlab-detail-mode-map [remap dired-up-directory]
   #'gitlab-go-to-parent)
 
+;; The remap of a JSON major mode belongs to the display layer, not to
+;; `gitlab-export'.  An autoloaded display command loads this file and
+;; not the entry library, so a remap that `gitlab-export' installs at
+;; its own load never appears in a package with an autoload file.  The
+;; target is autoloaded, so the first key that reaches it loads the
+;; export layer.
+(define-key gitlab-detail-mode-map [remap js-json-mode] #'gitlab-export-json)
+
 ;;; List mode
 
 (defun gitlab--init-list-buffer ()
@@ -1342,6 +1351,7 @@ a merge request IID carries a leading !, so keep the digits only."
 (define-key gitlab-list-mode-map [mouse-2] #'gitlab-list-mouse-open)
 (define-key gitlab-list-mode-map (kbd "c") #'gitlab-list-copy-id)
 (define-key gitlab-list-mode-map (kbd "w") #'gitlab-list-open-web)
+(define-key gitlab-list-mode-map [remap js-json-mode] #'gitlab-export-json)
 
 ;;; Bookmarks
 

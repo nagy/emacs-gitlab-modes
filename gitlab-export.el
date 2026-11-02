@@ -42,9 +42,11 @@
 ;; `revert-buffer-function', so `revert-buffer' reads the source
 ;; again.
 ;;
-;; The command is the remap target of `js-json-mode' in both display
-;; base modes, so a key or a menu that runs the JSON major mode
-;; exports the view instead.
+;; The display base modes remap `js-json-mode' to the command, so a
+;; key or a menu that runs the JSON major mode exports the view
+;; instead.  That remap lives in `gitlab-mode.el', because an
+;; autoloaded display command loads the display layer and not this
+;; file.  This library installs no key.
 
 ;;; Code:
 
@@ -137,7 +139,7 @@ call.  A detail buffer exports one object and a list buffer exports
 one array, as the glab command that filled the buffer prints them.
 The command refuses a buffer without data, such as a job log.
 `revert-buffer' in the export buffer reads the source buffer again.
-Both display base modes remap `js-json-mode' to this command."
+The display base modes remap `js-json-mode' to this command."
   (interactive nil gitlab-detail-mode gitlab-list-mode)
   (unless (derived-mode-p 'gitlab-detail-mode 'gitlab-list-mode)
     (user-error "This buffer has no GitLab JSON data"))
@@ -147,9 +149,6 @@ Both display base modes remap `js-json-mode' to this command."
     (pop-to-buffer buffer)
     (goto-char (point-min))
     buffer))
-
-(define-key gitlab-detail-mode-map [remap js-json-mode] #'gitlab-export-json)
-(define-key gitlab-list-mode-map [remap js-json-mode] #'gitlab-export-json)
 
 (provide 'gitlab-export)
 
