@@ -42,6 +42,14 @@
 ;; to pass --repo to every command; nil lets glab infer the project
 ;; from `default-directory'.
 ;;
+;; A repository names a project and its instance: PATH means
+;; `gitlab-cli-default-host', and PATH@HOST means another instance.  A
+;; URL and a Git URL are accepted as input and come back in that
+;; spelling, so one project has one name in a buffer, in a bookmark and
+;; in an Org link.  `gitlab-cli--repo-argument' turns the spelling back
+;; into what glab takes: PATH, or https://HOST/PATH for another
+;; instance.
+;;
 ;; JSON is decoded with symbol keys and the value :false for false,
 ;; so a null and a false stay distinct.  Empty output decodes to nil.
 ;; A non-zero exit status signals `gitlab-cli-error' with the stderr
@@ -112,6 +120,89 @@ shows remote data and not a file."
                  (directory :tag "Directory"))
   :group 'gitlab)
 
+(defcustom gitlab-cli-default-host "gitlab.com"
+  "GitLab instance that a project path without a host belongs to.
+A repository string covers both a project and its instance, so a
+display buffer of another instance never reuses the buffer of this
+one.  The spelling is PATH for this instance and PATH@HOST for
+another one.  A URL or a Git URL is accepted as input and always
+comes back in that spelling."
+  :type 'string
+  :group 'gitlab)
+
+;;; Repository identity
+
+(defun gitlab-cli--split-url (repository)
+  "Return a cons of HOST and PATH parsed from a URL REPOSITORY.
+Return nil when REPOSITORY is not a URL.  The function knows the
+form with a scheme, such as https://host/path, and the scp form,
+such as git@host:path."
+  (cond
+   ((string-match
+     "\\`[[:alpha:]][[:alnum:]+.-]*://\\(?:[^@/]+@\\)?\\([^/:]+\\)\\(?::[0-9]+\\)?/\\(.+\\)\\'"
+     repository)
+    (cons (match-string 1 repository) (match-string 2 repository)))
+   ((string-match "\\`\\(?:[^@/:]+@\\)?\\([^/:]+\\):\\(.+\\)\\'" repository)
+    (cons (match-string 1 repository) (match-string 2 repository)))))
+
+(defun gitlab-cli-repository-split (repository)
+  "Return a cons of HOST and PATH of REPOSITORY.
+REPOSITORY is PATH, PATH@HOST, or a URL such as
+https://gitlab.example.com/group/project.git or
+git@gitlab.example.com:group/project.git.  HOST is nil when the
+text names no host or names `gitlab-cli-default-host', so the
+default instance stays out of buffer names and out of the glab
+arguments.  PATH carries no surrounding slash and no .git suffix."
+  (let ((text (and repository (string-trim repository))))
+    (if (or (null text) (string-empty-p text))
+        (cons nil nil)
+      (let* ((url (gitlab-cli--split-url text))
+             (at (and (not url) (cl-search "@" text :from-end t)))
+             (host (or (car url) (and at (substring text (1+ at)))))
+             (path (or (cdr url) (if at (substring text 0 at) text)))
+             (path (string-trim path "/+" "/+"))
+             (path (if (string-suffix-p ".git" path)
+                       (substring path 0 (- (length path) 4))
+                     path)))
+        (when (and host (string-match "\\`\\([^:]+\\)\\(?::[0-9]+\\)?\\'" host))
+          (setq host (match-string 1 host)))
+        (cons (if (or (null host)
+                      (string-empty-p host)
+                      (string-equal-ignore-case host gitlab-cli-default-host))
+                  nil
+                (downcase host))
+              (string-trim path "/+" "/+"))))))
+
+(defun gitlab-cli-repository-path (repository)
+  "Return the project path of REPOSITORY, or nil."
+  (cdr (gitlab-cli-repository-split repository)))
+
+(defun gitlab-cli-repository-host (repository)
+  "Return the instance host of REPOSITORY, or nil for the default."
+  (car (gitlab-cli-repository-split repository)))
+
+(defun gitlab-cli-repository-normalize (repository)
+  "Return REPOSITORY as PATH or PATH@HOST, or nil.
+The value names the project and its instance, so a prompt, a
+bookmark and a buffer name spell one project one way.  A URL, a Git
+URL and a bare path all come back in that spelling."
+  (let* ((split (gitlab-cli-repository-split repository))
+         (host (car split))
+         (path (cdr split)))
+    (cond
+     ((and path host) (concat path "@" host))
+     (path path)
+     (host (concat "@" host)))))
+
+(defun gitlab-cli--repo-argument (repository)
+  "Return the --repo value of REPOSITORY.
+glab selects another instance from a URL, so a host-carrying
+project becomes https://HOST/PATH."
+  (let* ((split (gitlab-cli-repository-split repository))
+         (host (car split))
+         (path (cdr split)))
+    (if host (format "https://%s/%s" host path) path)))
+
 ;;; Commands
 
 (defun gitlab-cli-directory-of (&optional buffer)
@@ -155,22 +246,29 @@ GLAB_NO_PROMPT stops glab from waiting for a terminal answer."
 
 (defun gitlab-cli--repository-arguments (arguments)
   "Append the repository selection to ARGUMENTS when one is set.
-A caller that already names --repo or -R keeps its own value."
-  (if (and gitlab-repository
-           (not (gitlab-cli--repository-named-p arguments)))
-      (append arguments (list "--repo" gitlab-repository))
-    arguments))
+A caller that already names --repo or -R keeps its own value.  The
+value comes from `gitlab-cli--repo-argument', so a project of a
+second instance selects that instance.  A repository that names no
+project appends nothing."
+  (let ((repository (and gitlab-repository
+                         (gitlab-cli--repo-argument gitlab-repository))))
+    (if (and repository
+             (not (string-empty-p repository))
+             (not (gitlab-cli--repository-named-p arguments)))
+        (append arguments (list "--repo" repository))
+      arguments)))
 
 (defun gitlab-cli-project-endpoint (suffix)
   "Return a GitLab API endpoint for SUFFIX in the current project.
 SUFFIX is the part after the project, for example
 \"merge_requests/12/notes\".  A set `gitlab-repository' is URL
-encoded, because a namespace path holds slashes.  A nil value
-uses the glab placeholder :id, which glab expands from the
+encoded, because a namespace path holds slashes; the host of the
+project stays out, because the API request carries it.  A nil
+value uses the glab placeholder :id, which glab expands from the
 current repository."
   (format "projects/%s/%s"
-          (if gitlab-repository
-              (url-hexify-string gitlab-repository)
+          (if-let* ((path (gitlab-cli-repository-path gitlab-repository)))
+              (url-hexify-string path)
             ":id")
           suffix))
 

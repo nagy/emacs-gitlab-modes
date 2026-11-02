@@ -41,6 +41,13 @@
 ;; The layer never runs a command that writes to the repository.  A
 ;; missing ref, a missing object or a command failure returns nil, so a
 ;; display buffer shows no section instead of a signal.
+;;
+;; The file also reads the project context of a checkout, the project
+;; path and its instance host, from the URL of
+;; `gitlab-git-preferred-remote'.  The display layer names its buffers
+;; by that context, so two projects and two instances never share one
+;; buffer.  `gitlab-git-remote-context' reads only the remote, and
+;; `gitlab-git-context' lets a set `gitlab-repository' win over it.
 
 ;;; Code:
 
@@ -50,6 +57,8 @@
 (require 'gitlab-data)
 
 (declare-function magit-diff-range "magit-diff" (rev-or-range &optional args files))
+(declare-function magit-get-all "magit-git" (&rest keys))
+(declare-function magit-list-remotes "magit-git" ())
 (declare-function magit-log-other "magit-log" (revs &optional args files))
 (declare-function magit-show-commit "magit-diff" (rev &optional args files module))
 
@@ -71,25 +80,46 @@ A larger number keeps a very long merge request inside one buffer."
   :type 'integer
   :group 'gitlab)
 
+(defcustom gitlab-git-preferred-remote "origin"
+  "Remote whose URL names the project of a checkout.
+The display layer reads this URL to name its buffers by project and
+instance.  A repository without this remote uses its first remote
+instead."
+  :type 'string
+  :group 'gitlab)
+
+(defcustom gitlab-git-context-from-git t
+  "Whether a display buffer takes its project from the Git remote.
+When non-nil, a project whose `gitlab-repository' is nil reads the
+URL of `gitlab-git-preferred-remote', so two projects and two
+instances never share one buffer.  A nil value leaves the buffer
+name without a project, and glab infers the project from the
+directory, as an earlier version did."
+  :type 'boolean
+  :group 'gitlab)
+
 ;;; Running Git
 
-(defun gitlab-git--run (arguments)
+(defun gitlab-git--run (arguments &optional directory)
   "Run git with ARGUMENTS and return its standard output.
-The command runs in `gitlab-cli-directory-of'.  Return nil when git
-exits with a non-zero status, so a missing ref never signals."
-  (let ((default-directory (gitlab-cli-directory-of))
+The command runs in DIRECTORY, or in `gitlab-cli-directory-of'.
+Return nil when git exits with a non-zero status, so a missing ref
+never signals."
+  (let ((default-directory (or directory (gitlab-cli-directory-of)))
         (coding-system-for-read 'utf-8-unix)
         (coding-system-for-write 'utf-8-unix)
         (process-environment (cons "GIT_OPTIONAL_LOCKS=0"
                                    process-environment)))
-    (with-temp-buffer
-      (when (eq 0 (apply #'process-file gitlab-git-program nil t nil
-                         arguments))
-        (buffer-string)))))
+    (when (file-directory-p default-directory)
+      (with-temp-buffer
+        (when (eq 0 (apply #'process-file gitlab-git-program nil t nil
+                           arguments))
+          (buffer-string))))))
 
-(defun gitlab-git--lines (arguments)
-  "Run git with ARGUMENTS and return its output as a list of lines."
-  (when-let* ((output (gitlab-git--run arguments)))
+(defun gitlab-git--lines (arguments &optional directory)
+  "Run git with ARGUMENTS and return its output as a list of lines.
+The command runs in DIRECTORY, or in `gitlab-cli-directory-of'."
+  (when-let* ((output (gitlab-git--run arguments directory)))
     (split-string output "\n" t)))
 
 (defun gitlab-git--rev (revision)
@@ -107,6 +137,75 @@ part of a ref name and of a git argument."
     (unless (string-match-p "\\`[0-9]+\\'" text)
       (user-error "Invalid merge request IID: %s" iid))
     text))
+
+;;; Remotes and project context
+
+(defun gitlab-git--magit-p ()
+  "Return non-nil when Magit supplies the repository reads.
+The function asks only a Magit that the user already loaded with
+`gitlab-git-use-magit' left on, because a display command reads one
+Git config value and must not load the whole Magit library for it.
+A plain `git' call gives the same answer, so the fallback costs
+nothing but one process."
+  (and gitlab-git-use-magit
+       (featurep 'magit)
+       (fboundp 'magit-get-all)))
+
+(defun gitlab-git-remotes (&optional directory)
+  "Return the names of the Git remotes of DIRECTORY."
+  (let ((directory (file-name-as-directory
+                    (or directory (gitlab-cli-directory-of)))))
+    (if (gitlab-git--magit-p)
+        (let ((default-directory directory))
+          (ignore-errors (magit-list-remotes)))
+      (gitlab-git--lines (list "remote") directory))))
+
+(defun gitlab-git-remote-url (remote &optional directory)
+  "Return the first URL of REMOTE in DIRECTORY, or nil."
+  (let ((directory (file-name-as-directory
+                    (or directory (gitlab-cli-directory-of)))))
+    (when (member remote (gitlab-git-remotes directory))
+      (car
+       (if (gitlab-git--magit-p)
+           (let ((default-directory directory))
+             (ignore-errors (magit-get-all "remote" remote "url")))
+         (gitlab-git--lines
+          (list "config" "--get-all" (format "remote.%s.url" remote))
+          directory))))))
+
+(defun gitlab-git--remote-url-p (url)
+  "Return non-nil when URL names a remote server, not a local path."
+  (and (stringp url)
+       (not (string-prefix-p "file://" url))
+       (or (string-match-p "\\`[[:alpha:]][[:alnum:]+.-]*://" url)
+           (string-match-p "\\`[^/]+:" url))))
+
+(defun gitlab-git-remote-context (&optional directory)
+  "Return the project context of the checkout of DIRECTORY.
+The value comes from the URL of `gitlab-git-preferred-remote', or
+from the first remote when the preferred one is absent.  It uses
+the PATH or PATH@HOST spelling of
+`gitlab-cli-repository-normalize'.  Return nil outside a Git
+repository, without a remote, and for a remote that names a local
+path."
+  (let* ((directory (or directory (gitlab-cli-directory-of)))
+         (names (gitlab-git-remotes directory))
+         (remote (if (member gitlab-git-preferred-remote names)
+                     gitlab-git-preferred-remote
+                   (car names)))
+         (url (and remote (gitlab-git-remote-url remote directory))))
+    (when (gitlab-git--remote-url-p url)
+      (gitlab-cli-repository-normalize url))))
+
+(defun gitlab-git-context (&optional directory)
+  "Return the project context of DIRECTORY, or nil.
+A set `gitlab-repository' names the project and wins over the Git
+remote, which the function reads only with
+`gitlab-git-context-from-git'.  The value uses the PATH or PATH@HOST
+spelling, so buffer names, bookmarks and Org links agree."
+  (or (gitlab-cli-repository-normalize gitlab-repository)
+      (and gitlab-git-context-from-git
+           (gitlab-git-remote-context directory))))
 
 ;;; Merge request refs
 

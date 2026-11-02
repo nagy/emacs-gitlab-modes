@@ -27,8 +27,12 @@
   (defvar gitlab-auto-revert nil)
   (defvar gitlab-cache-ttl nil)
   (defvar gitlab-cli-timeout nil)
+  ;; The value repeats the defcustom default, because a valueless
+  ;; `defvar' would leave the variable void for an interpreted load.
+  (defvar gitlab-git-context-from-git t)
   (defvar gitlab-program nil)
   (defvar gitlab-refresh-visible-only nil)
+  (defvar gitlab-repositories nil)
   (defvar gitlab-repository nil))
 
 (defvar gitlab-test--directory
@@ -40,13 +44,18 @@
   "Absolute path of the offline glab stand-in.")
 
 (defmacro gitlab-test-with-environment (&rest body)
-  "Run BODY with the mock glab program and no automatic refresh."
+  "Run BODY with the mock glab program and no automatic refresh.
+The macro also turns off `gitlab-git-context-from-git', so a test
+runs in one project unless it asks for the Git remote on purpose,
+and it empties the session list of `gitlab-repositories'."
   `(let ((gitlab-program gitlab-test--program)
          (gitlab-repository nil)
          (gitlab-auto-revert nil)
          (gitlab-refresh-visible-only nil)
          (gitlab-cache-ttl nil)
-         (gitlab-cli-timeout 10))
+         (gitlab-cli-timeout 10)
+         (gitlab-git-context-from-git nil)
+         (gitlab-repositories nil))
      (when (fboundp 'gitlab-cache-clear)
        (gitlab-cache-clear))
      ,@body))

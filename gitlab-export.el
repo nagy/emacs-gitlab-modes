@@ -100,7 +100,9 @@ read-only and unmodified."
   (with-current-buffer buffer
     (funcall (gitlab-export--mode))
     (gitlab--use-project-directory
-     (with-current-buffer source (gitlab-cli-directory-of)))
+     (with-current-buffer source (gitlab-cli-directory-of))
+     (with-current-buffer source
+       (gitlab-cli-repository-normalize gitlab-repository)))
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert text)

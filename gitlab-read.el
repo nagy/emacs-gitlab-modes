@@ -34,12 +34,38 @@
 ;; A prompt always accepts an ID typed by hand.  Completion is a
 ;; convenience, not a requirement, so a project whose list is too
 ;; large to fetch still works.
+;;
+;; `gitlab-read-repository' is the other direction: it reads the project
+;; itself, for a directory that names no project.  It completes from
+;; `gitlab-repositories', the projects of this session, and from the
+;; project of the current directory, and it answers in the PATH or
+;; PATH@HOST spelling.
 
 ;;; Code:
 
 (require 'cl-lib)
 (require 'subr-x)
 (require 'gitlab-data)
+(require 'gitlab-git)
+
+(defvar gitlab-read-repository-history nil
+  "History of the repository prompts.")
+
+;;;###autoload
+(defun gitlab-read-repository (&optional prompt)
+  "Read a GitLab project and return it as PATH or PATH@HOST.
+PROMPT defaults to \"Repository: \".  Completion offers the
+projects that this session displayed, from `gitlab-repositories',
+and the project of the current directory, which is also the
+default answer.  A project of another instance reads PATH@HOST, so
+one prompt reaches every instance the user can authenticate to."
+  (let* ((current (gitlab-git-context))
+         (candidates (delete-dups (delq nil (cons current gitlab-repositories))))
+         (input (completing-read (or prompt "Repository: ")
+                                 candidates nil nil nil
+                                 'gitlab-read-repository-history
+                                 current)))
+    (gitlab-cli-repository-normalize input)))
 
 (defun gitlab-read--strip (text prefixes)
   "Return TEXT without a leading character from PREFIXES."

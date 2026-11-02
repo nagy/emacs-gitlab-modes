@@ -183,6 +183,25 @@ the caller reads as nil."
      (t (cons (substring text 0 position)
               (substring text (+ position (length sign))))))))
 
+;;; Known projects
+
+(defvar gitlab-repositories nil
+  "Projects that this session displayed, newest first.
+A display buffer adds its own context, so a later repository
+prompt offers it.  The value uses the PATH or PATH@HOST spelling of
+`gitlab-cli-repository-normalize'.  Set this variable to offer your
+own projects from the first prompt of a session.")
+
+(defun gitlab--remember-repository (repository)
+  "Add REPOSITORY to the front of `gitlab-repositories'.
+Return the normalized value, or nil for an empty REPOSITORY, so a
+display command can call this with its own context."
+  (let ((repository (gitlab-cli-repository-normalize repository)))
+    (when repository
+      (setq gitlab-repositories
+            (cons repository (delete repository gitlab-repositories))))
+    repository))
+
 ;;; Cache
 
 (defvar gitlab--cache (make-hash-table :test #'equal)
@@ -483,20 +502,25 @@ object."
   "Return a GitLab web URL for KIND and ID, or nil.
 KIND is `merge-request', `pipeline' or `job'.  REPOSITORY
 defaults to `gitlab-repository', because the URL needs the project
-path; display buffers prefer the web_url field of their own data."
-  (let ((repository (or repository gitlab-repository)))
-    (when (and repository (not (string-empty-p repository)))
-      (let ((base (string-trim-right gitlab-web-base-url "/"))
-            (path (pcase kind
-                    ('merge-request "merge_requests")
-                    ('pipeline "pipelines")
-                    ('job "jobs")
-                    (_ (signal 'gitlab-error
-                               (list (format "Unknown GitLab kind: %S"
-                                             kind)))))))
-        (format "%s/%s/-/%s/%s" base
-                (string-trim repository "/+" "/+")
-                path
+path; display buffers prefer the web_url field of their own data.
+A repository of another instance makes the URL use that instance,
+and `gitlab-web-base-url' serves the default one."
+  (let* ((repository (or repository gitlab-repository))
+         (split (gitlab-cli-repository-split repository))
+         (host (car split))
+         (path (cdr split)))
+    (when (and path (not (string-empty-p path)))
+      (let ((base (if host
+                      (format "https://%s" host)
+                    (string-trim-right gitlab-web-base-url "/")))
+            (section (pcase kind
+                       ('merge-request "merge_requests")
+                       ('pipeline "pipelines")
+                       ('job "jobs")
+                       (_ (signal 'gitlab-error
+                                  (list (format "Unknown GitLab kind: %S"
+                                                kind)))))))
+        (format "%s/%s/-/%s/%s" base path section
                 (gitlab-data-id-string id))))))
 
 (provide 'gitlab-data)

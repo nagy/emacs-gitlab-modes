@@ -51,11 +51,15 @@
 (require 'gitlab-data)
 (require 'gitlab-git)
 (require 'gitlab-mode)
-
-(declare-function gitlab-read-merge-request-iid "gitlab-read" (&optional prompt))
+(require 'gitlab-read)
 
 (defcustom gitlab-merge-request-list-buffer-name "*GitLab Merge Requests*"
-  "Buffer name of the merge request list."
+  "Buffer name of the merge request list.
+The display layer inserts the project context before the closing
+star, so the list of each project and of each instance has its own
+buffer, for example \"*GitLab Merge Requests group/project*\".  The
+buffer lookup reads the buffer-local identity and not the name, so
+a renamed buffer stays reachable."
   :type 'string
   :group 'gitlab)
 
@@ -157,16 +161,21 @@ IID and w opens its web page."
 (defun gitlab-list-merge-requests (&optional all)
   "Display the merge requests of the current project.
 With prefix argument ALL, include closed and merged requests by
-adding --all to the glab arguments."
+adding --all to the glab arguments.  A directory without a project
+context prompts for the project, because neither a Git remote nor
+`gitlab-repository' names one."
   (interactive "P")
-  (let ((arguments (if all
+  (let ((repository (unless (gitlab-git-context)
+                      (gitlab-read-repository)))
+        (arguments (if all
                        (cons "--all" gitlab-merge-request-list-arguments)
                      gitlab-merge-request-list-arguments)))
-    (gitlab-list--show
-     gitlab-merge-request-list-buffer-name
-     #'gitlab-merge-request-list-mode
-     (lambda ()
-       (setq-local gitlab-list--arguments arguments)))))
+    (let ((gitlab-repository (or repository gitlab-repository)))
+      (gitlab-list--show
+       gitlab-merge-request-list-buffer-name
+       #'gitlab-merge-request-list-mode
+       (lambda ()
+         (setq-local gitlab-list--arguments arguments))))))
 
 ;;; Detail
 
@@ -189,8 +198,11 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
 (defun gitlab-merge-request--insert-commits (data)
   "Insert the local commits of DATA below the merge request fields.
 Every line carries `gitlab-commit-sha', so RET opens the commit.
-The function inserts nothing without a local merge request ref."
-  (when gitlab-merge-request-show-commits
+The function inserts nothing without a local merge request ref, and
+nothing for a buffer whose project is not the local checkout,
+because a ref of another project would be wrong."
+  (when (and gitlab-merge-request-show-commits
+             (gitlab--local-checkout-p))
     (when-let* ((info (gitlab-git-merge-request-commits gitlab--id data)))
       (let ((inhibit-read-only t)
             (commits (plist-get info :commits))
@@ -307,10 +319,14 @@ Return nil without an active region or without a commit line."
   "Show the local changes of the current merge request.
 The view needs a fetched merge request ref.  With an active region
 over commit lines, the view covers only those commits.  Magit, when
-available, supplies the diff buffer and its Ediff command on E."
+available, supplies the diff buffer and its Ediff command on E.
+Signal a user error in a buffer of another project, because the
+local checkout holds no ref of that project."
   (interactive)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
+  (unless (gitlab--local-checkout-p)
+    (user-error "No local checkout of %s" gitlab--context))
   (gitlab-git-show-changes gitlab--id gitlab--last-data
                            (gitlab-merge-request--region-commits)))
 
@@ -319,10 +335,13 @@ available, supplies the diff buffer and its Ediff command on E."
 The log holds only the commits of the merge request.  With an
 active region over commit lines, the log covers only those
 commits.  Magit, when available, supplies the log buffer and its
-Ediff commands."
+Ediff commands.  Signal a user error in a buffer of another
+project, because the local checkout holds no ref of that project."
   (interactive)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
+  (unless (gitlab--local-checkout-p)
+    (user-error "No local checkout of %s" gitlab--context))
   (gitlab-git-show-log gitlab--id gitlab--last-data
                        (gitlab-merge-request--region-commits)))
 
@@ -333,21 +352,26 @@ Ediff commands."
 (define-key gitlab-merge-request-mode-map (kbd "l")
   #'gitlab-merge-request-show-log)
 
-(defun gitlab-merge-request--buffer-name (iid)
-  "Return the detail buffer name for merge request IID."
-  (if gitlab-repository
-      (format "*GitLab MR %s!%s*" gitlab-repository iid)
+(defun gitlab-merge-request--buffer-name (iid &optional context)
+  "Return the detail buffer name for merge request IID.
+CONTEXT is the project identity of the display buffer, nil when the
+project is unknown."
+  (if context
+      (format "*GitLab MR %s!%s*" context iid)
     (format "*GitLab MR !%s*" iid)))
 
 ;;;###autoload
 (defun gitlab-display-merge-request (iid)
   "Display the merge request with IID in its own buffer.
-IID is the project-scoped number, with or without a leading !."
+IID is the project-scoped number, with or without a leading !.
+The buffer belongs to the project of the current directory or to
+the set `gitlab-repository', so a merge request of another project
+opens in its own buffer."
   (interactive (list (gitlab-read-merge-request-iid)))
   (let ((iid (gitlab-data-id-string iid)))
     (when (string-prefix-p "!" iid)
       (setq iid (substring iid 1)))
-    (gitlab--show-detail (gitlab-merge-request--buffer-name iid)
+    (gitlab--show-detail #'gitlab-merge-request--buffer-name
                          #'gitlab-merge-request-mode
                          iid)))
 

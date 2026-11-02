@@ -134,7 +134,7 @@ move the window configuration."
              (iid (gitlab-xref--merge-request-iid (cdr parts)))
              (gitlab-repository (or (car parts) gitlab-repository))
              (buffer (gitlab--prepare-detail
-                      (gitlab-merge-request--buffer-name iid)
+                      #'gitlab-merge-request--buffer-name
                       #'gitlab-merge-request-mode iid)))
         (list (gitlab-xref--buffer-item
                (format "Merge request !%s" iid) buffer))))
@@ -144,7 +144,7 @@ move the window configuration."
              (id (cdr parts))
              (gitlab-repository (or (car parts) gitlab-repository))
              (buffer (gitlab--prepare-detail
-                      (gitlab-pipeline--buffer-name id)
+                      #'gitlab-pipeline--buffer-name
                       #'gitlab-pipeline-mode id)))
         (list (gitlab-xref--buffer-item
                (format "Pipeline #%s" id) buffer))))

@@ -20,11 +20,11 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 |---|---|
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
-| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
-| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
+| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
+| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the bookmark records and `gitlab-bookmark-jump`. |
-| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`.  The prompts read the cached lists and accept a typed ID. |
+| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands and the notes command. |
 | `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer, the fallback encoder and the `js-json-mode` remaps of both display base modes. |
@@ -55,7 +55,8 @@ Without Nix:
 ```sh
 emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helpers.el \
   -l gitlab-cli-tests.el -l gitlab-data-tests.el \
-  -l gitlab-mode-tests.el -l gitlab-merge-request-tests.el \
+  -l gitlab-context-tests.el -l gitlab-mode-tests.el \
+  -l gitlab-merge-request-tests.el \
   -l gitlab-git-tests.el -l gitlab-pipeline-tests.el \
   -l gitlab-export-tests.el \
   -l gitlab-read-tests.el -l gitlab-evil-tests.el -l ol-gitlab-tests.el \
@@ -222,26 +223,77 @@ without evil.  The suite never opens a network connection.
   call `gitlab--use-project-directory`,
   `gitlab--update-list-buffers-directory` and
   `(set-buffer-modified-p nil)`.
+- One project context names one project on one instance.  The context
+  is `PATH` for `gitlab-cli-default-host` and `PATH@HOST` for another
+  instance, and `gitlab-cli-repository-normalize` produces it from a
+  path, a `PATH@HOST` string, an HTTP URL or a Git URL.  Do not add a
+  second spelling: buffer names, `list-buffers-directory`, bookmarks,
+  Org links and xref identifiers all use this one.
+- The context comes from a set `gitlab-repository`, else from the URL of
+  `gitlab-git-preferred-remote` of the project root when
+  `gitlab-git-context-from-git` is non-nil.  `gitlab-git-context`
+  applies both steps, `gitlab-git-remote-context` reads only the Git
+  remote, and `gitlab-git-remote-url-p` rejects a remote that names a
+  local path.  A remote read prefers the Magit functions when Magit is
+  already loaded, because loading all of Magit for one `git config` read
+  is not worth it, and it falls back to `git` otherwise.
+- The context names the buffer.  A detail name puts the context in
+  front of the sigil (`*GitLab MR group/project!12*`), and a list name
+  appends it (`*GitLab Merge Requests group/project*`).  A resource
+  file therefore passes a *namer* to `gitlab--prepare-detail`, a
+  function of ID and context that returns the name, and
+  `gitlab-list--show` takes a base name that
+  `gitlab--contextual-name` completes.  A new kind adds one namer next
+  to its buffer-name defcustom.
+- The name is a convenience, not the identity.  A display buffer keeps
+  `gitlab--identity`, a list of its major mode, its object ID and its
+  context, and `gitlab--identity-buffer` finds an open buffer by that
+  list.  A user can rename a buffer to anything and the display command
+  still reuses it.  A new display path must set the identity through
+  the same place that sets the mode.
+- `gitlab--use-project-directory` takes an optional DIRECTORY and an
+  optional REPOSITORY.  Pass the value of the caller, because a dynamic
+  `let` of `gitlab-repository` loses to a buffer-local value of an
+  earlier display in the same buffer.  The helper sets
+  `default-directory`, `gitlab-cli-directory` (glab must run in the
+  project), `gitlab-repository`, `gitlab--context` and
+  `gitlab--context-local`, then remembers the context in
+  `gitlab-repositories`.  Call it in `gitlab--prepare-detail`,
+  `gitlab-list--show` and `gitlab-pipeline--prepare-job-log`, so a
+  second display of the same buffer never keeps an old project.
+- `gitlab--context-local` is non-nil when the context equals the remote
+  of the buffer directory.  `gitlab--local-checkout-p` is the guard of
+  the Git views: it is non-nil for a buffer without a context too,
+  because that buffer means the directory the user opened it from.  A
+  buffer of another project inserts no commit section, and `d` and `l`
+  signal a user error instead of reading the refs of the wrong
+  repository.
+- The list commands prompt through `gitlab-read-repository` when
+  `gitlab-git-context` names no project, so the package works outside a
+  checkout.  The prompt completes from `gitlab-repositories` and from
+  the current context, and its answer binds `gitlab-repository` around
+  the display.  Do not prompt when a context exists: the C-u prefix
+  already carries `--all` for merge requests and the extra glab flags of
+  a pipeline list.
+- `gitlab-cli--repository-arguments` passes `PATH` to `--repo` for the
+  default instance and `https://HOST/PATH` for another one, because glab
+  selects an instance from a URL.  `gitlab-cli-project-endpoint`
+  URL-encodes the path alone, so the host never enters an API endpoint.
+  `gitlab-web-url` builds `https://HOST` from the context and keeps
+  `gitlab-web-base-url` for the default instance.
 - `gitlab--update-list-buffers-directory` sets the buffer-local
   `list-buffers-directory` to `gitlab-data-identifier` of the project
   and the object ID, so `list-buffers` shows `group/project!12` for a
   merge request, `#` for a pipeline and `&` for a job log.  A list
-  buffer has no object ID and gets the project path alone.
-- A display buffer keeps the project root of the buffer that opened it
-  in `gitlab-cli-directory`, because glab must run in the project.
-  `gitlab--use-project-directory` sets both variables from the
-  project.el answer.  Call it in `gitlab--prepare-detail`,
-  `gitlab-list--show` and `gitlab-pipeline--prepare-job-log`, so a
-  second display of the same buffer never captures an old project.
-  The same helper captures `gitlab-repository` buffer-locally: a
-  bookmark jump and an xref definition bind another project around the
-  display command, and a later auto refresh must read that project
-  again.  It kills the previous buffer-local value first, so the
-  capture reads the binding of the caller and not the value of an
-  earlier display in the same buffer.
+  buffer has no object ID and gets the project context alone.  The
+  project comes from `gitlab--identifier-repository`, which reads
+  `gitlab-git-context`, so a context from the Git remote reaches
+  bookmarks and Org links too.
 - `gitlab--prepare-detail` and `gitlab-pipeline--prepare-job-log`
   return a buffer without displaying it.  The xref backend uses them, so
-  a definition never moves the window configuration.
+  a definition never moves the window configuration.  Both take the
+  context of the caller, so a definition of another project opens the
+  buffer of that project.
 - The renderers attach text properties.  `gitlab-field` names a field
   line.  `gitlab-pipeline-id`, `gitlab-merge-request-iid`,
   `gitlab-job-id` and `gitlab-url` are navigation targets.

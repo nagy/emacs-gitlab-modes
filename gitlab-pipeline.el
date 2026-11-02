@@ -66,13 +66,17 @@
 (require 'subr-x)
 (require 'gitlab-data)
 (require 'gitlab-mode)
+(require 'gitlab-read)
 
-(declare-function gitlab-read-pipeline-id "gitlab-read" (&optional prompt))
-(declare-function gitlab-read-job-id "gitlab-read" (&optional prompt))
 (declare-function gitlab-cli--insert-chunk "gitlab-cli" (text))
 
 (defcustom gitlab-pipeline-list-buffer-name "*GitLab Pipelines*"
-  "Buffer name of the pipeline list."
+  "Buffer name of the pipeline list.
+The display layer inserts the project context before the closing
+star, so the list of each project and of each instance has its own
+buffer, for example \"*GitLab Pipelines group/project*\".  The buffer
+lookup reads the buffer-local identity and not the name, so a
+renamed buffer stays reachable."
   :type 'string
   :group 'gitlab)
 
@@ -152,17 +156,22 @@ page."
   "Display the CI pipelines of the current project.
 ARGUMENTS holds extra glab flags.  Interactively, a prefix
 argument reads them.  The default flags come from
-`gitlab-pipeline-list-arguments'."
+`gitlab-pipeline-list-arguments'.  A directory without a project
+context prompts for the project, because neither a Git remote nor
+`gitlab-repository' names one."
   (interactive
    (list (when current-prefix-arg
            (split-string-and-unquote
             (read-string "Extra glab arguments: ")))))
-  (let ((arguments (or arguments gitlab-pipeline-list-arguments)))
-    (gitlab-list--show
-     gitlab-pipeline-list-buffer-name
-     #'gitlab-pipeline-list-mode
-     (lambda ()
-       (setq-local gitlab-list--arguments arguments)))))
+  (let ((arguments (or arguments gitlab-pipeline-list-arguments))
+        (repository (unless (gitlab-git-context)
+                      (gitlab-read-repository))))
+    (let ((gitlab-repository (or repository gitlab-repository)))
+      (gitlab-list--show
+       gitlab-pipeline-list-buffer-name
+       #'gitlab-pipeline-list-mode
+       (lambda ()
+         (setq-local gitlab-list--arguments arguments))))))
 
 ;;; Pipeline detail
 
@@ -260,18 +269,23 @@ pipeline and its jobs."
 (define-key gitlab-pipeline-mode-map (kbd "C-c C-j")
   #'gitlab-pipeline-open-job-at-point)
 
-(defun gitlab-pipeline--buffer-name (pipeline-id)
-  "Return the detail buffer name for PIPELINE-ID."
-  (if gitlab-repository
-      (format "*GitLab Pipeline %s#%s*" gitlab-repository pipeline-id)
+(defun gitlab-pipeline--buffer-name (pipeline-id &optional context)
+  "Return the detail buffer name for PIPELINE-ID.
+CONTEXT is the project identity of the display buffer, nil when the
+project is unknown."
+  (if context
+      (format "*GitLab Pipeline %s#%s*" context pipeline-id)
     (format "*GitLab Pipeline #%s*" pipeline-id)))
 
 ;;;###autoload
 (defun gitlab-display-pipeline (pipeline-id)
-  "Display the pipeline with PIPELINE-ID in its own buffer."
+  "Display the pipeline with PIPELINE-ID in its own buffer.
+The buffer belongs to the project of the current directory or to
+the set `gitlab-repository', so a pipeline of another project opens
+in its own buffer."
   (interactive (list (gitlab-read-pipeline-id)))
   (let ((id (gitlab-data-id-string pipeline-id)))
-    (gitlab--show-detail (gitlab-pipeline--buffer-name id)
+    (gitlab--show-detail #'gitlab-pipeline--buffer-name
                          #'gitlab-pipeline-mode
                          id)))
 
@@ -699,25 +713,39 @@ buffer deletes the process."
 (define-key gitlab-job-log-mode-map [remap dired-up-directory]
   #'gitlab-go-to-parent)
 
+(defun gitlab-pipeline--job-log-buffer-name (job-id context)
+  "Return the job log buffer name of JOB-ID in CONTEXT."
+  (if context
+      (format "*GitLab Job %s&%s*" context job-id)
+    (format "*GitLab Job %s*" job-id)))
+
 (defun gitlab-pipeline--prepare-job-log (job-id &optional name pipeline-id)
   "Prepare the job log buffer of JOB-ID and return it.
 NAME is the optional job name for the header line.  PIPELINE-ID is
 the optional ID of the pipeline that holds the job, so the parent
 command costs no request.  The function captures the directory in
 which glab must run, starts `glab ci trace JOB-ID' and does not
-display the buffer."
+display the buffer.  An open job log of the same job and project
+wins, whatever its current name is."
   (let* ((directory (gitlab-cli-directory-of))
+         (repository (gitlab-cli-repository-normalize gitlab-repository))
+         (context (gitlab-git-context directory))
          (id (gitlab-data-id-string job-id))
          (pipeline (and pipeline-id (gitlab-data-id-string pipeline-id)))
-         (buffer (get-buffer-create (format "*GitLab Job %s*" id))))
+         (buffer (or (gitlab--identity-buffer
+                      #'gitlab-job-log-mode id context)
+                     (get-buffer-create
+                      (generate-new-buffer-name
+                       (gitlab-pipeline--job-log-buffer-name id context))))))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (when (processp gitlab-job-log--process)
           (delete-process gitlab-job-log--process))))
     (with-current-buffer buffer
       (gitlab-job-log-mode)
-      (gitlab--use-project-directory directory)
+      (gitlab--use-project-directory directory repository)
       (setq-local gitlab--id id)
+      (setq-local gitlab--identity (list #'gitlab-job-log-mode id gitlab--context))
       (setq-local gitlab-job-log--name name)
       (setq-local gitlab-job-log--pipeline-id pipeline)
       (gitlab--update-list-buffers-directory)

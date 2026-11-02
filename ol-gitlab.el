@@ -69,10 +69,12 @@
                (list (format "Unknown GitLab link type: %S" type))))))
 
 (defun gitlab-org--link (type id)
-  "Return the Org link text of TYPE to ID in the current project."
+  "Return the Org link text of TYPE to ID in the current project.
+The project comes from `gitlab-git-context', so a buffer that takes
+its project from the Git remote writes a self-contained link."
   (format "%s:%s" type
           (gitlab-data-identifier (gitlab-org--kind type) id
-                                  gitlab-repository)))
+                                  (gitlab-git-context))))
 
 (defun gitlab-org--identifier (kind path)
   "Return a cons of REPOSITORY and ID that KIND and PATH name.

@@ -492,17 +492,25 @@
     (should (equal "1001" pipeline))))
 
 (ert-deftest gitlab-pipeline-detail-parent ()
-  "A pipeline detail buffer opens the pipeline list."
+  "A pipeline detail buffer opens the pipeline list.
+The list belongs to the project of the pipeline."
   (gitlab-test-with-environment
    (let ((buffer (generate-new-buffer "*GitLab pipeline parent test*")))
      (unwind-protect
-         (with-current-buffer buffer
-           (gitlab-pipeline-mode)
-           (setq-local gitlab--id "1001")
-           (gitlab-go-to-parent)
-           (should (derived-mode-p 'gitlab-pipeline-list-mode)))
+         (let ((gitlab-repository "group/project"))
+           (with-current-buffer buffer
+             (gitlab-pipeline-mode)
+             (setq-local gitlab--id "1001")
+             (gitlab-go-to-parent)
+             (should (derived-mode-p 'gitlab-pipeline-list-mode))
+             (should (equal "group/project"
+                            (buffer-local-value
+                             'gitlab--context (current-buffer))))))
        (kill-buffer buffer)
-       (when-let* ((list (get-buffer gitlab-pipeline-list-buffer-name)))
+       (when-let* ((list (get-buffer
+                          (gitlab--contextual-name
+                           gitlab-pipeline-list-buffer-name
+                           "group/project"))))
          (kill-buffer list))))))
 
 (provide 'gitlab-pipeline-tests)

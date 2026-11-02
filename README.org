@@ -30,6 +30,10 @@ installed package works without =glab= on =PATH=.
 | =gitlab-go-to-parent=                 | The list, or the pipeline, one level above.        |
 | =gitlab-export-json=                  | The glab JSON answer of the buffer, in one buffer.  |
 
+The list commands prompt for the project when the current directory
+names none.  Each project and each instance gets its own buffer, so
+several lists stay open side by side.
+
 The package installs as =gitlab-modes=, the same name as its entry
 library:
 
@@ -190,7 +194,7 @@ A job log restarts its trace, because a trace streams and has no
 snapshot.  =bookmark-bmenu= shows the GitLab type in its type column.
 
 A record stores the object as an identifier.  The identifier holds the
-project path and a sigil:
+project context and a sigil:
 
 | Kind          | Identifier           |
 |---------------+----------------------|
@@ -198,10 +202,11 @@ project path and a sigil:
 | Pipeline      | =group/project#1001= |
 | Job           | =group/project&5001= |
 
-A record without a project keeps the bare ID and reads the project from
-=gitlab-repository= or from the directory of the jump.  An Org link and
-an xref identifier use the same text, so one syntax names one object
-everywhere.
+The identifier of another instance holds its host, for example
+=group/project@gitlab.example.com!12=.  A record without a project
+keeps the bare ID and reads the project from =gitlab-repository= or
+from the directory of the jump.  An Org link and an xref identifier
+use the same text, so one syntax names one object everywhere.
 
 * Automatic refresh
 
@@ -225,19 +230,64 @@ can arrive at any time.
 The fetch is asynchronous.  Unchanged data is not rendered again, so
 point and marks survive an automatic refresh that found no change.
 
-* Project selection
+* Projects and instances
 
-A nil =gitlab-repository= lets =glab= infer the project from the
-directory of the buffer that ran the command.  Set it to =OWNER/REPO=
-or a full namespace path to read another project.  A display buffer
-asks =project.el= for the project root of the buffer that opened it,
-and uses that root as =default-directory= and as
-=gitlab-cli-directory=.  glab therefore runs in the right project, and
+Every display buffer knows its project context: the project path and
+its instance host.  The package spells that context =PATH= for the
+default instance and =PATH@HOST= for another one.  A URL and a Git URL
+of a remote come back in that same spelling, so one project has one
+name everywhere.
+
+The context comes from two places, in this order:
+
+1. a set =gitlab-repository=, which names the project of the command;
+2. the URL of the =origin= remote of the project root, when
+   =gitlab-git-context-from-git= is on.
+
+A directory without a Git remote and without =gitlab-repository=
+prompts for the project before it displays a list, so the package
+works outside a checkout too.  The prompt completes from the projects
+this session displayed, which =gitlab-repositories= holds, and from
+the project of the current directory.
+
+The context names the buffer, so two projects and two instances never
+share one buffer:
+
+#+begin_example
+*GitLab Merge Requests group/project*
+*GitLab Merge Requests group/project@gitlab.example.com*
+*GitLab MR group/project!12*
+*GitLab MR group/project@gitlab.example.com!12*
+*GitLab Pipeline group/project#1001*
+*GitLab Job group/project&5001*
+#+end_example
+
+The host stays out of the name for =gitlab-cli-default-host=, which
+defaults to =gitlab.com=.  A project of another instance passes
+=https://HOST/PATH= to =glab --repo=, so one Emacs reaches every
+instance that =glab= can authenticate to.
+
+Buffer names are a convenience, not the identity.  Each display
+buffer keeps its mode, its object ID and its context in
+=gitlab--identity=, and a display command finds an open buffer by that
+identity.  Rename a buffer to anything you like and the command still
+opens it instead of creating a second one.
+
+=gitlab-repository= itself still selects the project for =glab= when
+it is set.  Set it buffer-locally only through a display command, so a
+bookmark jump or an xref definition of another project keeps that
+project on every later refresh.
+
+A display buffer asks =project.el= for the project root of the buffer
+that opened it, and uses that root as =default-directory= and as
+=gitlab-cli-directory=.  glab therefore runs in a real directory, and
 project commands in the display buffer see the same project too.
 
-The display buffer also keeps =gitlab-repository= buffer-locally.  A
-bookmark jump or an xref definition of another project therefore keeps
-that project on every later refresh.
+The Git views need the checkout of the displayed project.  A buffer
+whose context differs from the remote of its directory, for example a
+bookmark of another project without a local checkout, shows no commit
+section, and =d= and =l= signal a user error instead of reading the
+refs of the wrong repository.
 
 * Optional layers
 
@@ -277,9 +327,9 @@ A key with no evil command, such as =gr=, stays a plain key binding.
 
 The file registers =gitlab-mr:=, =gitlab-pipeline:= and =gitlab-job:=
 link types.  =org-store-link= in a display buffer produces the matching
-link.  HTML, markdown and LaTeX export write a web URL when
-=gitlab-repository= is set.  Every other backend writes the URL after
-the description text.
+link.  HTML, markdown and LaTeX export write a web URL when the
+project is known.  Every other backend writes the URL after the
+description text.
 
 A path names its project when it holds one, with the sigil of the
 bookmark identifier:
@@ -290,7 +340,9 @@ bookmark identifier:
 [[gitlab-job:group/project&5001][Log]]
 #+end_example
 
-A bare ID keeps its meaning and reads the project from
+A project of another instance carries its host, for example
+=group/project@gitlab.example.com!12=, so the export links to that
+instance.  A bare ID keeps its meaning and reads the project from
 =gitlab-repository= or from the buffer that opens the link.  A point on
 a job row of a pipeline buffer stores a =gitlab-job:= link to that job.
 
@@ -305,8 +357,8 @@ display buffer the text properties win, so a job row opens its log
 without a typed prefix.
 
 An identifier names its project when it holds one, for example
-=mr:group/project!12=.  Completion writes the project form when
-=gitlab-repository= is set.
+=mr:group/project!12=, and its instance when the project carries a
+host.  Completion writes the project form when the project is known.
 
 * Nix
 
@@ -327,6 +379,7 @@ emacs --batch -L . -L test -L "$EVIL" \
   -l gitlab-test-helpers.el \
   -l gitlab-cli-tests.el \
   -l gitlab-data-tests.el \
+  -l gitlab-context-tests.el \
   -l gitlab-mode-tests.el \
   -l gitlab-merge-request-tests.el \
   -l gitlab-pipeline-tests.el \

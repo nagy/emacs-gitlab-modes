@@ -32,7 +32,7 @@
   (gitlab-test-with-environment
    (let* ((gitlab-repository "group/project")
           (buffer (gitlab--prepare-detail
-                   "*GitLab list-buffers test*"
+                   (lambda (_id _context) "*GitLab list-buffers test*")
                    #'gitlab-merge-request-mode "12")))
      (unwind-protect
          (with-current-buffer buffer
@@ -143,17 +143,26 @@
     (should (eq 'gitlab-date (get-text-property 0 'face (aref row 6))))))
 
 (ert-deftest gitlab-merge-request-detail-parent ()
-  "A merge request detail buffer opens the merge request list."
+  "A merge request detail buffer opens the merge request list.
+The list belongs to the project of the merge request, so a merge
+request of another project opens the list of that project."
   (gitlab-test-with-environment
    (let ((buffer (generate-new-buffer "*GitLab MR parent test*")))
      (unwind-protect
-         (with-current-buffer buffer
-           (gitlab-merge-request-mode)
-           (setq-local gitlab--id "12")
-           (gitlab-go-to-parent)
-           (should (derived-mode-p 'gitlab-merge-request-list-mode)))
+         (let ((gitlab-repository "group/project"))
+           (with-current-buffer buffer
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12")
+             (gitlab-go-to-parent)
+             (should (derived-mode-p 'gitlab-merge-request-list-mode))
+             (should (equal "group/project"
+                            (buffer-local-value
+                             'gitlab--context (current-buffer))))))
        (kill-buffer buffer)
-       (when-let* ((list (get-buffer gitlab-merge-request-list-buffer-name)))
+       (when-let* ((list (get-buffer
+                          (gitlab--contextual-name
+                           gitlab-merge-request-list-buffer-name
+                           "group/project"))))
          (kill-buffer list))))))
 
 (provide 'gitlab-merge-request-tests)

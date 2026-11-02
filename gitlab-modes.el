@@ -48,6 +48,13 @@
 ;; path, or `gitlab-repository' to OWNER/REPO when the current
 ;; directory is not a Git checkout of the wanted project.
 ;;
+;; Each project and each instance has its own buffers.  A display
+;; buffer takes its context from the Git remote of the project root or
+;; from `gitlab-repository', and names itself by that context, so the
+;; merge request lists of two projects stay open side by side.  A
+;; directory without a project prompts for one before it displays a
+;; list.
+;;
 ;; A display buffer carries a bookmark record, so `C-x r m' saves the
 ;; object, its project and the point in the buffer, and a jump rebuilds
 ;; the buffer from the record.

@@ -259,7 +259,7 @@
                  ((symbol-function 'project-root)
                   (lambda (_project) "/some/project/")))
          (let ((buffer (gitlab--prepare-detail
-                        "*GitLab directory test*"
+                        (lambda (_id _context) "*GitLab directory test*")
                         #'gitlab-detail-mode "1")))
            (unwind-protect
                (with-current-buffer buffer
@@ -276,7 +276,8 @@
        (cl-letf (((symbol-function 'project-current)
                   (lambda (&rest _arguments) nil)))
          (let ((buffer (gitlab--prepare-detail
-                        "*GitLab directory fallback test*"
+                        (lambda (_id _context)
+                          "*GitLab directory fallback test*")
                         #'gitlab-detail-mode "1")))
            (unwind-protect
                (with-current-buffer buffer

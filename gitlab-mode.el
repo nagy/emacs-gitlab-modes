@@ -66,6 +66,14 @@
 ;; pipeline opens its list, a job log opens the pipeline that holds
 ;; the job.  A list buffer has no parent.  The detail and job log
 ;; keymaps remap `dired-jump' and `dired-up-directory' to it.
+;;
+;; Every display buffer knows its project context: the project path
+;; and the instance host, in the PATH or PATH@HOST spelling of
+;; `gitlab-cli-repository-normalize'.  The context names the buffer,
+;; so two projects and two instances never share one buffer.  The
+;; buffer-local `gitlab--identity' holds the mode, the object ID and
+;; the context, and a display command finds an open buffer by that
+;; identity, so a renamed buffer stays reachable.
 
 ;;; Code:
 
@@ -74,11 +82,13 @@
 (require 'browse-url)
 (require 'cl-lib)
 (require 'json)
+(require 'seq)
 (require 'subr-x)
 (require 'tabulated-list)
 (require 'thingatpt)
 (require 'gitlab-data)
 (require 'gitlab-error)
+(require 'gitlab-git)
 
 (declare-function gitlab-display-merge-request "gitlab-merge-request" (iid))
 (declare-function gitlab-git-show-commit "gitlab-git" (sha))
@@ -257,6 +267,23 @@ collection kind in KIND and nil in ID."
 (defvar-local gitlab--id nil
   "Identifier of the object in the current display buffer.")
 
+(defvar-local gitlab--context nil
+  "Project context of the current display buffer.
+The value is the project path, with @HOST when the project lives on
+another instance.  `gitlab--use-project-directory' sets it.  Buffer
+names and the identity lookup use it.")
+
+(defvar-local gitlab--context-local nil
+  "Non-nil when `gitlab--context' is the checkout of the buffer.
+A buffer of another project reads no local merge request ref, so
+the Git views stay out of the way.")
+
+(defvar-local gitlab--identity nil
+  "Identity of the current display buffer.
+A list of the major mode, the object ID and the project context.
+A display command compares it, so it finds an open buffer whatever
+the user renamed it to.")
+
 (defvar-local gitlab--target nil
   "Position target of the current display buffer, or nil.
 A cons of the symbol `field' and a field name, of `job' and a job
@@ -357,26 +384,61 @@ receives this value because a list buffer has no single ID.")
 
 ;;; Small helpers
 
-(defun gitlab--use-project-directory (&optional directory)
-  "Set the directory of the current display buffer to a project root.
-DIRECTORY defaults to `gitlab-cli-directory-of'.  The function
-sets both `default-directory' and the buffer-local
-`gitlab-cli-directory' to the project root that project.el
-reports, because glab must run in the project.  A directory that
-belongs to no project stays as it is.
+(defun gitlab--use-project-directory (&optional directory repository)
+  "Set the directory and the project context of the current buffer.
+DIRECTORY defaults to `gitlab-cli-directory-of', and REPOSITORY is
+the explicit project of the display, or nil to read the context of
+the directory.  The function sets both `default-directory' and the
+buffer-local `gitlab-cli-directory' to the project root that
+project.el reports, because glab must run in the project.  A
+directory that belongs to no project stays as it is.
 
-The function also captures `gitlab-repository' buffer-locally.  A
-bookmark jump or an xref definition binds another project around
-the display command, and a later auto refresh must read that
-project again.  A value of an earlier display in the same buffer
-is dropped first, so the capture sees the binding of the caller."
-  (let ((root (gitlab-cli--project-directory
-               (or directory (gitlab-cli-directory-of)))))
-    (kill-local-variable 'gitlab-repository)
-    (let ((repository gitlab-repository))
-      (setq-local default-directory root)
-      (setq-local gitlab-cli-directory root)
-      (setq-local gitlab-repository repository))))
+The buffer keeps REPOSITORY buffer-locally, so a later auto refresh
+reads the same project.  A bookmark jump and an xref definition
+take the project of their record, and a display of another project
+replaces the value.  Pass the value of the caller and not the value
+of an earlier display in the same buffer.
+
+The function also sets `gitlab--context', the project identity of
+the buffer, and remembers it in `gitlab-repositories'."
+  (let* ((root (gitlab-cli--project-directory
+                (or directory (gitlab-cli-directory-of))))
+         (repository (gitlab-cli-repository-normalize repository))
+         (remote (gitlab-git-remote-context root))
+         (context (or repository
+                      (and gitlab-git-context-from-git remote))))
+    (setq-local default-directory root)
+    (setq-local gitlab-cli-directory root)
+    (setq-local gitlab-repository repository)
+    (setq-local gitlab--context context)
+    (setq-local gitlab--context-local (and context (equal context remote)))
+    (gitlab--remember-repository context)))
+
+(defun gitlab--local-checkout-p ()
+  "Return non-nil when the buffer shows the local checkout.
+A display buffer without a project context keeps the old behavior
+and reads the local refs, because its project is the directory the
+user opened it from."
+  (or (null gitlab--context) gitlab--context-local))
+
+(defun gitlab--contextual-name (name context)
+  "Return NAME with CONTEXT before the closing star."
+  (cond
+   ((null context) name)
+   ((string-suffix-p "*" name)
+    (concat (substring name 0 -1) " " context "*"))
+   (t (concat name " " context "*"))))
+
+(defun gitlab--identity-buffer (mode id context)
+  "Return the display buffer of MODE, ID and CONTEXT, or nil.
+The function reads the buffer-local `gitlab--identity' of every
+buffer, so the name of a buffer does not matter and a renamed
+buffer stays reachable.  An indirect buffer never answers."
+  (seq-find (lambda (buffer)
+              (and (not (buffer-base-buffer buffer))
+                   (with-current-buffer buffer
+                     (equal gitlab--identity (list mode id context)))))
+            (buffer-list)))
 
 (defun gitlab--update-list-buffers-directory ()
   "Name the current buffer in `list-buffers-directory' by identifier.
@@ -901,7 +963,7 @@ each kind."
 (defun gitlab--init-display-buffer ()
   "Wire the current buffer into the asynchronous refresh pipeline."
   (gitlab--kill-pending)
-  (gitlab--use-project-directory)
+  (gitlab--use-project-directory nil gitlab-repository)
   (setq-local bookmark-make-record-function #'gitlab--bookmark-make-record)
   (when gitlab--pending-target
     (setq-local gitlab--target gitlab--pending-target))
@@ -948,19 +1010,28 @@ without blocking Emacs."
 
 (defun gitlab-list--show (buffer mode &optional setup)
   "Show the list BUFFER in MODE and refresh it.
-SETUP runs in the buffer before the fetch, so a display command
-can set the buffer-local arguments or the origin buffer."
-  (let ((origin (current-buffer))
-        (directory (gitlab-cli-directory-of))
-        (buffer (get-buffer-create buffer)))
-    (with-current-buffer buffer
+BUFFER is the name to use when no display buffer holds the
+collection yet; an open display buffer of the same MODE and project
+wins, whatever its current name is.  SETUP runs in the buffer
+before the fetch, so a display command can set the buffer-local
+arguments or the origin buffer."
+  (let* ((origin (current-buffer))
+         (directory (gitlab-cli-directory-of))
+         (repository (gitlab-cli-repository-normalize gitlab-repository))
+         (context (gitlab-git-context directory))
+         (target (or (gitlab--identity-buffer mode nil context)
+                     (get-buffer-create
+                      (generate-new-buffer-name
+                       (gitlab--contextual-name buffer context))))))
+    (with-current-buffer target
       (funcall mode)
       (setq-local gitlab--origin-buffer origin)
-      (gitlab--use-project-directory directory)
+      (gitlab--use-project-directory directory repository)
+      (setq-local gitlab--identity (list mode nil gitlab--context))
       (when setup (funcall setup))
       (gitlab--update-list-buffers-directory)
       (gitlab-list--refresh))
-    (pop-to-buffer buffer)))
+    (pop-to-buffer target)))
 
 (defun gitlab-list--refresh ()
   "Fetch fresh data for the current list buffer."
@@ -1144,9 +1215,11 @@ one syntax.")
   (intern (string-remove-suffix "-list" (symbol-name kind))))
 
 (defun gitlab--identifier-repository ()
-  "Return the project of the current buffer in identifier form."
-  (let ((repository (string-trim (or gitlab-repository "") "/+" "/+")))
-    (unless (string-empty-p repository) repository)))
+  "Return the project of the current buffer in identifier form.
+The explicit `gitlab-repository' and the context from the Git
+remote serve the same purpose here, so a bookmark and an Org link
+of a derived context carry the project too."
+  (gitlab-git-context))
 
 (defun gitlab--bookmark-location (kind id)
   "Return the Org link text of KIND with ID.
@@ -1274,27 +1347,38 @@ and has no snapshot."
 
 ;;; Detail display helper
 
-(defun gitlab--prepare-detail (buffer mode id)
-  "Prepare BUFFER in MODE for ID, start the fetch and return BUFFER.
-The function captures the current buffer as the origin and the
-directory in which glab must run, then does not display BUFFER."
-  (let ((origin (current-buffer))
-        (directory (gitlab-cli-directory-of))
-        (buffer (get-buffer-create buffer)))
-    (with-current-buffer buffer
+(defun gitlab--prepare-detail (name mode id)
+  "Prepare NAME in MODE for ID, start the fetch and return BUFFER.
+NAME is a function of ID and the project context that returns the
+buffer name.  An open display buffer of the same MODE, ID and
+context wins, whatever its current name is, so a renamed buffer
+stays in use.  The function captures the current buffer as the
+origin and the directory in which glab must run, then does not
+display the buffer."
+  (let* ((origin (current-buffer))
+         (directory (gitlab-cli-directory-of))
+         (repository (gitlab-cli-repository-normalize gitlab-repository))
+         (context (gitlab-git-context directory))
+         (target (or (gitlab--identity-buffer mode id context)
+                     (get-buffer-create
+                      (generate-new-buffer-name
+                       (funcall name id context))))))
+    (with-current-buffer target
       (funcall mode)
       (setq-local gitlab--origin-buffer origin)
-      (gitlab--use-project-directory directory)
+      (gitlab--use-project-directory directory repository)
       (setq-local gitlab--id id)
+      (setq-local gitlab--identity (list mode id gitlab--context))
       (gitlab--update-list-buffers-directory)
       (gitlab--refresh))
-    buffer))
+    target))
 
-(defun gitlab--show-detail (buffer mode id)
-  "Show the detail BUFFER in MODE for ID.
-Capture the current buffer as the origin, then pop to the display
-buffer."
-  (pop-to-buffer (gitlab--prepare-detail buffer mode id)))
+(defun gitlab--show-detail (name mode id)
+  "Show NAME in MODE for ID.
+NAME is the namer function of `gitlab--prepare-detail'.  The
+function captures the current buffer as the origin, then pops to
+the display buffer."
+  (pop-to-buffer (gitlab--prepare-detail name mode id)))
 
 (provide 'gitlab-mode)
 
