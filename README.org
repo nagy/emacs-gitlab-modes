@@ -84,17 +84,19 @@ default, turns the section off.
 
 GitLab writes a section marker into the trace before and after a
 section of the job.  The log turns the start marker into a header line
-with the name and the duration of the section, and it hides the end
-marker:
+with the name, the duration and the count of trace lines of the
+section, and it hides the end marker:
 
 #+begin_example
-── get_sources (9.000s) ── Getting source from Git repository
+── get_sources (9s, 1 line) ── Getting source from Git repository
 Created fresh repository.
 ── step_script ── 
 $ make test
 #+end_example
 
-A section that still streams shows no duration.  =TAB= folds the
+A duration keeps at most three decimals and drops the trailing
+zeroes, so a whole second reads =9s= and not =9.000s=.  A section that
+still streams shows neither a duration nor a line count.  =TAB= folds the
 section around point, from any line of it, and =S-TAB= cycles the whole
 buffer.  The fold keys of =outline-minor-mode= work too, so evil users
 reach =zc=, =zo= and =za=.  New output reopens the section that

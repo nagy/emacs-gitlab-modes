@@ -343,11 +343,15 @@ above.  The `invisible' property keeps the cursor on its line."
 
 
 (ert-deftest gitlab-pipeline-job-log-duration-string ()
-  "A duration keeps three decimals and grows by minutes and hours."
+  "A duration keeps at most three decimals and no trailing zeroes."
   (should (equal "1.234s" (gitlab-job-log--duration-string 1.234)))
   (should (equal "2m 3.456s" (gitlab-job-log--duration-string 123.456)))
   (should (equal "1h 2m 3.456s" (gitlab-job-log--duration-string 3723.456)))
-  (should (equal "1m 0.000s" (gitlab-job-log--duration-string 59.9996))))
+  (should (equal "1m 0s" (gitlab-job-log--duration-string 59.9996)))
+  (should (equal "55s" (gitlab-job-log--duration-string 55)))
+  (should (equal "3.7s" (gitlab-job-log--duration-string 3.7)))
+  (should (equal "0.05s" (gitlab-job-log--duration-string 0.05)))
+  (should (equal "1h 2m 3s" (gitlab-job-log--duration-string 3723))))
 
 (defun gitlab-pipeline-tests--job-log-with-trace (text)
   "Return a job log buffer that holds TEXT and select the whole text."
@@ -373,7 +377,7 @@ above.  The `invisible' property keeps the cursor on its line."
     (unwind-protect
         (with-current-buffer buffer
           (gitlab-job-log--update-mode-line)
-          (should (equal " [3 in region, 3.750s]"
+          (should (equal " [3 in region, 3.75s]"
                          gitlab-job-log--mode-line-cache))
           (should (eq 'mode-line-format-right-align
                       (nth (- (length mode-line-format) 2)
@@ -397,7 +401,7 @@ before it moves point."
           (set-mark (point-min))
           (activate-mark)
           (gitlab-job-log--update-mode-line)
-          (should (equal " [3 in region, 3.750s]"
+          (should (equal " [3 in region, 3.75s]"
                          gitlab-job-log--mode-line-cache)))
       (kill-buffer buffer))))
 
@@ -459,7 +463,7 @@ filled line leaves no room for the section."
           (call-interactively #'gitlab-job-log-toggle-timestamps)
           (should-not gitlab-job-log-show-timestamps)
           (gitlab-job-log--update-mode-line)
-          (should (equal " [2 in region, 1.500s]"
+          (should (equal " [2 in region, 1.5s]"
                          gitlab-job-log--mode-line-cache))
           (deactivate-mark)
           (gitlab-job-log--update-mode-line)
@@ -832,7 +836,7 @@ ends at the carriage return and not at the message.")
           (let* ((position (gitlab-pipeline-tests--position-of
                             "section_start:1761857977"))
                  (display (get-text-property position 'display)))
-            (should (equal "── get_sources (9.000s) ── "
+            (should (equal "── get_sources (9s, 1 line) ── "
                            (substring-no-properties display)))
             (should (eq 'gitlab-title (get-text-property 0 'face display))))
           ;; The open section shows no duration yet.
@@ -869,11 +873,11 @@ ends at the carriage return and not at the message.")
                  gitlab-pipeline-tests--nested-trace)))
     (unwind-protect
         (with-current-buffer buffer
-          (should (equal '("prepare_executor (3.000s)"
-                           "prepare_script (1.000s)"
-                           "get_sources (8.000s)")
+          (should (equal '("prepare_executor (3s, 1 line)"
+                           "prepare_script (1s, 0 lines)"
+                           "get_sources (8s, 0 lines)")
                          (mapcar #'car (gitlab-job-log--imenu-index))))
-          (should (equal "── prepare_executor (3.000s) ── "
+          (should (equal "── prepare_executor (3s, 1 line) ── "
                          (substring-no-properties
                           (get-text-property
                            (gitlab-pipeline-tests--position-of
@@ -938,7 +942,7 @@ ends at the carriage return and not at the message.")
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-imenu ()
-  "Imenu lists every section with its duration."
+  "Imenu lists every section with its duration and line count."
   (let ((buffer (gitlab-pipeline-tests--job-log-buffer
                  gitlab-pipeline-tests--section-trace)))
     (unwind-protect
@@ -946,7 +950,7 @@ ends at the carriage return and not at the message.")
           (should (eq imenu-create-index-function
                       #'gitlab-job-log--imenu-index))
           (let ((index (gitlab-job-log--imenu-index)))
-            (should (equal '("get_sources (9.000s)" "step_script")
+            (should (equal '("get_sources (9s, 1 line)" "step_script")
                            (mapcar #'car index)))
             (should (equal (gitlab-pipeline-tests--line-start-of
                             "section_start:1761857977")
@@ -1060,9 +1064,9 @@ ends at the carriage return and not at the message.")
                (lambda ()
                  (with-current-buffer buffer gitlab-job-log--finished))))
              (with-current-buffer buffer
-               (should (equal '("get_sources (9.000s)" "step_script")
+               (should (equal '("get_sources (9s, 1 line)" "step_script")
                               (mapcar #'car (gitlab-job-log--imenu-index))))
-               (should (equal "── get_sources (9.000s) ── "
+               (should (equal "── get_sources (9s, 1 line) ── "
                               (substring-no-properties
                                (get-text-property
                                 (point-min) 'display))))

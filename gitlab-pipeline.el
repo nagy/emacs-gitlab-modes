@@ -544,30 +544,53 @@ section that a fold closed."
          start (point-max)
          '(invisible display gitlab-job-log-section-start
            gitlab-job-log-section-name gitlab-job-log-section-duration
-           gitlab-job-log-section-end)))
+           gitlab-job-log-section-lines gitlab-job-log-section-end)))
       (gitlab-job-log--apply-timestamps start (point-max))
       (unless (gitlab-job-log--apply-section start (point-max))
         (gitlab-job-log--reveal-open-section))
       (set-buffer-modified-p nil))))
 
-(defun gitlab-job-log--section-header (name &optional duration)
+(defun gitlab-job-log--line-count-string (lines)
+  "Return LINES as a count of lines, in the singular for one."
+  (format "%d line%s" lines (if (= lines 1) "" "s")))
+
+(defun gitlab-job-log--section-header (name &optional duration lines)
   "Return the header text of the section NAME.
 DURATION counts the seconds between the start marker and the end
-marker.  A section without an end marker shows no duration."
-  (if duration
-      (format "── %s (%s) ── " name
-              (gitlab-job-log--duration-string duration))
-    (format "── %s ── " name)))
+marker, and LINES counts the trace lines between them.  A section
+without an end marker shows neither."
+  (cond
+   ((and duration lines)
+    (format "── %s (%s, %s) ── " name
+            (gitlab-job-log--duration-string duration)
+            (gitlab-job-log--line-count-string lines)))
+   (duration
+    (format "── %s (%s) ── " name
+            (gitlab-job-log--duration-string duration)))
+   (t (format "── %s ── " name))))
 
-(defun gitlab-job-log--show-section-header (start end name &optional duration)
+(defun gitlab-job-log--show-section-header (start end name
+                                                  &optional duration lines)
   "Show the header of the marker text between START and END.
-NAME is the section name and DURATION the optional number of
-seconds between the start marker and the end marker."
+NAME is the section name, DURATION the optional number of seconds
+and LINES the optional number of trace lines between the start
+marker and the end marker."
   (let ((inhibit-read-only t))
     (put-text-property
      start end 'display
-     (propertize (gitlab-job-log--section-header name duration)
+     (propertize (gitlab-job-log--section-header name duration lines)
                  'face 'gitlab-title))))
+
+(defun gitlab-job-log--section-line-count (start end)
+  "Return the count of trace lines between START and END.
+START is the line start of the start marker, and END the line
+start of the end marker before the end marker joins the line
+above.  The helper leaves the line of the start marker out and
+counts every line between, so a blank line and the line of a
+nested section count."
+  (if (or (not start) (<= end start))
+      0
+    (max 0 (1- (count-lines start end)))))
 
 (defun gitlab-job-log--marker-start (position floor)
   "Return the start of the section marker that ends at POSITION.
@@ -650,7 +673,14 @@ folded."
   (let* ((entry (gitlab-job-log--take-section name))
          (line-end (save-excursion (goto-char line-start)
                                    (line-end-position)))
-         (join (> line-start (point-min))))
+         (join (> line-start (point-min)))
+         (start-line (and entry (marker-position (nth 1 entry))))
+         ;; Count before the join, because the join deletes the newline
+         ;; above the end marker.
+         (lines (if start-line
+                    (gitlab-job-log--section-line-count start-line
+                                                        line-start)
+                  0)))
     (let ((inhibit-read-only t))
       ;; A marker line at the start of the buffer has no line above, so
       ;; it hides together with its newline.
@@ -665,13 +695,19 @@ folded."
        (marker-position (nth 2 entry))
        (marker-position (nth 3 entry))
        name
-       (max 0 (- time (nth 4 entry))))
-      ;; A later imenu entry reads the duration of the closed section.
+       (max 0 (- time (nth 4 entry)))
+       lines)
+      ;; A later imenu entry reads the duration and the line count of
+      ;; the closed section.
       (let ((inhibit-read-only t))
         (put-text-property (marker-position (nth 1 entry))
                            (marker-position (nth 3 entry))
                            'gitlab-job-log-section-duration
-                           (max 0 (- time (nth 4 entry)))))
+                           (max 0 (- time (nth 4 entry))))
+        (put-text-property (marker-position (nth 1 entry))
+                           (marker-position (nth 3 entry))
+                           'gitlab-job-log-section-lines
+                           lines))
       (when (member name gitlab-job-log--collapsed)
         (gitlab-job-log--hide-section (marker-position (nth 1 entry)))))))
 
@@ -864,9 +900,10 @@ middle of it."
 (defun gitlab-job-log--imenu-index ()
   "Return an imenu index of the sections of the current job log.
 The label holds the section name and, once the end marker arrived,
-the duration of the section.  The helper reads both from the text
-properties of the start marker, so the index follows a marker that
-shares a line with the marker of its neighbour."
+the duration and the line count of the section.  The helper reads
+all three from the text properties of the start marker, so the
+index follows a marker that shares a line with the marker of its
+neighbour."
   (let (index)
     (dolist (position (gitlab-job-log--section-starts))
       (save-excursion
@@ -875,10 +912,17 @@ shares a line with the marker of its neighbour."
                                         'gitlab-job-log-section-name))
                (duration (get-text-property
                           position 'gitlab-job-log-section-duration))
-               (label (if duration
-                          (format "%s (%s)" name
-                                  (gitlab-job-log--duration-string duration))
-                        name)))
+               (lines (get-text-property
+                       position 'gitlab-job-log-section-lines))
+               (label (cond
+                       ((and duration lines)
+                        (format "%s (%s, %s)" name
+                                (gitlab-job-log--duration-string duration)
+                                (gitlab-job-log--line-count-string lines)))
+                       (duration
+                        (format "%s (%s)" name
+                                (gitlab-job-log--duration-string duration)))
+                       (t name))))
           (push (cons label (line-beginning-position)) index))))
     (nreverse index)))
 
@@ -967,21 +1011,24 @@ span.  The helper reads both bounds before it moves point, because
 
 (defun gitlab-job-log--duration-string (seconds)
   "Return SECONDS as a compact duration string.
-Keep three decimals, so a short step and a long job both read
-exactly.  The form grows by hours and minutes only when needed."
+Keep at most three decimals and drop the trailing zeroes, so a
+whole second reads without a fraction.  The form grows by hours
+and minutes only when needed."
   (let* ((milliseconds (round (* 1000 (max 0 seconds))))
          (millis (% milliseconds 1000))
          (total (/ (- milliseconds millis) 1000))
          (secs (% total 60))
          (total-minutes (/ (- total secs) 60))
          (minutes (% total-minutes 60))
-         (hours (/ (- total-minutes minutes) 60)))
+         (hours (/ (- total-minutes minutes) 60))
+         (fraction (replace-regexp-in-string
+                    "\\.?0+\\'" "" (format ".%03d" millis))))
     (cond
      ((> hours 0)
-      (format "%dh %dm %d.%03ds" hours minutes secs millis))
+      (format "%dh %dm %d%ss" hours minutes secs fraction))
      ((> minutes 0)
-      (format "%dm %d.%03ds" minutes secs millis))
-     (t (format "%d.%03ds" secs millis)))))
+      (format "%dm %d%ss" minutes secs fraction))
+     (t (format "%d%ss" secs fraction)))))
 
 (defun gitlab-job-log--escape-mode-line (text)
   "Return TEXT with every percent sign doubled.

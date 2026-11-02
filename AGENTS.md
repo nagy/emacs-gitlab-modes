@@ -438,23 +438,33 @@ without evil.  The suite never opens a network connection.
   `gitlab-job-log--section-regexp` reads both, and
   `gitlab-job-log--apply-section` runs from `gitlab-job-log--insert-line`
   after the ANSI conversion.  The start marker becomes a header, a
-  `display` property of `── NAME (D.SSSs) ── ` with the `gitlab-title`
-  face, and the anchor message of GitLab stays behind it on the same
-  line.  The line from its start up to the end of the marker also
-  carries the property `gitlab-job-log-section-start`, and the name
-  of the section is the property `gitlab-job-log-section-name` of
-  the same range.  The helper reads the marker before it deletes the
-  carriage returns of the line, because a carriage return ends the
-  name and keeps the message that follows it out of the name.
+  `display` property of `── NAME (DURATION, N lines) ── ` with the
+  `gitlab-title` face, and the anchor message of GitLab stays behind
+  it on the same line.  The line from its start up to the end of the
+  marker also carries the property `gitlab-job-log-section-start`,
+  and the name of the section is the property
+  `gitlab-job-log-section-name` of the same range.  The helper reads
+  the marker before it deletes the carriage returns of the line,
+  because a carriage return ends the name and keeps the message that
+  follows it out of the name.
   The duration comes from the two UNIX times of the markers, so
-  no request is needed.  The end marker text gets `display ""` and
+  no request is needed.  `gitlab-job-log--duration-string` keeps at
+  most three decimals and drops trailing zeroes, so a whole second
+  reads `27s` and not `27.000s`.  The end marker text gets
+  `display ""` and
   the property `gitlab-job-log-section-end`, and the newline above
   it goes, so the marker joins the line before it.  A marker on a
   line of its own would hide a newline inside a folded section, and
   Emacs then draws the header of the next section on the header
-  line of the folded one.  The close writes the duration into the
-  property `gitlab-job-log-section-duration` of the start marker, so
-  a later imenu entry needs no end marker.
+  line of the folded one.  The close counts the trace lines between
+  the two markers with `gitlab-job-log--section-line-count` before
+  the join, because the join deletes a newline.  The count leaves
+  the line of the start marker out and keeps every line between,
+  so a blank line and the line of a nested section count.  The
+  close writes the duration into the property
+  `gitlab-job-log-section-duration` and the count into the property
+  `gitlab-job-log-section-lines` of the start marker, so a later
+  imenu entry needs no end marker.
   `gitlab-job-log--apply-timestamps` skips a line that starts with
   `gitlab-job-log-section-end`, so the timestamp toggle never shows
   part of a hidden end marker.  A start marker covers its leading
@@ -480,7 +490,8 @@ without evil.  The suite never opens a network connection.
   inherits text properties from the line above, so
   `gitlab-job-log--insert-line` removes `invisible`, `display`,
   `gitlab-job-log-section-start`, `gitlab-job-log-section-name`,
-  `gitlab-job-log-section-duration` and `gitlab-job-log-section-end`
+  `gitlab-job-log-section-duration`, `gitlab-job-log-section-lines`
+  and `gitlab-job-log-section-end`
   from the inserted range first.
   `gitlab-job-log--reveal-open-section` opens the section that the
   new output enters, so a live trace never hides behind a fold.
@@ -497,7 +508,8 @@ without evil.  The suite never opens a network connection.
   when a marker shares its line with the marker of a neighbour.
   `gitlab-job-log--imenu-index` lists every start marker with the
   `gitlab-job-log-section-name` of the marker and, once the end
-  marker arrived, the `gitlab-job-log-section-duration`.  A section
+  marker arrived, the `gitlab-job-log-section-duration` and the
+  `gitlab-job-log-section-lines`.  A section
   that still streams shows its name alone.
   `gitlab-job-log--collapsed-names` reads the same property list and
   asks `outline-invisible-p` at the heading line, so a name never
