@@ -531,12 +531,15 @@ The list belongs to the project of the pipeline."
   (concat
    "2026-10-30T20:59:37.000Z 00O "
    "section_start:1761857977:get_sources[collapsed=true]\r\e[0K"
-   "Getting source from Git repository\n"
-   "2026-10-30T20:59:38.500Z 00O fetch\n"
+   "Getting source from Git repository\r\e[0K\n"
+   "2026-10-30T20:59:38.500Z 00O fetch\r\e[0K\n"
    "2026-10-30T20:59:46.600Z 00O section_end:1761857986:get_sources\r\e[0K\n"
    "2026-10-30T20:59:47.000Z 00O section_start:1761857987:step_script\r\e[0K\n"
-   "2026-10-30T20:59:52.000Z 00O $ make test\n")
-  "Trace text with two sections, the last one still open.")
+   "2026-10-30T20:59:52.000Z 00O $ make test\r\e[0K\n")
+  "Trace text with two sections, the last one still open.
+A trace line ends with the carriage return and the erase sequence
+of GitLab, so the log must strip the carriage return from a
+section marker line.")
 
 (defun gitlab-pipeline-tests--job-log-buffer (trace)
   "Return a job log buffer that holds TRACE."
@@ -598,6 +601,23 @@ The list belongs to the project of the pipeline."
           ;; The anchor text of the start marker stays on its line.
           (should (string-match-p "Getting source from Git repository"
                                   (gitlab-test-buffer-string buffer))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-carriage-returns ()
+  "A section marker line keeps no carriage return of its redraw."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (should-not (string-match-p "\r" (buffer-string)))
+          (let ((line (gitlab-pipeline-tests--line-start-of
+                       "section_start:1761857977")))
+            (should (equal (save-excursion (goto-char line)
+                                           (line-end-position))
+                           (save-excursion
+                             (goto-char line)
+                             (search-forward "repository")
+                             (point))))))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-imenu ()
@@ -724,6 +744,8 @@ The list belongs to the project of the pipeline."
                                (get-text-property
                                 (point-min) 'display))))
                (should-not (string-match-p "Getting job trace"
+                                           (gitlab-test-buffer-string buffer)))
+               (should-not (string-match-p "\r"
                                            (gitlab-test-buffer-string buffer)))))
          (kill-buffer buffer))))))
 

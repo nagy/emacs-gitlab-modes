@@ -96,7 +96,8 @@ buffer.  The fold keys of =outline-minor-mode= work too, so evil users
 reach =zc=, =zo= and =za=.  New output reopens the section that
 receives it, so a live trace never hides behind a fold.  A restart
 keeps the folds that the old trace had.  Imenu lists every section and
-jumps to its header.
+jumps to its header.  The log drops the carriage return that GitLab
+writes at the end of a trace line, so no =^M= appears.
 
 A project can fetch merge request refs into its remote-tracking
 namespace:

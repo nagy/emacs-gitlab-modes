@@ -466,16 +466,31 @@ stays hidden, because the option says nothing about it."
                 (put-text-property prefix prefix-end 'display "")))))
         (forward-line 1)))))
 
+(defun gitlab-job-log--delete-trailing-carriage-returns (start)
+  "Delete the carriage returns at the end of the line at START.
+GitLab ends a trace line with `\\r\\e[0K', which overwrites the
+line on a terminal.  The ANSI conversion drops the escape
+sequence, and the log keeps whole lines, so the carriage return
+would only show as ^M."
+  (save-excursion
+    (goto-char start)
+    (end-of-line)
+    (let ((inhibit-read-only t))
+      (while (eq (char-before) ?\r)
+        (delete-char -1)))))
+
 (defun gitlab-job-log--insert-line (line)
   "Insert one complete LINE of trace output into the current buffer.
 The helper drops the banner of glab and, according to
-`gitlab-job-log-show-timestamps', the prefix of the line.  A
+`gitlab-job-log-show-timestamps', the prefix of the line.  It
+removes the trailing carriage return of the redraw sequence.  A
 section marker becomes its header line, and new output reopens a
 section that a fold closed."
   (unless (or (gitlab-job-log--banner-line-p line)
               (and gitlab-job-log--banner (string-blank-p line)))
     (setq gitlab-job-log--banner nil)
     (let ((start (gitlab-cli--insert-chunk (concat line "\n"))))
+      (gitlab-job-log--delete-trailing-carriage-returns start)
       ;; Inserted text inherits properties from the line above, which
       ;; may hide a folded section or a hidden end marker.
       (let ((inhibit-read-only t))
@@ -590,23 +605,50 @@ folded."
       (when (member name gitlab-job-log--collapsed)
         (gitlab-job-log--hide-section (marker-position (nth 1 entry)))))))
 
+(defun gitlab-job-log--delete-carriage-returns (start end)
+  "Delete the carriage returns between START and END.
+GitLab ends a line with `\\r\\e[0K', which a terminal uses to
+overwrite the line.  The log keeps whole lines, so the ANSI
+conversion drops the escape sequence and leaves a carriage
+return that a reader sees as ^M."
+  (save-excursion
+    (goto-char start)
+    (let ((inhibit-read-only t)
+          (limit (copy-marker end)))
+      (unwind-protect
+          (while (search-forward "\r" limit t)
+            (delete-char -1))
+        (set-marker limit nil)))))
+
 (defun gitlab-job-log--apply-section (start end)
   "Handle the section marker of the line between START and END.
-Return non-nil when the line holds a marker."
+Return non-nil when the line holds a marker.  A marker line loses
+its carriage returns first, so neither a header nor the hidden end
+marker keeps the ^M of the redraw sequence."
   (save-excursion
     (goto-char start)
     (when (re-search-forward gitlab-job-log--section-regexp end t)
-      (let ((kind (match-string-no-properties 1))
-            (time (string-to-number (match-string-no-properties 2)))
-            (name (match-string-no-properties 3))
-            (marker-start (gitlab-job-log--marker-start (match-beginning 0)
-                                                        start))
-            (marker-end (gitlab-job-log--marker-end (match-end 0) end)))
-        (if (string= kind "start")
-            (gitlab-job-log--push-section start marker-start marker-end
-                                          name time)
-          (gitlab-job-log--close-section start name time))
-        t))))
+      (let* ((line-start (line-beginning-position))
+             (line-end (copy-marker (line-end-position))))
+        (unwind-protect
+            (progn
+              (gitlab-job-log--delete-carriage-returns line-start line-end)
+              (goto-char line-start)
+              (when (re-search-forward gitlab-job-log--section-regexp
+                                       line-end t)
+                (let ((kind (match-string-no-properties 1))
+                      (time (string-to-number (match-string-no-properties 2)))
+                      (name (match-string-no-properties 3))
+                      (marker-start (gitlab-job-log--marker-start
+                                     (match-beginning 0) start))
+                      (marker-end (gitlab-job-log--marker-end
+                                   (match-end 0) line-end)))
+                  (if (string= kind "start")
+                      (gitlab-job-log--push-section line-start marker-start
+                                                    marker-end name time)
+                    (gitlab-job-log--close-section line-start name time))))
+              t)
+          (set-marker line-end nil))))))
 
 (defun gitlab-job-log--collapsed-names ()
   "Return the names of the folded sections of the current buffer.

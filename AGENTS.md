@@ -378,6 +378,15 @@ without evil.  The suite never opens a network connection.
   skips such a line, so the timestamp toggle never shows part of a
   hidden end marker.  A start marker covers its leading carriage
   return and escape sequence, because glab passes them through.
+  GitLab ends a trace line with a carriage return and an erase
+  sequence, which a terminal uses to overwrite the line.  The ANSI
+  conversion drops the escape sequence and leaves the carriage
+  return, which a reader sees as ^M.
+  `gitlab-job-log--delete-trailing-carriage-returns` removes the
+  trailing carriage return of every inserted line, and
+  `gitlab-job-log--delete-carriage-returns` removes every carriage
+  return of a section marker line, so a header and a hidden end
+  marker keep no ^M.
 - The job log folds sections with `outline-minor-mode`, not with an
   overlay package.  `outline-regexp` is
   `gitlab-job-log--section-heading-regexp`, which matches the raw
