@@ -434,7 +434,10 @@ regexp looks for the marker anywhere before the end of the line.")
   "Open sections of the current job log, innermost first.
 Each entry holds the section name, a marker at the start of its
 marker line, a marker at the start of the marker text, a marker
-at the end of the marker text and the UNIX time of the marker.")
+at the end of the marker text, the UNIX time of the marker and
+the nesting depth of the section.  A top level section has depth
+0, and a nested section has the length of the open stack before
+its start marker.")
 
 (put 'gitlab-job-log--sections 'permanent-local t)
 
@@ -550,35 +553,43 @@ section that a fold closed."
         (gitlab-job-log--reveal-open-section))
       (set-buffer-modified-p nil))))
 
+(defconst gitlab-job-log--indent-width 2
+  "Number of spaces that one nesting level adds before a header.")
+
 (defun gitlab-job-log--line-count-string (lines)
   "Return LINES as a count of lines, in the singular for one."
   (format "%d line%s" lines (if (= lines 1) "" "s")))
 
-(defun gitlab-job-log--section-header (name &optional duration lines)
+(defun gitlab-job-log--section-header (name &optional duration lines depth)
   "Return the header text of the section NAME.
 DURATION counts the seconds between the start marker and the end
-marker, and LINES counts the trace lines between them.  A section
-without an end marker shows neither."
-  (cond
-   ((and duration lines)
-    (format "── %s (%s, %s) ── " name
-            (gitlab-job-log--duration-string duration)
-            (gitlab-job-log--line-count-string lines)))
-   (duration
-    (format "── %s (%s) ── " name
-            (gitlab-job-log--duration-string duration)))
-   (t (format "── %s ── " name))))
+marker, and LINES counts the trace lines between them.  DEPTH is
+the nesting depth of the section, so a nested header indents to
+show its parent.  A section without an end marker shows neither a
+duration nor a line count."
+  (concat (make-string (* gitlab-job-log--indent-width (or depth 0)) ?\s)
+          (cond
+           ((and duration lines)
+            (format "── %s (%s, %s) ── " name
+                    (gitlab-job-log--duration-string duration)
+                    (gitlab-job-log--line-count-string lines)))
+           (duration
+            (format "── %s (%s) ── " name
+                    (gitlab-job-log--duration-string duration)))
+           (t (format "── %s ── " name)))))
 
 (defun gitlab-job-log--show-section-header (start end name
-                                                  &optional duration lines)
+                                                  &optional duration lines
+                                                  depth)
   "Show the header of the marker text between START and END.
 NAME is the section name, DURATION the optional number of seconds
 and LINES the optional number of trace lines between the start
-marker and the end marker."
+marker and the end marker.  DEPTH is the nesting depth of the
+section."
   (let ((inhibit-read-only t))
     (put-text-property
      start end 'display
-     (propertize (gitlab-job-log--section-header name duration lines)
+     (propertize (gitlab-job-log--section-header name duration lines depth)
                  'face 'gitlab-title))))
 
 (defun gitlab-job-log--section-line-count (start end)
@@ -642,11 +653,15 @@ trace never hides behind a fold."
 MARKER-START and MARKER-END bound the marker text, NAME is the
 section name and TIME the UNIX time of the marker.  The name
 becomes a text property of the marker, so the imenu index and the
-fold record read it without a search of the buffer text."
-  (push (list name (copy-marker line-start) (copy-marker marker-start)
-              (copy-marker marker-end) time)
-        gitlab-job-log--sections)
-  (gitlab-job-log--show-section-header marker-start marker-end name)
+fold record read it without a search of the buffer text.  The
+depth of the section is the length of the open stack, so a nested
+header indents."
+  (let ((depth (length gitlab-job-log--sections)))
+    (push (list name (copy-marker line-start) (copy-marker marker-start)
+                (copy-marker marker-end) time depth)
+          gitlab-job-log--sections)
+    (gitlab-job-log--show-section-header marker-start marker-end name
+                                         nil nil depth))
   (let ((inhibit-read-only t))
     (add-text-properties line-start marker-end
                          (list 'gitlab-job-log-section-start t
@@ -696,7 +711,8 @@ folded."
        (marker-position (nth 3 entry))
        name
        (max 0 (- time (nth 4 entry)))
-       lines)
+       lines
+       (nth 5 entry))
       ;; A later imenu entry reads the duration and the line count of
       ;; the closed section.
       (let ((inhibit-read-only t))

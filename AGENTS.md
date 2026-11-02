@@ -440,7 +440,14 @@ without evil.  The suite never opens a network connection.
   after the ANSI conversion.  The start marker becomes a header, a
   `display` property of `── NAME (DURATION, N lines) ── ` with the
   `gitlab-title` face, and the anchor message of GitLab stays behind
-  it on the same line.  The line from its start up to the end of the
+  it on the same line.  The depth of a section is the length of the
+  open stack at its start marker, and the entry keeps it, because
+  the close renders the header again with the duration and the line
+  count.  `gitlab-job-log--section-header` puts
+  `gitlab-job-log--indent-width` spaces per level in front of the
+  header, so a reader sees the parent of a nested section.  Only the
+  header shifts: a body line keeps column 0, so a copy of the trace
+  keeps its shape.  The line from its start up to the end of the
   marker also carries the property `gitlab-job-log-section-start`,
   and the name of the section is the property
   `gitlab-job-log-section-name` of the same range.  The helper reads

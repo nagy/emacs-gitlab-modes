@@ -94,6 +94,18 @@ Created fresh repository.
 $ make test
 #+end_example
 
+GitLab nests sections.  A nested header indents by two spaces per
+level, so a reader sees which section holds which:
+
+#+begin_example
+── prepare_executor (55s, 5 lines) ── Preparing the docker executor...
+  ── get_sources (27s, 2 lines) ── Getting source from Git repository...
+  ── archive_cache (41s, 1 line) ── Checking cache for main...
+#+end_example
+
+Only the header indents.  The body lines keep column 0, so a copied
+trace keeps its original shape.
+
 A duration keeps at most three decimals and drops the trailing
 zeroes, so a whole second reads =9s= and not =9.000s=.  A section that
 still streams shows neither a duration nor a line count.  =TAB= folds the

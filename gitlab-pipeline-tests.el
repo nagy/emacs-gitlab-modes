@@ -882,7 +882,48 @@ ends at the carriage return and not at the message.")
                           (get-text-property
                            (gitlab-pipeline-tests--position-of
                             "section_start:1761857977")
+                           'display))))
+          ;; A nested header indents under its parent.
+          (should (equal "  ── prepare_script (1s, 0 lines) ── "
+                         (substring-no-properties
+                          (get-text-property
+                           (gitlab-pipeline-tests--position-of
+                            "section_start:1761857978")
                            'display)))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-indent-by-depth ()
+  "A header indents two spaces per nesting level."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 (concat "section_start:100:outer\n"
+                         "outer line\n"
+                         "section_start:101:middle\n"
+                         "middle line\n"
+                         "section_start:102:inner\n"
+                         "inner line\n"
+                         "section_end:103:inner\n"
+                         "section_end:104:middle\n"
+                         "section_end:105:outer\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (should
+           (equal "── outer (5s, 5 lines) ── "
+                  (substring-no-properties
+                   (get-text-property
+                    (gitlab-pipeline-tests--position-of "section_start:100")
+                    'display))))
+          (should
+           (equal "  ── middle (3s, 3 lines) ── "
+                  (substring-no-properties
+                   (get-text-property
+                    (gitlab-pipeline-tests--position-of "section_start:101")
+                    'display))))
+          (should
+           (equal "    ── inner (1s, 1 line) ── "
+                  (substring-no-properties
+                   (get-text-property
+                    (gitlab-pipeline-tests--position-of "section_start:102")
+                    'display)))))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-end-joins-line ()
