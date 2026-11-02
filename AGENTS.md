@@ -370,8 +370,15 @@ without evil.  The suite never opens a network connection.
   identifier (00O, 01O, 01E, 00O+) when the job enables runner
   timestamps.  `gitlab-job-log--apply-timestamps` marks the whole
   prefix with the text property `gitlab-job-log-timestamp` and hides
-  it with a `display` property when
-  `gitlab-job-log-show-timestamps` is nil.  The hidden range ends at
+  it with the `invisible` property
+  `gitlab-job-log--hidden-prefix` when
+  `gitlab-job-log-show-timestamps` is nil.  Do not hide the prefix
+  with `display ""`: Emacs then draws the cursor at the end of the
+  previous line when point sits at the start of the line, so
+  `move-beginning-of-line` on `0` and `C-a` looks like a motion to the
+  line above.  `gitlab-job-log-mode` adds the symbol to
+  `buffer-invisibility-spec`, so a custom spec hides the prefix too.
+  The hidden range ends at
   `gitlab-job-log--prefix-end`: the stream identifier from
   `gitlab-job-log--stream-regexp` plus its one separator, or the one
   separator of the timestamp when no identifier follows.  The text of
@@ -387,10 +394,11 @@ without evil.  The suite never opens a network connection.
   `gitlab-job-log--filter-buffer-substring`, so `kill-region`,
   `kill-ring-save` and the clipboard all receive the filtered string.
   `gitlab-job-log--replaced-ranges` collects the ranges that carry a
-  `gitlab-job-log-section-start`, a `gitlab-job-log-section-end` or a
-  string `display` property.  The last one covers a hidden timestamp
-  prefix and the text of a section header, so a visible prefix
-  reaches the copy and a hidden one does not.  The ranges also keep
+  `gitlab-job-log-section-start`, a `gitlab-job-log-section-end`, an
+  `invisible` property or a string `display` property.  They cover a
+  hidden timestamp prefix, the text of a section header and the text
+  of an end marker, so a visible prefix reaches the copy and a hidden
+  one does not.  The ranges also keep
   the face properties of the text that stays.
   `gitlab-job-log--strip-replaced` drops a line that keeps no text
   together with its newline, because a hidden end marker would

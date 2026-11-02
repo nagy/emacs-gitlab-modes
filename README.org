@@ -71,7 +71,9 @@ runner, =01O= for the standard output, =01E= for the standard error and
 =gitlab-job-log-show-timestamps=, on by default, shows the prefix, and
 =~= hides or shows the timestamp, the identifier and the space before
 the text in the current buffer.  A hidden prefix leaves the text of
-the line at column 0 and keeps every space that belongs to the text.
+the line at column 0, keeps every space that belongs to the text and
+keeps point at the start of a line on that line, so =C-a= and =0= do
+not look like a motion to the line above.
 
 An active region adds a section to the right edge of the mode line.
 It shows how many selected trace lines carry a timestamp, and the time

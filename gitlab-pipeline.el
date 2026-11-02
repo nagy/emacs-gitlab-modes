@@ -52,10 +52,14 @@
 ;; timestamp when the job enables runner timestamps; the option
 ;; `gitlab-job-log-show-timestamps' and the command
 ;; `gitlab-job-log-toggle-timestamps' decide whether the buffer shows
-;; it.  The prefix stays in the buffer as text with a `display'
-;; property, so a toggle never asks GitLab again.  A copy of a region
-;; leaves out every range that a property replaces, so the kill ring
-;; and the clipboard receive the text that the buffer shows.
+;; it.  The prefix stays in the buffer as text with an `invisible'
+;; property, so a toggle never asks GitLab again.  A `display'
+;; property with an empty string is wrong here: Emacs draws the cursor
+;; at the end of the previous line when point sits in such a range at
+;; the start of a line, so `move-beginning-of-line' looks like a motion
+;; to the line above.  A copy of a region leaves out every range that a
+;; property hides, so the kill ring and the clipboard receive the text
+;; that the buffer shows.
 ;;
 ;; A job log knows its parent pipeline: the display command passes the
 ;; ID, the bookmark record keeps it, and `gitlab-job-pipeline-id' asks
@@ -434,6 +438,12 @@ at the end of the marker text and the UNIX time of the marker.")
 
 (put 'gitlab-job-log--sections 'permanent-local t)
 
+(defconst gitlab-job-log--hidden-prefix 'gitlab-job-log-hidden-prefix
+  "Value of the `invisible' property that hides a trace prefix.
+`gitlab-job-log-mode' puts the symbol into `buffer-invisibility-spec',
+so a custom spec that names other symbols alone keeps the prefix
+hidden too.")
+
 (defvar-local gitlab-job-log--collapsed nil
   "Names of the sections that the current buffer keeps folded.
 A restart of the trace erases the buffer, so the list holds the
@@ -479,8 +489,12 @@ the text."
 The helper marks the prefix of each trace line, the timestamp and
 the stream identifier, with the text property
 `gitlab-job-log-timestamp' and hides it when
-`gitlab-job-log-show-timestamps' is nil.  A hidden end marker
-stays hidden, because the option says nothing about it."
+`gitlab-job-log-show-timestamps' is nil.  The helper hides the
+prefix with the `invisible' property, because Emacs draws the
+cursor at the end of the previous line when point sits in a
+`display' range with an empty string at the start of a line.  A
+hidden end marker stays hidden, because the option says nothing
+about it."
   (save-excursion
     (let ((inhibit-read-only t))
       (goto-char start)
@@ -492,9 +506,10 @@ stays hidden, because the option says nothing about it."
               (add-text-properties prefix prefix-end
                                    '(gitlab-job-log-timestamp t))
               (if gitlab-job-log-show-timestamps
-                  (remove-list-of-text-properties prefix prefix-end
-                                                  '(display))
-                (put-text-property prefix prefix-end 'display "")))))
+                  (remove-text-properties prefix prefix-end
+                                          '(invisible nil))
+                (put-text-property prefix prefix-end 'invisible
+                                   gitlab-job-log--hidden-prefix)))))
         (forward-line 1)))))
 
 (defun gitlab-job-log--delete-trailing-carriage-returns (start)
@@ -711,10 +726,11 @@ carriage returns, so neither a header nor an end marker keeps the
 
 (defun gitlab-job-log--replaced-p (position string)
   "Return non-nil when a copy leaves out POSITION of STRING.
-The log replaces a hidden timestamp prefix, the text of a section
+The log hides a hidden timestamp prefix, the text of a section
 marker and the text of an end marker with text properties, so a copy
 matches what the buffer shows."
   (or (stringp (get-text-property position 'display string))
+      (get-text-property position 'invisible string)
       (get-text-property position 'gitlab-job-log-section-start string)
       (get-text-property position 'gitlab-job-log-section-end string)))
 
@@ -727,6 +743,8 @@ The ranges come in order and never overlap."
     (while (< position length)
       (let ((next (min (next-single-property-change
                         position 'display string length)
+                       (next-single-property-change
+                        position 'invisible string length)
                        (next-single-property-change
                         position 'gitlab-job-log-section-start
                         string length)
@@ -1144,7 +1162,10 @@ trace on a jump, because a trace streams and has no snapshot."
 The buffer is read-only and fills while `glab ci trace' runs.  The
 banner that glab prints before the trace never reaches the buffer.
 g restarts the trace and ~ toggles the timestamp prefix of every
-line, which holds the timestamp and the stream identifier.  An
+line, which holds the timestamp and the stream identifier.  A
+hidden prefix uses the `invisible' property, so point at the start
+of a line stays on that line and `move-beginning-of-line' never
+looks like a motion to the line above.  An
 active region adds the number of selected trace lines and
 their duration to the right edge of the mode line, when
 `gitlab-job-log-show-region-duration' is non-nil.  A section of the
@@ -1173,6 +1194,10 @@ text of a section header and the text of every end marker."
   (setq-local truncate-lines t)
   (setq-local imenu-create-index-function #'gitlab-job-log--imenu-index)
   (setq-local outline-regexp gitlab-job-log--section-heading-regexp)
+  ;; The prefix of a trace line hides through the `invisible'
+  ;; property.  A custom spec that names symbols alone would show it,
+  ;; so the mode adds its own symbol to the spec of the buffer.
+  (add-to-invisibility-spec gitlab-job-log--hidden-prefix)
   (outline-minor-mode 1)
   ;; The mode line of a log already carries the region section, so the
   ;; outline lighter stays out of it.

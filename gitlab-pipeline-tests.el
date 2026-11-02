@@ -268,23 +268,48 @@
              (should gitlab-job-log-show-timestamps)
              (should (string-match-p "2026-10-30T20:59:38\\.687139Z"
                                      (gitlab-test-buffer-string buffer)))
-             (should-not (get-text-property (point-min) 'display))
+             (should-not (get-text-property (point-min) 'invisible))
              (call-interactively #'gitlab-job-log-toggle-timestamps)
              (should-not gitlab-job-log-show-timestamps)
-             (should (equal "" (get-text-property (point-min) 'display)))
+             (should (eq gitlab-job-log--hidden-prefix
+                         (get-text-property (point-min) 'invisible)))
+             (should (invisible-p (point-min)))
              (should (string-match-p "step 1"
                                      (gitlab-test-buffer-string buffer)))
              (gitlab-job-log-toggle-timestamps)
              (should gitlab-job-log-show-timestamps)
-             (should-not (get-text-property (point-min) 'display))))
+             (should-not (get-text-property (point-min) 'invisible))))
        (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-log-hidden-prefix-invisible ()
+  "A hidden prefix hides with `invisible' and not with `display'.
+Emacs draws the cursor at the end of the previous line when point
+sits in a `display' range with an empty string at the start of a
+line, so `move-beginning-of-line' looks like a motion to the line
+above.  The `invisible' property keeps the cursor on its line."
+  (let ((buffer (gitlab-pipeline-tests--job-log-with-trace
+                 (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                         "2026-10-30T20:59:38.000Z 01E two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (call-interactively #'gitlab-job-log-toggle-timestamps)
+          (should (memq gitlab-job-log--hidden-prefix
+                        buffer-invisibility-spec))
+          (goto-char (point-min))
+          (while (not (eobp))
+            (should (eq gitlab-job-log--hidden-prefix
+                        (get-text-property (point) 'invisible)))
+            (should (invisible-p (point)))
+            (should-not (get-text-property (point) 'display))
+            (forward-line 1)))
+      (kill-buffer buffer))))
 
 (defun gitlab-pipeline-tests--visible-line-text ()
   "Return the text of the current line after a hidden prefix."
   (let ((end (line-end-position))
         (start (point)))
     (while (and (< start end)
-                (equal "" (get-text-property start 'display)))
+                (get-text-property start 'invisible))
       (setq start (1+ start)))
     (buffer-substring start end)))
 
@@ -312,7 +337,7 @@
           (should (eq t (get-text-property (point-min)
                                            'gitlab-job-log-timestamp)))
           (gitlab-job-log-toggle-timestamps)
-          (should-not (get-text-property (point-min) 'display))
+          (should-not (get-text-property (point-min) 'invisible))
           (should (equal shown (gitlab-test-buffer-string buffer))))
       (kill-buffer buffer))))
 
