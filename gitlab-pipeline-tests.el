@@ -357,6 +357,43 @@
                          (car (last mode-line-format)))))
       (kill-buffer buffer))))
 
+(ert-deftest gitlab-pipeline-job-log-mode-line-region-downward ()
+  "A region that starts at the top and ends lower down is measured.
+Point sits below and the mark above, so the helper reads both bounds
+before it moves point."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:38.250Z 00O two\n"
+                  "2026-10-30T20:59:40.750Z 00O three\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (goto-char (point-max))
+          (set-mark (point-min))
+          (activate-mark)
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [3 in region, 3.750s]"
+                         gitlab-job-log--mode-line-cache)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-right-align ()
+  "The region section sits at the right edge of the mode line.
+The base drops the construct that fills the mode line, because a
+filled line leaves no room for the section."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:38.250Z 00O two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (should (equal (butlast (default-value 'mode-line-format))
+                         gitlab-job-log--mode-line-base))
+          (gitlab-job-log--update-mode-line)
+          (should (eq 'mode-line-format-right-align
+                      (nth (- (length mode-line-format) 2)
+                           mode-line-format))))
+      (kill-buffer buffer))))
+
 (ert-deftest gitlab-pipeline-job-log-mode-line-without-region ()
   "The mode line drops the region section when the region is gone."
   (let ((buffer

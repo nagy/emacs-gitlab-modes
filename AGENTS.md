@@ -404,11 +404,19 @@ without evil.  The suite never opens a network connection.
   the last trace line in the region that carries a timestamp and
   returns their count and their difference.  A line without a
   timestamp neither starts nor ends the span, and fewer than two
-  stamped lines leave the section off.  The section appears only
+  stamped lines leave the section off.  The helper reads
+  `region-beginning` and `region-end` into locals before it moves
+  point: `region-end` reads point and the mark, so a region that
+  starts above and ends below would otherwise collapse to its first
+  line.  The section appears only
   while `use-region-p` holds and
-  `gitlab-job-log-show-region-duration` is non-nil.  The mode captures
-  `mode-line-format` in `gitlab-job-log--mode-line-base` and appends
-  the literal symbol `mode-line-format-right-align` and the text, so
+  `gitlab-job-log-show-region-duration` is non-nil.
+  `gitlab-job-log--mode-line-format-base` reads the default mode line
+  and drops a trailing `mode-line-end-spaces`, because that construct
+  fills the rest of the line and would push the section past the
+  right edge.  The mode keeps that list in
+  `gitlab-job-log--mode-line-base` and appends the literal symbol
+  `mode-line-format-right-align` and the text, so
   the section sits on the right.  `post-command-hook` and the chunk
   filter call `gitlab-job-log--mode-line-maybe-update`, which rebuilds
   the format only when the region signature changes.  The signature

@@ -378,7 +378,8 @@ of glab and never reach the buffer.")
 
 (defvar-local gitlab-job-log--mode-line-base nil
   "Mode line format of the job log buffer without the region section.
-`gitlab-job-log--update-mode-line' appends the section to this list.")
+`gitlab-job-log--mode-line-format-base' builds it, and
+`gitlab-job-log--update-mode-line' appends the section to it.")
 
 (defvar-local gitlab-job-log--mode-line-cache ""
   "Region section of the mode line, as last installed.
@@ -919,29 +920,32 @@ The count holds the trace lines with a timestamp, and the duration
 runs from the first such line to the last.  Return nil without an
 active region, with the option off, or with fewer than two stamped
 lines.  A line without a timestamp neither starts nor ends the
-span."
+span.  The helper reads both bounds before it moves point, because
+`region-end' reads point and the mark."
   (when (and gitlab-job-log-show-region-duration (use-region-p))
-    (save-excursion
-      (save-restriction
-        (widen)
-        (let* ((start (progn (goto-char (region-beginning))
-                             (line-beginning-position)))
-               (end (progn (goto-char (region-end))
-                           (line-end-position)))
-               (first nil)
-               (last nil)
-               (count 0))
-          (goto-char start)
-          (while (and (< (point) end) (not (eobp)))
-            (let ((time (gitlab-job-log--line-time)))
-              (when time
-                (setq count (1+ count))
-                (unless first
-                  (setq first time))
-                (setq last time)))
-            (forward-line 1))
-          (when (and first last (> count 1))
-            (cons count (- last first))))))))
+    (let ((start-point (region-beginning))
+          (end-point (region-end)))
+      (save-excursion
+        (save-restriction
+          (widen)
+          (let* ((start (progn (goto-char start-point)
+                               (line-beginning-position)))
+                 (end (progn (goto-char end-point)
+                             (line-end-position)))
+                 (first nil)
+                 (last nil)
+                 (count 0))
+            (goto-char start)
+            (while (and (< (point) end) (not (eobp)))
+              (let ((time (gitlab-job-log--line-time)))
+                (when time
+                  (setq count (1+ count))
+                  (unless first
+                    (setq first time))
+                  (setq last time)))
+              (forward-line 1))
+            (when (and first last (> count 1))
+              (cons count (- last first)))))))))
 
 (defun gitlab-job-log--duration-string (seconds)
   "Return SECONDS as a compact duration string.
@@ -981,6 +985,17 @@ The mode line reports the region, so point motion inside an active
 region and a new trace line both change this value."
   (when (use-region-p)
     (list (region-beginning) (region-end) (buffer-chars-modified-tick))))
+
+(defun gitlab-job-log--mode-line-format-base ()
+  "Return the mode line format of the job log without the region section.
+The last construct of the default format fills the rest of the mode
+line, so a section that follows it would sit past the right edge.
+The helper drops that construct, which keeps the right-aligned
+section on the visible line in a terminal and in a window system."
+  (let ((base (default-value 'mode-line-format)))
+    (if (eq (car (last base)) 'mode-line-end-spaces)
+        (butlast base)
+      base)))
 
 (defun gitlab-job-log--update-mode-line ()
   "Rebuild the region section of the mode line and install it.
@@ -1164,7 +1179,7 @@ text of a section header and the text of every end marker."
   (setq-local minor-mode-alist (cons '(outline-minor-mode "")
                                      minor-mode-alist))
   (setq-local gitlab-job-log--mode-line-base
-              (default-value 'mode-line-format))
+              (gitlab-job-log--mode-line-format-base))
   (setq-local gitlab-job-log--mode-line-cache "")
   (setq-local gitlab-job-log--mode-line-region nil)
   (setq-local mode-line-format gitlab-job-log--mode-line-base)
