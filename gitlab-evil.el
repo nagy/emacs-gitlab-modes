@@ -124,13 +124,15 @@ that evil already binds.")
 (defvar gitlab-evil-job-log-keys
   '(([remap evil-record-macro] . quit-window)
     ("gr" . gitlab-job-log-restart)
+    ("TAB" . gitlab-job-log-toggle-section)
     ([remap dired-jump] . gitlab-go-to-parent)
     ([remap dired-up-directory] . gitlab-go-to-parent)
     ([remap evil-invert-char] . gitlab-job-log-toggle-timestamps)
     ([remap evil-change] . gitlab-copy-id))
   "Keys that `gitlab-evil-mode' binds in job log buffers.
 A key is a key string, or a `[remap COMMAND]' vector for a command
-that evil already binds.")
+that evil already binds.  The `zc', `zo' and `za' fold keys reach
+the sections through `evil-fold-list' and `outline-minor-mode'.")
 
 ;;; Local minor modes
 

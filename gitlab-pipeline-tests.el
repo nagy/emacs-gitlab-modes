@@ -513,6 +513,206 @@ The list belongs to the project of the pipeline."
                            "group/project"))))
          (kill-buffer list))))))
 
+(defconst gitlab-pipeline-tests--section-trace
+  (concat
+   "2026-10-30T20:59:37.000Z 00O "
+   "section_start:1761857977:get_sources[collapsed=true]\r\e[0K"
+   "Getting source from Git repository\n"
+   "2026-10-30T20:59:38.500Z 00O fetch\n"
+   "2026-10-30T20:59:46.600Z 00O section_end:1761857986:get_sources\r\e[0K\n"
+   "2026-10-30T20:59:47.000Z 00O section_start:1761857987:step_script\r\e[0K\n"
+   "2026-10-30T20:59:52.000Z 00O $ make test\n")
+  "Trace text with two sections, the last one still open.")
+
+(defun gitlab-pipeline-tests--job-log-buffer (trace)
+  "Return a job log buffer that holds TRACE."
+  (let ((buffer (generate-new-buffer "*GitLab job log section test*")))
+    (with-current-buffer buffer
+      (gitlab-job-log-mode)
+      (gitlab-job-log--write trace))
+    buffer))
+
+(defun gitlab-pipeline-tests--position-of (regexp)
+  "Return the start of the first match of REGEXP in the buffer."
+  (save-excursion
+    (goto-char (point-min))
+    (when (re-search-forward regexp nil t)
+      (match-beginning 0))))
+
+(defun gitlab-pipeline-tests--line-start-of (regexp)
+  "Return the start of the first line that matches REGEXP."
+  (save-excursion
+    (goto-char (gitlab-pipeline-tests--position-of regexp))
+    (line-beginning-position)))
+
+(defun gitlab-pipeline-tests--section-folded-p (line)
+  "Return non-nil when the heading on line number LINE hides its body."
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line line)
+    (outline-invisible-p (line-end-position))))
+
+(ert-deftest gitlab-pipeline-job-log-section-header ()
+  "A section marker shows a header with the name and the duration."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (let* ((position (gitlab-pipeline-tests--position-of
+                            "section_start:1761857977"))
+                 (display (get-text-property position 'display)))
+            (should (equal "── get_sources (9.000s) ── "
+                           (substring-no-properties display)))
+            (should (eq 'gitlab-title (get-text-property 0 'face display))))
+          ;; The open section shows no duration yet.
+          (should (equal "── step_script ── "
+                         (substring-no-properties
+                          (get-text-property
+                           (gitlab-pipeline-tests--position-of
+                            "section_start:1761857987")
+                           'display))))
+          ;; The end marker line disappears, its carriage return too.
+          (let ((line (gitlab-pipeline-tests--line-start-of
+                       "section_end:1761857986")))
+            (should (equal "" (get-text-property line 'display)))
+            (should (eq t (get-text-property line
+                                             'gitlab-job-log-section-end)))
+            (should (equal "" (get-text-property
+                                (save-excursion (goto-char line)
+                                                (line-end-position))
+                                'display))))
+          ;; The anchor text of the start marker stays on its line.
+          (should (string-match-p "Getting source from Git repository"
+                                  (gitlab-test-buffer-string buffer))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-imenu ()
+  "Imenu lists every section with its duration."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (should (eq imenu-create-index-function
+                      #'gitlab-job-log--imenu-index))
+          (let ((index (gitlab-job-log--imenu-index)))
+            (should (equal '("get_sources (9.000s)" "step_script")
+                           (mapcar #'car index)))
+            (should (equal (gitlab-pipeline-tests--line-start-of
+                            "section_start:1761857977")
+                           (cdr (car index))))
+            (should (equal (gitlab-pipeline-tests--line-start-of
+                            "section_start:1761857987")
+                           (cdr (cadr index))))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-fold-from-body ()
+  "TAB inside a section folds it, a second TAB opens it again."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (goto-char (point-min))
+          (forward-line 1)
+          (call-interactively #'gitlab-job-log-toggle-section)
+          (should (gitlab-pipeline-tests--section-folded-p 0))
+          (call-interactively #'gitlab-job-log-toggle-section)
+          (should-not (gitlab-pipeline-tests--section-folded-p 0)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-fold-needs-heading ()
+  "TAB above the first section signals a user error."
+  (let ((buffer (generate-new-buffer "*GitLab job log no section test*")))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log-mode)
+          (let ((inhibit-read-only t))
+            (insert "2026-10-30T20:59:37.000Z 00O prologue\n"))
+          (goto-char (point-min))
+          (should-error (call-interactively #'gitlab-job-log-toggle-section)
+                        :type 'user-error))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-new-output-opens ()
+  "New output reopens the section that a fold closed."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (goto-char (point-max))
+          (call-interactively #'gitlab-job-log-toggle-section)
+          (should (gitlab-pipeline-tests--section-folded-p 3))
+          (gitlab-job-log--write "2026-10-30T20:59:53.000Z 00O more\n")
+          (should-not (gitlab-pipeline-tests--section-folded-p 3)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-restart-keeps-folds ()
+  "A restart folds the sections that the old trace folded."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (goto-char (point-min))
+          (forward-line 1)
+          (call-interactively #'gitlab-job-log-toggle-section)
+          (should (equal '("get_sources") (gitlab-job-log--collapsed-names)))
+          ;; The steps of `gitlab-job-log--start', without a process.
+          (setq-local gitlab-job-log--collapsed
+                      (gitlab-job-log--collapsed-names))
+          (setq-local gitlab-job-log--sections nil)
+          (let ((inhibit-read-only t))
+            (erase-buffer))
+          (gitlab-job-log--write gitlab-pipeline-tests--section-trace)
+          (should (gitlab-pipeline-tests--section-folded-p 0))
+          (should-not (gitlab-pipeline-tests--section-folded-p 3)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-timestamps ()
+  "The timestamp toggle keeps the headers and the hidden end marker."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (let* ((marker (gitlab-pipeline-tests--position-of
+                          "section_start:1761857977"))
+                 (end-line (gitlab-pipeline-tests--line-start-of
+                            "section_end:1761857986"))
+                 (header (get-text-property marker 'display)))
+            (gitlab-job-log-toggle-timestamps)
+            (should (equal (substring-no-properties header)
+                           (substring-no-properties
+                            (get-text-property marker 'display))))
+            (should (equal "" (get-text-property end-line 'display)))
+            (gitlab-job-log-toggle-timestamps)
+            (should (equal (substring-no-properties header)
+                           (substring-no-properties
+                            (get-text-property marker 'display))))
+            (should (equal "" (get-text-property end-line 'display)))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-stream ()
+  "A streamed trace with sections shows a header per section."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons "GITLAB_TEST_TRACE=job-trace-sections.txt"
+                process-environment)))
+     (let ((buffer (gitlab-pipeline--prepare-job-log "5001" "unit-tests")))
+       (unwind-protect
+           (progn
+             (should
+              (gitlab-test-wait
+               (lambda ()
+                 (with-current-buffer buffer gitlab-job-log--finished))))
+             (with-current-buffer buffer
+               (should (equal '("get_sources (9.000s)" "step_script")
+                              (mapcar #'car (gitlab-job-log--imenu-index))))
+               (should (equal "── get_sources (9.000s) ── "
+                              (substring-no-properties
+                               (get-text-property
+                                (point-min) 'display))))
+               (should-not (string-match-p "Getting job trace"
+                                           (gitlab-test-buffer-string buffer)))))
+         (kill-buffer buffer))))))
+
 (provide 'gitlab-pipeline-tests)
 
 ;;; gitlab-pipeline-tests.el ends here

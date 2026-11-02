@@ -1,0 +1,8 @@
+Getting job trace...
+Showing logs for unit-tests job #5001.
+[0Ksection_start:1761857977:get_sources[collapsed=true][0KGetting source from Git repository
+2026-10-30T20:59:38.687139Z 00O Fetching changes with git depth set to 20...
+2026-10-30T20:59:46.687200Z 00O section_end:1761857986:get_sources[0K
+2026-10-30T20:59:47.687101Z 00O section_start:1761857987:step_script[0K
+2026-10-30T20:59:48.687139Z 00O $ make test
+2026-10-30T20:59:59.687142Z 01O PASS 41 tests

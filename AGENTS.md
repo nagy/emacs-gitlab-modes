@@ -32,8 +32,8 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
 | `test/gitlab-test-helpers.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
-| `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection. |
-| `test/fixtures/` | Minimal glab JSON, a job trace and a pipeline without a jobs array. |
+| `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection.  `GITLAB_TEST_TRACE` selects another job trace fixture. |
+| `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections and a pipeline without a jobs array. |
 | `*-tests.el` | ERT suites.  `package-build` excludes this suffix from the package and the lint gate skips it. |
 | `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary or the evil package. |
 | `flake.lock` | Pinned flake inputs. |
@@ -360,6 +360,44 @@ without evil.  The suite never opens a network connection.
   a region while `gitlab-job-log-show-timestamps` is nil.  Do not put
   `mode-line-format-right-align` in an `:eval` form: `format-mode-line`
   reads the symbol as a variable and the alignment stops working.
+- GitLab writes `section_start:UNIX:NAME[collapsed=true]` before a
+  section of a job and `section_end:UNIX:NAME` after it.
+  `gitlab-job-log--section-regexp` reads both, and
+  `gitlab-job-log--apply-section` runs from `gitlab-job-log--insert-line`
+  after the ANSI conversion.  The start marker becomes a header, a
+  `display` property of `── NAME (D.SSSs) ── ` with the `gitlab-title`
+  face, and the anchor message of GitLab stays behind it on the same
+  line.  The duration comes from the two UNIX times of the markers, so
+  no request is needed.  The end marker line, its newline and its
+  carriage return get `display ""` and the property
+  `gitlab-job-log-section-end`, and `gitlab-job-log--apply-timestamps`
+  skips such a line, so the timestamp toggle never shows part of a
+  hidden end marker.  A start marker covers its leading carriage
+  return and escape sequence, because glab passes them through.
+- The job log folds sections with `outline-minor-mode`, not with an
+  overlay package.  `outline-regexp` is
+  `gitlab-job-log--section-heading-regexp`, which matches the raw
+  marker behind the timestamp prefix, so folding works while the
+  prefix stays hidden.  `gitlab-job-log-toggle-section` on `TAB` calls
+  `outline-toggle-children` at the enclosing heading, so it folds from
+  any line of a section.  `S-TAB`, the `C-c @` prefix and the evil
+  folds `zc`, `zo` and `za` come from `evil-fold-list`.  New text
+  inherits text properties from the line above, so
+  `gitlab-job-log--insert-line` removes `invisible`, `display` and
+  `gitlab-job-log-section-end` from the inserted range first.
+  `gitlab-job-log--reveal-open-section` opens the section that the
+  new output enters, so a live trace never hides behind a fold.
+- A restart erases the buffer, so `gitlab-job-log--start` calls
+  `gitlab-job-log--collapsed-names` first and stores the folded names
+  in `gitlab-job-log--collapsed`.  A section that the new trace closes
+  folds again when its name is in the list.  Both
+  `gitlab-job-log--collapsed` and `gitlab-job-log--sections` are
+  `permanent-local`, because the mode runs again on a second display
+  of the same buffer, and both stay in the buffer: no file, no
+  custom variable, no session state.
+- `gitlab-job-log--imenu-index` lists every start marker with the name
+  and, once the end marker arrived, the duration.  A section that
+  still streams shows its name alone.
 - List modes derive from `gitlab-list-mode`, which derives from
   `tabulated-list-mode`.  A derived mode sets
   `gitlab-list--fetch-function`, `gitlab-list--entries-function`,
@@ -428,9 +466,13 @@ without evil.  The suite never opens a network connection.
   key string.  `gitlab-evil--key-sequence` passes a vector unchanged
   and parses a string.  `gitlab-job-log-toggle-timestamps` takes the
   `evil-invert-char` remap, so `~` toggles the timestamps of a job log
-  in normal state.  `gitlab-export-json` takes the `evil-yank`
-  remap, so `y` exports the JSON of a detail buffer or of a list
-  buffer in normal state, and visual state keeps the ID copy.  Do not
+  in normal state.  `gitlab-job-log-toggle-section` takes the plain
+  `TAB` key, because evil binds no fold command to it, and the evil
+  fold keys `zc`, `zo` and `za` reach the same sections through
+  `evil-fold-list` and `outline-minor-mode`.  `gitlab-export-json`
+  takes the `evil-yank` remap, so `y` exports the JSON of a detail
+  buffer or of a list buffer in normal state, and visual state keeps
+  the ID copy.  Do not
   `require` evil at the top of the file:
   evil runs `evil-after-load-hook` before it provides its feature, so
   a plain `require` recurses there.  The file requires evil only when
@@ -530,3 +572,6 @@ without evil.  The suite never opens a network connection.
 - Merge request discussions by discussion, not one flat notes list.
 - Pipeline actions: retry, cancel and play a manual job.
 - A second detail buffer for a job with its metadata, not only the log.
+- Job rows in the imenu of a pipeline buffer.  The design is in
+  git-bug issue `01e1ede`: keep the field lines and add one entry per
+  job row.
