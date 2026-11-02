@@ -412,6 +412,41 @@ The fake header line and the empty rows contribute nothing."
     (should (equal '(("5001" . "build") ("5002" . "test"))
                    (gitlab--children)))))
 
+(ert-deftest gitlab-mode-command-modes ()
+  "Every display command names the modes in which it works."
+  (should (equal '(gitlab-detail-mode)
+                 (command-modes #'gitlab-open-at-point)))
+  (should (equal '(gitlab-detail-mode)
+                 (command-modes #'gitlab-mouse-open-at-point)))
+  (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-copy-id)))
+  (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-open-web)))
+  (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-pop)))
+  (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
+                 (command-modes #'gitlab-go-to-parent)))
+  (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
+                 (command-modes #'gitlab-next-sibling)))
+  (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
+                 (command-modes #'gitlab-previous-sibling)))
+  (should (equal '(gitlab-list-mode) (command-modes #'gitlab-list-open)))
+  (should (equal '(gitlab-list-mode)
+                 (command-modes #'gitlab-list-mouse-open)))
+  (should (equal '(gitlab-list-mode)
+                 (command-modes #'gitlab-list-copy-id)))
+  (should (equal '(gitlab-list-mode)
+                 (command-modes #'gitlab-list-open-web))))
+
+(ert-deftest gitlab-mode-command-modes-filter-mx ()
+  "A mode-tagged command hides outside its mode in M-x completion."
+  (with-temp-buffer
+    (should-not (command-completion-default-include-p
+                 #'gitlab-copy-id (current-buffer)))
+    (gitlab-detail-mode)
+    (should (command-completion-default-include-p
+             #'gitlab-copy-id (current-buffer)))
+    (gitlab-list-mode)
+    (should-not (command-completion-default-include-p
+                 #'gitlab-copy-id (current-buffer)))))
+
 (provide 'gitlab-mode-tests)
 
 ;;; gitlab-mode-tests.el ends here

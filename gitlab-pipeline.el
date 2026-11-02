@@ -280,7 +280,7 @@ sibling commands never disagree."
 
 (defun gitlab-pipeline-open-job-at-point ()
   "Open the job log of the job at point."
-  (interactive)
+  (interactive nil gitlab-pipeline-mode)
   (let ((id (gitlab-pipeline-job-id-at-point))
         (name (get-text-property (point) 'gitlab-job-name)))
     (if id
@@ -834,7 +834,7 @@ Return nil when point sits above the first section."
 The command works on every line of a section, not only on the line
 that shows its header, so a reader folds a long step from the
 middle of it."
-  (interactive)
+  (interactive nil gitlab-job-log-mode)
   (let ((heading (gitlab-job-log--enclosing-heading)))
     (unless heading
       (user-error "No GitLab section at point"))
@@ -1014,7 +1014,7 @@ The prefix holds the timestamp and the stream identifier, so the
 command leaves the text of each line at column 0.  It sets the
 buffer-local value of `gitlab-job-log-show-timestamps' and applies
 it to the lines that the buffer already holds."
-  (interactive)
+  (interactive nil gitlab-job-log-mode)
   (setq-local gitlab-job-log-show-timestamps
               (not gitlab-job-log-show-timestamps))
   (let ((inhibit-read-only t))
@@ -1038,7 +1038,7 @@ an Org link or an xref definition opened."
 (defun gitlab-job-log-go-to-parent ()
   "Open the pipeline buffer that holds the current job.
 Signal `user-error' when GitLab names no pipeline for the job."
-  (interactive)
+  (interactive nil gitlab-job-log-mode)
   (let ((pipeline-id (gitlab-job-log-pipeline-id)))
     (if pipeline-id
         (gitlab-display-pipeline pipeline-id)
@@ -1106,7 +1106,7 @@ restart folds the same sections again when their markers arrive."
   "Clear the current job log and stream the trace again.
 Ignoring ARGUMENTS, because `revert-buffer-function' calls this
 function with the two `revert-buffer' arguments."
-  (interactive)
+  (interactive nil gitlab-job-log-mode)
   (gitlab-job-log--start))
 
 (defun gitlab-job-log--bookmark-make-record ()

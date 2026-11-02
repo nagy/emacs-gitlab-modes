@@ -229,6 +229,17 @@ request of another project opens the list of that project."
            (should-error (gitlab-next-sibling) :type 'user-error))
        (kill-buffer detail)))))
 
+(ert-deftest gitlab-merge-request-command-modes ()
+  "The merge request commands name their mode, the display commands do not."
+  (should (equal '(gitlab-merge-request-mode)
+                 (command-modes #'gitlab-merge-request-show-notes)))
+  (should (equal '(gitlab-merge-request-mode)
+                 (command-modes #'gitlab-merge-request-show-changes)))
+  (should (equal '(gitlab-merge-request-mode)
+                 (command-modes #'gitlab-merge-request-show-log)))
+  (should-not (command-modes #'gitlab-list-merge-requests))
+  (should-not (command-modes #'gitlab-display-merge-request)))
+
 (provide 'gitlab-merge-request-tests)
 
 ;;; gitlab-merge-request-tests.el ends here

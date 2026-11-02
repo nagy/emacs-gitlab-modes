@@ -943,7 +943,7 @@ point was on before the render."
 Read the text properties that the renderers attach: a job opens
 its log, a pipeline opens its detail buffer, a merge request opens
 its detail buffer and a web URL opens the browser."
-  (interactive)
+  (interactive nil gitlab-detail-mode)
   (cond
    ((get-text-property (point) 'gitlab-job-id)
     (gitlab-display-job-log
@@ -961,7 +961,7 @@ its detail buffer and a web URL opens the browser."
 
 (defun gitlab-mouse-open-at-point (event)
   "Open the GitLab object at the click EVENT."
-  (interactive "e")
+  (interactive "e" gitlab-detail-mode)
   (mouse-set-point event)
   (gitlab-open-at-point))
 
@@ -972,7 +972,7 @@ pipeline list and a job log opens the pipeline that holds the job.
 A list buffer is already the top level, so it signals `user-error'.
 The buffer-local `gitlab--parent-function' names the command of
 each kind."
-  (interactive)
+  (interactive nil gitlab-detail-mode gitlab-job-log-mode)
   (if gitlab--parent-function
       (funcall gitlab--parent-function)
     (user-error "The current GitLab buffer has no parent")))
@@ -1055,7 +1055,7 @@ defaults to 1, and a negative N walks back.
 Signal `user-error' when the buffer has no parent, when the parent
 view is not open, when the current object is not a child of the
 parent view and when the walk leaves the collection."
-  (interactive "p")
+  (interactive "p" gitlab-detail-mode gitlab-job-log-mode)
   (gitlab--move-sibling (or n 1)))
 
 (defun gitlab-previous-sibling (&optional n)
@@ -1063,12 +1063,12 @@ parent view and when the walk leaves the collection."
 This is `gitlab-next-sibling' with the opposite direction, so it
 reads the same parent view.  N defaults to 1, and a negative N
 walks forward."
-  (interactive "p")
+  (interactive "p" gitlab-detail-mode gitlab-job-log-mode)
   (gitlab--move-sibling (- (or n 1))))
 
 (defun gitlab-copy-id ()
   "Copy the identifier of the current buffer to the kill ring."
-  (interactive)
+  (interactive nil gitlab-detail-mode)
   (if gitlab--id
       (progn
         (kill-new (gitlab-data-id-string gitlab--id))
@@ -1077,7 +1077,7 @@ walks forward."
 
 (defun gitlab-open-web ()
   "Open the web page of the current object in a browser."
-  (interactive)
+  (interactive nil gitlab-detail-mode)
   (let ((url (or (and gitlab--last-data
                       (gitlab-data-field "web_url" gitlab--last-data))
                  (and gitlab--id
@@ -1088,7 +1088,7 @@ walks forward."
 
 (defun gitlab-pop ()
   "Pop back to the buffer that opened the current display buffer."
-  (interactive)
+  (interactive nil gitlab-detail-mode)
   (if (buffer-live-p gitlab--origin-buffer)
       (pop-to-buffer gitlab--origin-buffer)
     (user-error "The origin buffer is gone")))
@@ -1289,7 +1289,7 @@ that reads a URL work on a table row."
 
 (defun gitlab-list-open ()
   "Open the row at point."
-  (interactive)
+  (interactive nil gitlab-list-mode)
   (let ((id (gitlab-list--id-at-point)))
     (if id
         (funcall gitlab-list--open-function id)
@@ -1297,13 +1297,13 @@ that reads a URL work on a table row."
 
 (defun gitlab-list-mouse-open (event)
   "Open the row at the click EVENT."
-  (interactive "e")
+  (interactive "e" gitlab-list-mode)
   (mouse-set-point event)
   (gitlab-list-open))
 
 (defun gitlab-list-copy-id ()
   "Copy the ID of the row at point to the kill ring."
-  (interactive)
+  (interactive nil gitlab-list-mode)
   (let ((id (gitlab-list--id-at-point)))
     (if id
         (progn
@@ -1313,7 +1313,7 @@ that reads a URL work on a table row."
 
 (defun gitlab-list-open-web ()
   "Open the web page of the row at point in a browser."
-  (interactive)
+  (interactive nil gitlab-list-mode)
   (let ((url (gitlab-list--thing-at-point-url)))
     (if url
         (browse-url url)

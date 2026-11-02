@@ -243,6 +243,11 @@
     (gitlab-detail-mode)
     (should-error (gitlab-export-json) :type 'user-error)))
 
+(ert-deftest gitlab-export-json-command-modes ()
+  "The export command names both display base modes."
+  (should (equal '(gitlab-detail-mode gitlab-list-mode)
+                 (command-modes #'gitlab-export-json))))
+
 (provide 'gitlab-export-tests)
 
 ;;; gitlab-export-tests.el ends here

@@ -175,6 +175,11 @@
      (should (eq (gitlab-evil-test--binding mode "<mouse-8>")
                  #'gitlab-previous-sibling)))))
 
+(ert-deftest gitlab-evil-list-copy-ids-command-modes ()
+  "The ID copy command belongs to the list mode alone."
+  (should (equal '(gitlab-list-mode)
+                 (command-modes #'gitlab-evil-list-copy-ids))))
+
 (provide 'gitlab-evil-tests)
 
 ;;; gitlab-evil-tests.el ends here

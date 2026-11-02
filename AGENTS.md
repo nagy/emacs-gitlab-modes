@@ -545,6 +545,14 @@ without evil.  The suite never opens a network connection.
 - Interactive entry points carry `;;;###autoload` cookies.  The
   optional layers keep their own files and are not required by
   `gitlab-modes.el`.
+- An interactive function that works in one mode names that mode in its
+  `interactive` form, `(interactive nil gitlab-detail-mode)`, so `M-S-x`
+  and `C-h m` list it in that mode alone.  A display command that
+  starts a mode names no mode, because a user calls it from anywhere.
+  `gitlab-go-to-parent`, `gitlab-next-sibling` and
+  `gitlab-previous-sibling` name both `gitlab-detail-mode` and
+  `gitlab-job-log-mode`; `gitlab-export-json` names both base modes.
+  `command-modes` returns the list, and the suites assert it.
 - `gitlab-evil.el` binds every command key through
   `evil-define-minor-mode-key`, one key set per state and local minor
   mode.  A key that evil already binds becomes a `[remap

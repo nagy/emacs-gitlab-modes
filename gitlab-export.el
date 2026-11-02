@@ -138,7 +138,7 @@ one array, as the glab command that filled the buffer prints them.
 The command refuses a buffer without data, such as a job log.
 `revert-buffer' in the export buffer reads the source buffer again.
 Both display base modes remap `js-json-mode' to this command."
-  (interactive)
+  (interactive nil gitlab-detail-mode gitlab-list-mode)
   (unless (derived-mode-p 'gitlab-detail-mode 'gitlab-list-mode)
     (user-error "This buffer has no GitLab JSON data"))
   (let ((source (current-buffer))

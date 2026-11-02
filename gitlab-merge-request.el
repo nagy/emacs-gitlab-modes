@@ -265,7 +265,7 @@ NOTES is the decoded notes array."
   "Fetch and display the notes of the current merge request.
 The notes load once per call; an automatic refresh re-renders the
 stored notes without another request."
-  (interactive)
+  (interactive nil gitlab-merge-request-mode)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
   (let ((buffer (current-buffer))
@@ -327,7 +327,7 @@ over commit lines, the view covers only those commits.  Magit, when
 available, supplies the diff buffer and its Ediff command on E.
 Signal a user error in a buffer of another project, because the
 local checkout holds no ref of that project."
-  (interactive)
+  (interactive nil gitlab-merge-request-mode)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
   (unless (gitlab--local-checkout-p)
@@ -342,7 +342,7 @@ active region over commit lines, the log covers only those
 commits.  Magit, when available, supplies the log buffer and its
 Ediff commands.  Signal a user error in a buffer of another
 project, because the local checkout holds no ref of that project."
-  (interactive)
+  (interactive nil gitlab-merge-request-mode)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
   (unless (gitlab--local-checkout-p)

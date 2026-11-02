@@ -1087,6 +1087,22 @@ ends at the carriage return and not at the message.")
                                       (current-kill 0 t))))))
       (kill-buffer buffer))))
 
+(ert-deftest gitlab-pipeline-command-modes ()
+  "The pipeline commands name the modes in which they work."
+  (should (equal '(gitlab-pipeline-mode)
+                 (command-modes #'gitlab-pipeline-open-job-at-point)))
+  (should (equal '(gitlab-job-log-mode)
+                 (command-modes #'gitlab-job-log-toggle-section)))
+  (should (equal '(gitlab-job-log-mode)
+                 (command-modes #'gitlab-job-log-toggle-timestamps)))
+  (should (equal '(gitlab-job-log-mode)
+                 (command-modes #'gitlab-job-log-go-to-parent)))
+  (should (equal '(gitlab-job-log-mode)
+                 (command-modes #'gitlab-job-log-restart)))
+  (should-not (command-modes #'gitlab-list-pipelines))
+  (should-not (command-modes #'gitlab-display-pipeline))
+  (should-not (command-modes #'gitlab-display-job-log)))
+
 (provide 'gitlab-pipeline-tests)
 
 ;;; gitlab-pipeline-tests.el ends here

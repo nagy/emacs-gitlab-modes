@@ -188,7 +188,7 @@ passes through unchanged."
 
 (defun gitlab-evil-list-copy-ids (start end)
   "Copy the IDs of the selected list rows between START and END."
-  (interactive "r")
+  (interactive "r" gitlab-list-mode)
   (let ((ids (gitlab-evil--ids-between start end)))
     (if ids
         (progn
