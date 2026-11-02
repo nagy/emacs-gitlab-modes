@@ -99,6 +99,14 @@ keeps the folds that the old trace had.  Imenu lists every section and
 jumps to its header.  The log drops the carriage return that GitLab
 writes at the end of a trace line, so no =^M= appears.
 
+A copy of a region in a log buffer holds the text that the buffer
+shows.  While =~= hides the timestamp prefix, a copy leaves the
+prefix out, and it also drops the header of a section and every end
+marker line.  The message that GitLab writes after a section start
+marker stays, so a copied section reads as its message lines and its
+trace lines.  The kill ring and the clipboard receive that text, so a
+paste into another program matches the screen too.
+
 A project can fetch merge request refs into its remote-tracking
 namespace:
 

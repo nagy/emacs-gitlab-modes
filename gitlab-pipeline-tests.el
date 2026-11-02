@@ -749,6 +749,83 @@ section marker line.")
                                            (gitlab-test-buffer-string buffer)))))
          (kill-buffer buffer))))))
 
+(defun gitlab-pipeline-tests--copy-region (beg end)
+  "Return the kill ring text of the region between BEG and END."
+  (let ((kill-ring nil)
+        (interprogram-cut-function nil))
+    (kill-ring-save beg end)
+    (substring-no-properties (current-kill 0 t))))
+
+(ert-deftest gitlab-pipeline-job-log-copy-follows-timestamps ()
+  "A copy drops the prefix only while the buffer hides it."
+  (let* ((shown (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                        "2026-10-30T20:59:38.000Z 01E two\n"))
+         (buffer (gitlab-pipeline-tests--job-log-with-trace shown)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log--apply-timestamps (point-min) (point-max))
+          (should (equal shown
+                         (gitlab-pipeline-tests--copy-region
+                          (point-min) (point-max))))
+          (call-interactively #'gitlab-job-log-toggle-timestamps)
+          (should (equal "one\ntwo\n"
+                         (gitlab-pipeline-tests--copy-region
+                          (point-min) (point-max))))
+          (should (equal shown (gitlab-test-buffer-string buffer))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-copy-reaches-clipboard ()
+  "The clipboard receives the filtered text and not the buffer text."
+  (let ((buffer (gitlab-pipeline-tests--job-log-with-trace
+                 "2026-10-30T20:59:37.000Z 00O one\n"))
+        (clip nil))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log--apply-timestamps (point-min) (point-max))
+          (call-interactively #'gitlab-job-log-toggle-timestamps)
+          (let ((kill-ring nil)
+                (interprogram-cut-function (lambda (string)
+                                             (setq clip string))))
+            (kill-ring-save (point-min) (point-max)))
+          (should (equal "one\n" (substring-no-properties clip))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-copy-drops-section-markers ()
+  "A copy keeps the message after a marker and drops the marker lines."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (should (equal (concat "Getting source from Git repository\n"
+                                 "2026-10-30T20:59:38.500Z 00O fetch\n"
+                                 "2026-10-30T20:59:52.000Z 00O $ make test\n")
+                         (gitlab-pipeline-tests--copy-region
+                          (point-min) (point-max))))
+          (call-interactively #'gitlab-job-log-toggle-timestamps)
+          (should (equal (concat "Getting source from Git repository\n"
+                                 "fetch\n"
+                                 "$ make test\n")
+                         (gitlab-pipeline-tests--copy-region
+                          (point-min) (point-max)))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-copy-keeps-read-only-buffer ()
+  "A kill command copies and leaves the trace text in place."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (let ((before (buffer-string))
+                (kill-ring nil)
+                (interprogram-cut-function nil)
+                (kill-read-only-ok t))
+            (should-not (kill-region (point-min) (point-max)))
+            (should (equal before (buffer-string)))
+            (should (string-prefix-p "Getting source from Git repository"
+                                     (substring-no-properties
+                                      (current-kill 0 t))))))
+      (kill-buffer buffer))))
+
 (provide 'gitlab-pipeline-tests)
 
 ;;; gitlab-pipeline-tests.el ends here

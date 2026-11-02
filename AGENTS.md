@@ -346,6 +346,24 @@ without evil.  The suite never opens a network connection.
   the evil remap of `evil-invert-char`, never fetches again.  The
   prefix is marked after the ANSI conversion, because a trace line
   starts with the escape sequences of the server.
+- A copy of a region in a job log holds the text that the buffer
+  shows.  `gitlab-job-log-mode` sets
+  `filter-buffer-substring-function` to
+  `gitlab-job-log--filter-buffer-substring`, so `kill-region`,
+  `kill-ring-save` and the clipboard all receive the filtered string.
+  `gitlab-job-log--replaced-ranges` collects the ranges that carry a
+  `gitlab-job-log-section-start`, a `gitlab-job-log-section-end` or a
+  string `display` property.  The last one covers a hidden timestamp
+  prefix and the text of a section header, so a visible prefix
+  reaches the copy and a hidden one does not.  The ranges also keep
+  the face properties of the text that stays.
+  `gitlab-job-log--strip-replaced` drops a line that keeps no text
+  together with its newline, because a hidden end marker would
+  otherwise leave an empty line.  Do not filter at
+  `kill-transform-function`: that variable holds one global function
+  and not a hook list, and it runs for every buffer.  A kill command
+  in the read-only log copies and signals `buffer-read-only` through
+  the usual `kill-region` fallback, so the trace text stays in place.
 - A job log shows the duration of the active region on the right edge
   of the mode line.  `gitlab-job-log--region-span` reads the first and
   the last trace line in the region that carries a timestamp and
@@ -371,7 +389,10 @@ without evil.  The suite never opens a network connection.
   after the ANSI conversion.  The start marker becomes a header, a
   `display` property of `── NAME (D.SSSs) ── ` with the `gitlab-title`
   face, and the anchor message of GitLab stays behind it on the same
-  line.  The duration comes from the two UNIX times of the markers, so
+  line.  The line from its start up to the end of the marker also
+  carries the property `gitlab-job-log-section-start`, so a copy
+  leaves the timestamp prefix out even while the buffer shows it.
+  The duration comes from the two UNIX times of the markers, so
   no request is needed.  The end marker line, its newline and its
   carriage return get `display ""` and the property
   `gitlab-job-log-section-end`, and `gitlab-job-log--apply-timestamps`
@@ -396,8 +417,9 @@ without evil.  The suite never opens a network connection.
   any line of a section.  `S-TAB`, the `C-c @` prefix and the evil
   folds `zc`, `zo` and `za` come from `evil-fold-list`.  New text
   inherits text properties from the line above, so
-  `gitlab-job-log--insert-line` removes `invisible`, `display` and
-  `gitlab-job-log-section-end` from the inserted range first.
+  `gitlab-job-log--insert-line` removes `invisible`, `display`,
+  `gitlab-job-log-section-start` and `gitlab-job-log-section-end`
+  from the inserted range first.
   `gitlab-job-log--reveal-open-section` opens the section that the
   new output enters, so a live trace never hides behind a fold.
 - A restart erases the buffer, so `gitlab-job-log--start` calls

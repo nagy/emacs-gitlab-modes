@@ -53,7 +53,9 @@
 ;; `gitlab-job-log-show-timestamps' and the command
 ;; `gitlab-job-log-toggle-timestamps' decide whether the buffer shows
 ;; it.  The prefix stays in the buffer as text with a `display'
-;; property, so a toggle never asks GitLab again.
+;; property, so a toggle never asks GitLab again.  A copy of a region
+;; leaves out every range that a property replaces, so the kill ring
+;; and the clipboard receive the text that the buffer shows.
 ;;
 ;; A job log knows its parent pipeline: the display command passes the
 ;; ID, the bookmark record keeps it, and `gitlab-job-pipeline-id' asks
@@ -496,7 +498,8 @@ section that a fold closed."
       (let ((inhibit-read-only t))
         (remove-list-of-text-properties
          start (point-max)
-         '(invisible display gitlab-job-log-section-end)))
+         '(invisible display gitlab-job-log-section-start
+           gitlab-job-log-section-end)))
       (gitlab-job-log--apply-timestamps start (point-max))
       (unless (gitlab-job-log--apply-section start (point-max))
         (gitlab-job-log--reveal-open-section))
@@ -573,7 +576,10 @@ section name and TIME the UNIX time of the marker."
   (push (list name (copy-marker line-start) (copy-marker marker-start)
               (copy-marker marker-end) time)
         gitlab-job-log--sections)
-  (gitlab-job-log--show-section-header marker-start marker-end name))
+  (gitlab-job-log--show-section-header marker-start marker-end name)
+  (let ((inhibit-read-only t))
+    (add-text-properties line-start marker-end
+                         '(gitlab-job-log-section-start t))))
 
 (defun gitlab-job-log--take-section (name)
   "Remove the open section NAME from the stack and return its entry.
@@ -649,6 +655,87 @@ marker keeps the ^M of the redraw sequence."
                     (gitlab-job-log--close-section line-start name time))))
               t)
           (set-marker line-end nil))))))
+
+(defun gitlab-job-log--replaced-p (position string)
+  "Return non-nil when a copy leaves out POSITION of STRING.
+The log replaces a hidden timestamp prefix, the text of a section
+marker and a whole end marker line with text properties, so a copy
+matches what the buffer shows."
+  (or (stringp (get-text-property position 'display string))
+      (get-text-property position 'gitlab-job-log-section-start string)
+      (get-text-property position 'gitlab-job-log-section-end string)))
+
+(defun gitlab-job-log--replaced-ranges (string)
+  "Return the ranges of STRING that a copy leaves out.
+The ranges come in order and never overlap."
+  (let ((length (length string))
+        (position 0)
+        ranges)
+    (while (< position length)
+      (let ((next (min (next-single-property-change
+                        position 'display string length)
+                       (next-single-property-change
+                        position 'gitlab-job-log-section-start
+                        string length)
+                       (next-single-property-change
+                        position 'gitlab-job-log-section-end
+                        string length))))
+        (when (gitlab-job-log--replaced-p position string)
+          (push (cons position next) ranges))
+        (setq position next)))
+    (nreverse ranges)))
+
+(defun gitlab-job-log--strip-replaced (string)
+  "Return STRING without the text that a copy leaves out.
+A line that keeps no text keeps no newline either, so a hidden end
+marker or the header of a section never leaves an empty line
+behind."
+  (let* ((length (length string))
+         (keep (make-vector length t)))
+    (dolist (range (gitlab-job-log--replaced-ranges string))
+      (let ((index (car range)))
+        (while (< index (cdr range))
+          (aset keep index nil)
+          (setq index (1+ index)))))
+    (let ((line-start 0))
+      (while (< line-start length)
+        (let* ((newline (string-search "\n" string line-start))
+               (line-end (or newline length))
+               (kept nil)
+               (dropped nil)
+               (index line-start))
+          (while (< index line-end)
+            (if (aref keep index)
+                (setq kept t)
+              (setq dropped t))
+            (setq index (1+ index)))
+          (when (and dropped (not kept) newline)
+            (aset keep newline nil))
+          (setq line-start (1+ line-end)))))
+    (let ((parts nil)
+          (position 0))
+      (while (< position length)
+        (let ((next position))
+          (if (aref keep position)
+              (progn
+                (while (and (< next length) (aref keep next))
+                  (setq next (1+ next)))
+                (push (substring string position next) parts))
+            (while (and (< next length) (not (aref keep next)))
+              (setq next (1+ next))))
+          (setq position next)))
+      (apply #'concat (nreverse parts)))))
+
+(defun gitlab-job-log--filter-buffer-substring (beg end delete)
+  "Return the text between BEG and END without the replaced ranges.
+DELETE non-nil asks for the deletion of the region, as
+`filter-buffer-substring' documents.  A hidden timestamp prefix, a
+section header and an end marker line leave the copy, so a kill
+command never saves text that a reader did not see."
+  (let ((string (if delete
+                    (delete-and-extract-region beg end)
+                  (buffer-substring beg end))))
+    (gitlab-job-log--strip-replaced string)))
 
 (defun gitlab-job-log--collapsed-names ()
   "Return the names of the folded sections of the current buffer.
@@ -971,7 +1058,9 @@ their duration to the right edge of the mode line, when
 trace shows a header line with its name and duration.  TAB folds
 the section around point, S-TAB cycles the whole buffer and imenu
 lists the sections.  The parent command opens the pipeline that
-holds the job.  Killing the buffer deletes the process."
+holds the job.  Killing the buffer deletes the process.  A copy of
+a region leaves out the timestamp prefix while it stays hidden, the
+text of a section header and every end marker line."
   :group 'gitlab
   (gitlab--use-project-directory)
   (setq-local bookmark-make-record-function
@@ -981,6 +1070,8 @@ holds the job.  Killing the buffer deletes the process."
   (setq-local gitlab--parent-function #'gitlab-job-log-go-to-parent)
   (setq-local buffer-stale-function nil)
   (setq-local revert-buffer-function #'gitlab-job-log-restart)
+  (setq-local filter-buffer-substring-function
+              #'gitlab-job-log--filter-buffer-substring)
   (setq-local truncate-lines t)
   (setq-local imenu-create-index-function #'gitlab-job-log--imenu-index)
   (setq-local outline-regexp gitlab-job-log--section-heading-regexp)
