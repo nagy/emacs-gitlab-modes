@@ -23,10 +23,10 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the bookmark records and `gitlab-bookmark-jump`. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records and `gitlab-bookmark-jump`. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID. |
-| `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands and the notes command. |
-| `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, and the streaming job log mode. |
+| `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command and the merge request list as the parent view of a detail buffer. |
+| `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer, the fallback encoder and the `js-json-mode` remaps of both display base modes. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
@@ -207,6 +207,41 @@ without evil.  The suite never opens a network connection.
   detail keymap and the job log keymap remap `dired-jump` and
   `dired-up-directory` to the command; `gitlab-evil.el` adds the same
   two remaps to its detail and job log key lists.
+- `gitlab-next-sibling` and `gitlab-previous-sibling` walk inside one
+  collection, and a numeric argument walks several entries at once.
+  The parent view holds the order of its children, so a sibling
+  command reads the open parent buffer and fetches no collection.  The
+  child names its parent with `gitlab--parent-identity-function`, a
+  function of no argument that returns the major mode function and
+  the object ID of the parent, or nil.  A list parent passes nil as
+  the ID.  `gitlab--parent-buffer` finds the parent by identity, so a
+  renamed parent buffer still answers.  A parent detail mode sets
+  `gitlab--children-function`, a function of no argument that returns
+  `(ID . NAME)` entries in display order; a list buffer needs no such
+  function, because `gitlab--children` reads its rendered rows through
+  `tabulated-list-get-id`, so the sort column decides the order.  The
+  child sets `gitlab--sibling-open-function`, a function of ID and
+  NAME that opens one entry of its own kind, and
+  `gitlab--parent-label`, the human name of the parent view for the
+  error messages.  `gitlab--move-sibling` resolves the current
+  position by identity and calls the opener.
+- A closing sibling walk, a parent view that is not open, a current
+  object that the parent view does not hold and a buffer without a
+  parent all signal `user-error`; nothing wraps around.  A list buffer
+  has no parent, so it has no siblings.  The detail keymap and the job
+  log keymap bind `C-c C-n` and `C-c C-p` and the forward and back
+  buttons `[mouse-9]` and `[mouse-8]`.  Evil leaves `C-c` unbound in
+  its states and binds no side button, so no evil key list needs the
+  commands; `gitlab-evil-tests.el` keeps that assumption checked.
+- A job log stores its pipeline ID, so a sibling jump passes the
+  pipeline and the job name of the new entry to `gitlab-display-job-log`
+  and the new log can walk up without a request.  A pipeline detail
+  buffer is both a child of its list and the parent of its jobs: its
+  own siblings come from the pipeline list rows, and its children are
+  its job rows.
+- A sibling command opens the neighbour in its own buffer and leaves
+  the buffer that it leaves open, so a job log keeps streaming and a
+  walk back returns to the text that the buffer already holds.
 - A job log knows its parent pipeline in three steps.  The pipeline
   detail buffer passes its own `gitlab--id` as the third argument of
   `gitlab-display-job-log`, the bookmark record stores the ID under

@@ -162,6 +162,19 @@
        (remove-hook 'evil-after-load-hook #'gitlab-evil-auto-setup)
        (gitlab-evil-mode -1)))))
 
+(ert-deftest gitlab-evil-sibling-keys ()
+  "Evil leaves the sibling keys to the major mode maps."
+  (gitlab-test-with-environment
+   (dolist (mode '(gitlab-merge-request-mode gitlab-job-log-mode))
+     (should (eq (gitlab-evil-test--binding mode "C-c C-n")
+                 #'gitlab-next-sibling))
+     (should (eq (gitlab-evil-test--binding mode "C-c C-p")
+                 #'gitlab-previous-sibling))
+     (should (eq (gitlab-evil-test--binding mode "<mouse-9>")
+                 #'gitlab-next-sibling))
+     (should (eq (gitlab-evil-test--binding mode "<mouse-8>")
+                 #'gitlab-previous-sibling)))))
+
 (provide 'gitlab-evil-tests)
 
 ;;; gitlab-evil-tests.el ends here

@@ -165,6 +165,70 @@ request of another project opens the list of that project."
                            "group/project"))))
          (kill-buffer list))))))
 
+(defun gitlab-merge-request-tests--detail-buffer (iid)
+  "Return a merge request detail buffer for IID without a fetch."
+  (let ((buffer (generate-new-buffer "*GitLab MR sibling test*")))
+    (with-current-buffer buffer
+      (gitlab-merge-request-mode)
+      (gitlab--use-project-directory)
+      (setq-local gitlab--id iid)
+      (setq-local gitlab--identity
+                  (list #'gitlab-merge-request-mode iid gitlab--context)))
+    buffer))
+
+(defun gitlab-merge-request-tests--list-buffer ()
+  "Return a rendered merge request list buffer."
+  (let ((buffer (generate-new-buffer "*GitLab MR list sibling test*")))
+    (with-current-buffer buffer
+      (gitlab-merge-request-list-mode)
+      (gitlab--use-project-directory)
+      (setq-local gitlab--identity
+                  (list #'gitlab-merge-request-list-mode nil gitlab--context))
+      (gitlab-list--refresh))
+    (gitlab-test-wait
+     (lambda () (with-current-buffer buffer
+                  (not (null tabulated-list-entries)))))
+    buffer))
+
+(ert-deftest gitlab-merge-request-detail-next-sibling ()
+  "The next sibling of a merge request is the next row of its list."
+  (gitlab-test-with-environment
+   (let ((list (gitlab-merge-request-tests--list-buffer))
+         (detail (gitlab-merge-request-tests--detail-buffer "12"))
+         opened)
+     (unwind-protect
+         (with-current-buffer detail
+           (cl-letf (((symbol-function 'gitlab-display-merge-request)
+                      (lambda (iid) (setq opened iid))))
+             (call-interactively #'gitlab-next-sibling))
+           (should (equal "13" opened)))
+       (kill-buffer detail)
+       (kill-buffer list)))))
+
+(ert-deftest gitlab-merge-request-detail-previous-sibling ()
+  "The previous sibling of a merge request is the earlier row."
+  (gitlab-test-with-environment
+   (let ((list (gitlab-merge-request-tests--list-buffer))
+         (detail (gitlab-merge-request-tests--detail-buffer "13"))
+         opened)
+     (unwind-protect
+         (with-current-buffer detail
+           (cl-letf (((symbol-function 'gitlab-display-merge-request)
+                      (lambda (iid) (setq opened iid))))
+             (call-interactively #'gitlab-previous-sibling))
+           (should (equal "12" opened)))
+       (kill-buffer detail)
+       (kill-buffer list)))))
+
+(ert-deftest gitlab-merge-request-detail-sibling-needs-list ()
+  "A merge request detail without its list signals a `user-error'."
+  (gitlab-test-with-environment
+   (let ((detail (gitlab-merge-request-tests--detail-buffer "12")))
+     (unwind-protect
+         (with-current-buffer detail
+           (should-error (gitlab-next-sibling) :type 'user-error))
+       (kill-buffer detail)))))
+
 (provide 'gitlab-merge-request-tests)
 
 ;;; gitlab-merge-request-tests.el ends here

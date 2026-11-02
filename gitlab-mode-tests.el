@@ -363,6 +363,55 @@
     (gitlab-list-mode)
     (should (eq #'dired-jump (key-binding (kbd "C-x C-j"))))))
 
+(ert-deftest gitlab-mode-sibling-keys ()
+  "The detail and job log modes bind both sibling commands."
+  (dolist (mode '(gitlab-detail-mode gitlab-job-log-mode))
+    (with-temp-buffer
+      (funcall mode)
+      (should (eq #'gitlab-next-sibling
+                  (key-binding (kbd "C-c C-n"))))
+      (should (eq #'gitlab-previous-sibling
+                  (key-binding (kbd "C-c C-p"))))
+      (should (eq #'gitlab-next-sibling (key-binding [mouse-9])))
+      (should (eq #'gitlab-previous-sibling (key-binding [mouse-8]))))))
+
+(ert-deftest gitlab-mode-sibling-without-parent ()
+  "A buffer without a parent signals a `user-error'."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (should-error (gitlab-next-sibling) :type 'user-error)
+     (should-error (gitlab-previous-sibling) :type 'user-error))))
+
+(ert-deftest gitlab-mode-sibling-list-is-top-level ()
+  "A list buffer has no siblings, because it has no parent."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (should-error (gitlab-next-sibling) :type 'user-error))))
+
+(ert-deftest gitlab-mode-list-children ()
+  "The children of a list buffer are its rows in display order.
+The fake header line and the empty rows contribute nothing."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 8 t)])
+     (setq-local tabulated-list-entries
+                 '(("1" ["one"]) ("2" ["two"]) ("3" ["three"])))
+     (tabulated-list-print t)
+     (should (equal '(("1" . nil) ("2" . nil) ("3" . nil))
+                    (gitlab--children))))))
+
+(ert-deftest gitlab-mode-children-by-function ()
+  "A parent buffer with a children function answers with it."
+  (with-temp-buffer
+    (gitlab-detail-mode)
+    (setq-local gitlab--children-function
+                (lambda () '(("5001" . "build") ("5002" . "test"))))
+    (should (equal '(("5001" . "build") ("5002" . "test"))
+                   (gitlab--children)))))
+
 (provide 'gitlab-mode-tests)
 
 ;;; gitlab-mode-tests.el ends here

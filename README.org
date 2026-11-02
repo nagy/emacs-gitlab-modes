@@ -28,6 +28,8 @@ installed package works without =glab= on =PATH=.
 | =gitlab-display-pipeline=             | Pipeline fields at the top and jobs below.         |
 | =gitlab-display-job-log=              | Live =glab ci trace= output for one job.             |
 | =gitlab-go-to-parent=                 | The list, or the pipeline, one level above.        |
+| =gitlab-next-sibling=                 | The next object of the parent view.                |
+| =gitlab-previous-sibling=             | The previous object of the parent view.            |
 | =gitlab-export-json=                  | The glab JSON answer of the buffer, in one buffer.  |
 
 The list commands prompt for the project when the current directory
@@ -147,6 +149,10 @@ Both detail modes provide these keys:
 | =c=         | =gitlab-copy-id=           |
 | =w=         | =gitlab-open-web=          |
 | =p=         | =gitlab-pop=               |
+| =C-c C-n=   | =gitlab-next-sibling=      |
+| =C-c C-p=   | =gitlab-previous-sibling=  |
+| =mouse-9=   | =gitlab-next-sibling=      |
+| =mouse-8=   | =gitlab-previous-sibling=  |
 | =C-x C-j=   | =gitlab-go-to-parent=      |
 | =q=         | =quit-window=              |
 
@@ -216,6 +222,46 @@ pipeline buffer receives the pipeline ID.  A bookmark record stores
 the same ID.  A log that neither knows, for example one opened from
 an Org link, asks GitLab once for the details of the job and keeps the
 answer.
+
+* Sibling views
+
+=M-x gitlab-next-sibling= and =M-x gitlab-previous-sibling= open the
+next or the previous object of the same parent view.  A job log opens
+the next or the previous job of its pipeline, a pipeline buffer opens
+the next or the previous row of its pipeline list, and a merge request
+buffer opens the next or the previous row of its merge request list.
+The same two keys run the commands in every detail buffer and in a
+job log, and the forward and back mouse buttons run =mouse-9= and
+=mouse-8=.
+
+The parent view holds the order of its children, so the commands read
+the open parent buffer and fetch no collection.  A pipeline buffer
+reads its job rows and a list buffer reads the rows that it displays,
+so the sort column decides the order of a list.  The parent view
+must be open: a job log without its pipeline buffer, or a merge
+request buffer without its list, signals a user error and names the
+missing view.
+=C-x C-j= opens it.
+
+A numeric argument walks several objects at once, so =C-u 3 C-c C-n=
+opens the third next sibling.  A walk that leaves the collection, a
+current object that the parent view does not hold, and a buffer
+without a parent all signal a user error.  A list buffer has no
+parent, so it has no siblings either.
+
+The commands leave the buffer that they leave open, so a walk over the
+jobs of a pipeline keeps each trace streaming in its own buffer.  Going
+back returns to a log that already holds its text.
+
+The mechanism is general.  A child mode sets
+=gitlab--parent-identity-function= to a function that returns the
+major mode and the object ID of its parent, and
+=gitlab--sibling-open-function= to a function that opens one entry of
+its own kind.  A parent detail mode sets =gitlab--children-function=
+to a function that returns the child ID and name pairs in display
+order.  A list buffer needs no children function, because its rows
+are its children.  A new GitLab relation adds these settings and no
+navigation code.
 
 * JSON export
 

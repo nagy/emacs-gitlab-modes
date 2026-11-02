@@ -293,6 +293,11 @@ RET opens the pipeline, the commit or the web page at point."
   (setq-local gitlab--kind 'merge-request)
   (setq-local gitlab--label "GitLab merge request")
   (setq-local gitlab--parent-function #'gitlab-list-merge-requests)
+  (setq-local gitlab--parent-identity-function
+              (lambda () (list #'gitlab-merge-request-list-mode nil)))
+  (setq-local gitlab--parent-label "merge request list")
+  (setq-local gitlab--sibling-open-function
+              (lambda (id _name) (gitlab-display-merge-request id)))
   (setq-local gitlab--fetch-function #'gitlab-merge-request--fetch)
   (setq-local gitlab--render-function #'gitlab-merge-request--render)
   (setq-local gitlab-merge-request--notes nil)

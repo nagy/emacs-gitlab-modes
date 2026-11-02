@@ -316,6 +316,7 @@
           (should (equal shown (gitlab-test-buffer-string buffer))))
       (kill-buffer buffer))))
 
+
 (ert-deftest gitlab-pipeline-job-log-duration-string ()
   "A duration keeps three decimals and grows by minutes and hours."
   (should (equal "1.234s" (gitlab-job-log--duration-string 1.234)))
@@ -526,6 +527,183 @@ The list belongs to the project of the pipeline."
                            gitlab-pipeline-list-buffer-name
                            "group/project"))))
          (kill-buffer list))))))
+
+(defun gitlab-pipeline-tests--detail-buffer (pipeline-id)
+  "Return a rendered pipeline detail buffer for PIPELINE-ID."
+  (let ((buffer (generate-new-buffer "*GitLab pipeline sibling test*")))
+    (with-current-buffer buffer
+      (gitlab-pipeline-mode)
+      (gitlab--use-project-directory)
+      (setq-local gitlab--id pipeline-id)
+      (setq-local gitlab--identity
+                  (list #'gitlab-pipeline-mode pipeline-id gitlab--context))
+      (gitlab--refresh))
+    (gitlab-test-wait
+     (lambda () (with-current-buffer buffer gitlab--rendered)))
+    buffer))
+
+(defun gitlab-pipeline-tests--list-buffer ()
+  "Return a rendered pipeline list buffer."
+  (let ((buffer (generate-new-buffer "*GitLab pipeline list sibling test*")))
+    (with-current-buffer buffer
+      (gitlab-pipeline-list-mode)
+      (gitlab--use-project-directory)
+      (setq-local gitlab--identity
+                  (list #'gitlab-pipeline-list-mode nil gitlab--context))
+      (gitlab-list--refresh))
+    (gitlab-test-wait
+     (lambda () (with-current-buffer buffer
+                  (not (null tabulated-list-entries)))))
+    buffer))
+
+(defun gitlab-pipeline-tests--plain-job-log-buffer (job-id name pipeline-id)
+  "Return a job log buffer of JOB-ID without a trace process."
+  (let ((buffer (generate-new-buffer "*GitLab job log sibling test*")))
+    (with-current-buffer buffer
+      (gitlab-job-log-mode)
+      (gitlab--use-project-directory)
+      (setq-local gitlab--id job-id)
+      (setq-local gitlab--identity
+                  (list #'gitlab-job-log-mode job-id gitlab--context))
+      (setq-local gitlab-job-log--name name)
+      (setq-local gitlab-job-log--pipeline-id pipeline-id))
+    buffer))
+
+(ert-deftest gitlab-pipeline-detail-children ()
+  "The children of a pipeline buffer are its job rows."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline-tests--detail-buffer "1001")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (should (equal '(("5001" . "unit-tests")
+                            ("5002" . "lint:linux")
+                            ("5003" . "package:android"))
+                          (gitlab--children))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-log-next-sibling ()
+  "The next sibling of a job log is the next job of its pipeline."
+  (gitlab-test-with-environment
+   (let ((pipeline (gitlab-pipeline-tests--detail-buffer "1001"))
+         (log (gitlab-pipeline-tests--plain-job-log-buffer
+               "5002" "lint:linux" "1001"))
+         opened)
+     (unwind-protect
+         (with-current-buffer log
+           (cl-letf (((symbol-function 'gitlab-display-job-log)
+                      (lambda (id name pipeline-id)
+                        (setq opened (list id name pipeline-id)))))
+             (call-interactively #'gitlab-next-sibling))
+           (should (equal '("5003" "package:android" "1001") opened)))
+       (kill-buffer log)
+       (kill-buffer pipeline)))))
+
+(ert-deftest gitlab-pipeline-job-log-previous-sibling ()
+  "The previous sibling of a job log is the earlier job of the pipeline."
+  (gitlab-test-with-environment
+   (let ((pipeline (gitlab-pipeline-tests--detail-buffer "1001"))
+         (log (gitlab-pipeline-tests--plain-job-log-buffer
+               "5002" "lint:linux" "1001"))
+         opened)
+     (unwind-protect
+         (with-current-buffer log
+           (cl-letf (((symbol-function 'gitlab-display-job-log)
+                      (lambda (id name pipeline-id)
+                        (setq opened (list id name pipeline-id)))))
+             (call-interactively #'gitlab-previous-sibling))
+           (should (equal '("5001" "unit-tests" "1001") opened)))
+       (kill-buffer log)
+       (kill-buffer pipeline)))))
+
+(ert-deftest gitlab-pipeline-job-log-sibling-prefix ()
+  "A numeric argument walks several siblings at once."
+  (gitlab-test-with-environment
+   (let ((pipeline (gitlab-pipeline-tests--detail-buffer "1001"))
+         (log (gitlab-pipeline-tests--plain-job-log-buffer
+               "5001" "unit-tests" "1001"))
+         opened)
+     (unwind-protect
+         (with-current-buffer log
+           (cl-letf (((symbol-function 'gitlab-display-job-log)
+                      (lambda (id _name _pipeline-id)
+                        (setq opened id))))
+             (gitlab-next-sibling 2)
+             (should (equal "5003" opened))
+             (setq opened nil)
+             (gitlab-previous-sibling -2)
+             (should (equal "5003" opened))))
+       (kill-buffer log)
+       (kill-buffer pipeline)))))
+
+(ert-deftest gitlab-pipeline-job-log-sibling-edges ()
+  "A walk that leaves the collection signals a `user-error'."
+  (gitlab-test-with-environment
+   (let ((pipeline (gitlab-pipeline-tests--detail-buffer "1001"))
+         (last-log (gitlab-pipeline-tests--plain-job-log-buffer
+                    "5003" "package:android" "1001"))
+         (first-log (gitlab-pipeline-tests--plain-job-log-buffer
+                     "5001" "unit-tests" "1001")))
+     (unwind-protect
+         (progn
+           (with-current-buffer last-log
+             (should-error (gitlab-next-sibling) :type 'user-error))
+           (with-current-buffer first-log
+             (should-error (gitlab-previous-sibling) :type 'user-error)))
+       (kill-buffer last-log)
+       (kill-buffer first-log)
+       (kill-buffer pipeline)))))
+
+(ert-deftest gitlab-pipeline-job-log-sibling-needs-pipeline ()
+  "A job log without an open pipeline view signals a `user-error'."
+  (gitlab-test-with-environment
+   (let ((log (gitlab-pipeline-tests--plain-job-log-buffer
+               "5001" "unit-tests" "1001")))
+     (unwind-protect
+         (with-current-buffer log
+           (should-error (gitlab-next-sibling) :type 'user-error))
+       (kill-buffer log)))))
+
+(ert-deftest gitlab-pipeline-job-log-sibling-not-in-pipeline ()
+  "A job that the pipeline view does not hold signals a `user-error'."
+  (gitlab-test-with-environment
+   (let ((pipeline (gitlab-pipeline-tests--detail-buffer "1001"))
+         (log (gitlab-pipeline-tests--plain-job-log-buffer
+               "5099" "gone" "1001")))
+     (unwind-protect
+         (with-current-buffer log
+           (should-error (gitlab-next-sibling) :type 'user-error))
+       (kill-buffer log)
+       (kill-buffer pipeline)))))
+
+(ert-deftest gitlab-pipeline-detail-next-sibling ()
+  "The next sibling of a pipeline is the next row of its pipeline list."
+  (gitlab-test-with-environment
+   (let ((list (gitlab-pipeline-tests--list-buffer))
+         (detail (gitlab-pipeline-tests--detail-buffer "1004"))
+         opened)
+     (unwind-protect
+         (with-current-buffer detail
+           (cl-letf (((symbol-function 'gitlab-display-pipeline)
+                      (lambda (id) (setq opened id))))
+             (call-interactively #'gitlab-next-sibling))
+           (should (equal "1003" opened)))
+       (kill-buffer detail)
+       (kill-buffer list)))))
+
+(ert-deftest gitlab-pipeline-detail-previous-sibling ()
+  "The previous sibling of a pipeline is the earlier row of the list."
+  (gitlab-test-with-environment
+   (let ((list (gitlab-pipeline-tests--list-buffer))
+         (detail (gitlab-pipeline-tests--detail-buffer "1003"))
+         opened)
+     (unwind-protect
+         (with-current-buffer detail
+           (cl-letf (((symbol-function 'gitlab-display-pipeline)
+                      (lambda (id) (setq opened id))))
+             (call-interactively #'gitlab-previous-sibling))
+           (should (equal "1004" opened)))
+       (kill-buffer detail)
+       (kill-buffer list)))))
 
 (defconst gitlab-pipeline-tests--section-trace
   (concat

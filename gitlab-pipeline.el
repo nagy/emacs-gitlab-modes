@@ -62,6 +62,13 @@
 ;; GitLab once when neither holds it.  `gitlab-go-to-parent' opens the
 ;; pipeline buffer.
 ;;
+;; The pipeline buffer holds the order of its jobs, so
+;; `gitlab-next-sibling' and `gitlab-previous-sibling' in a job log
+;; read the job rows of the open pipeline buffer.  The log passes the
+;; pipeline and the name of the next job on, so the new log can walk
+;; up without a request.  A pipeline detail takes its own siblings
+;; from the open pipeline list.
+;;
 ;; GitLab writes a section marker into the trace before and after each
 ;; section.  The job log turns the start marker into a header line with
 ;; the name and the duration of the section, and it hides the end
@@ -248,6 +255,21 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
                         'mouse-face 'highlight
                         'help-echo (format "Job %s (%s)" name id)))))
 
+(defun gitlab-pipeline--children ()
+  "Return the job rows of the current pipeline buffer in display order.
+Every entry is a cons of the job ID and the job name.  The jobs
+array of the pipeline answer fixes that order, so the table and the
+sibling commands never disagree."
+  (save-excursion
+    (goto-char (point-min))
+    (let (entries)
+      (while (not (eobp))
+        (when-let* ((id (get-text-property (point) 'gitlab-job-id)))
+          (push (cons id (get-text-property (point) 'gitlab-job-name))
+                entries))
+        (forward-line 1))
+      (nreverse entries))))
+
 (defun gitlab-pipeline--goto-job (job-id)
   "Move point to the row of JOB-ID."
   (gitlab--goto-property 'gitlab-job-id job-id))
@@ -275,6 +297,12 @@ pipeline and its jobs."
   (setq-local gitlab--kind 'pipeline)
   (setq-local gitlab--label "GitLab pipeline")
   (setq-local gitlab--parent-function #'gitlab-list-pipelines)
+  (setq-local gitlab--parent-identity-function
+              (lambda () (list #'gitlab-pipeline-list-mode nil)))
+  (setq-local gitlab--parent-label "pipeline list")
+  (setq-local gitlab--children-function #'gitlab-pipeline--children)
+  (setq-local gitlab--sibling-open-function
+              (lambda (id _name) (gitlab-display-pipeline id)))
   (setq-local gitlab--fetch-function #'gitlab-pipeline--fetch)
   (setq-local gitlab--render-function #'gitlab-pipeline--render))
 
@@ -979,6 +1007,19 @@ Signal `user-error' when GitLab names no pipeline for the job."
         (gitlab-display-pipeline pipeline-id)
       (user-error "No pipeline for job %s" gitlab--id))))
 
+(defun gitlab-job-log-parent-identity ()
+  "Return the identity of the pipeline that holds the current job.
+The value is the pair of the pipeline detail mode and the pipeline
+ID, so the sibling commands find the pipeline buffer by identity."
+  (when-let* ((pipeline-id (gitlab-job-log-pipeline-id)))
+    (list #'gitlab-pipeline-mode pipeline-id)))
+
+(defun gitlab-job-log-open-sibling (job-id name)
+  "Open the log of JOB-ID with NAME in the current pipeline.
+The current log passes its pipeline on, so the opened log can walk
+up without a request."
+  (gitlab-display-job-log job-id name (gitlab-job-log-pipeline-id)))
+
 (defun gitlab-job-log--start ()
   "Clear the current buffer and start the trace process.
 The helper reads the folded sections of the old trace first, so a
@@ -1068,6 +1109,11 @@ text of a section header and every end marker line."
   (setq-local gitlab--kind 'job)
   (setq-local gitlab--label "GitLab job")
   (setq-local gitlab--parent-function #'gitlab-job-log-go-to-parent)
+  (setq-local gitlab--parent-identity-function
+              #'gitlab-job-log-parent-identity)
+  (setq-local gitlab--parent-label "pipeline")
+  (setq-local gitlab--sibling-open-function
+              #'gitlab-job-log-open-sibling)
   (setq-local buffer-stale-function nil)
   (setq-local revert-buffer-function #'gitlab-job-log-restart)
   (setq-local filter-buffer-substring-function
@@ -1090,7 +1136,13 @@ text of a section header and every end marker line."
 
 (define-key gitlab-job-log-mode-map (kbd "TAB")
   #'gitlab-job-log-toggle-section)
-(define-key gitlab-job-log-mode-map (kbd "~") #'gitlab-job-log-toggle-timestamps)
+(define-key gitlab-job-log-mode-map (kbd "~")
+  #'gitlab-job-log-toggle-timestamps)
+(define-key gitlab-job-log-mode-map (kbd "C-c C-n") #'gitlab-next-sibling)
+(define-key gitlab-job-log-mode-map (kbd "C-c C-p")
+  #'gitlab-previous-sibling)
+(define-key gitlab-job-log-mode-map [mouse-9] #'gitlab-next-sibling)
+(define-key gitlab-job-log-mode-map [mouse-8] #'gitlab-previous-sibling)
 (define-key gitlab-job-log-mode-map [remap dired-jump] #'gitlab-go-to-parent)
 (define-key gitlab-job-log-mode-map [remap dired-up-directory]
   #'gitlab-go-to-parent)

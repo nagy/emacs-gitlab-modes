@@ -67,6 +67,19 @@
 ;; the job.  A list buffer has no parent.  The detail and job log
 ;; keymaps remap `dired-jump' and `dired-up-directory' to it.
 ;;
+;; `gitlab-next-sibling' and `gitlab-previous-sibling' walk inside one
+;; collection.  The parent view holds the order of its children: a
+;; pipeline buffer holds its job rows, and a list buffer holds its
+;; rows.  A child buffer names its parent with
+;; `gitlab--parent-identity-function', and the commands read the
+;; children of the open parent buffer, so a sibling command fetches
+;; no collection.  A parent buffer answers with
+;; `gitlab--children-function'
+;; or, for a list buffer, with the rows that it displays.  The child
+;; opens a sibling with `gitlab--sibling-open-function'.  The keys are
+;; `C-c C-n' and `C-c C-p', and the back and forward mouse buttons run
+;; the same commands.
+;;
 ;; Every display buffer knows its project context: the project path
 ;; and the instance host, in the PATH or PATH@HOST spelling of
 ;; `gitlab-cli-repository-normalize'.  The context names the buffer,
@@ -310,6 +323,33 @@ The value is `merge-request', `pipeline' or `job'.")
 `gitlab-go-to-parent' calls it.  A list buffer leaves it nil,
 because a collection has no parent.  The merge request mode, the
 pipeline mode and the job log mode set it.")
+
+(defvar-local gitlab--parent-identity-function nil
+  "Function that returns the identity of the parent view.
+`gitlab--siblings' calls it with no argument.  The value is a list
+of the major mode function of the parent buffer and the parent
+object ID, or nil when the buffer knows no parent.  A parent that
+is a list buffer passes nil as the ID, because a collection is one
+object.  The project context of the current buffer completes the
+identity, so the function is the sibling of `gitlab--parent-function'.")
+
+(defvar-local gitlab--parent-label "parent view"
+  "Human name of the parent view of the current buffer.
+`gitlab-next-sibling' and `gitlab-previous-sibling' name it in a
+`user-error' when the parent view is not open.")
+
+(defvar-local gitlab--children-function nil
+  "Function that returns the children of the current buffer in display order.
+The function takes no argument and returns a list of cons cells of
+the child ID and its optional name.  A detail buffer that holds a
+collection of GitLab objects sets this, for example the job rows of
+a pipeline.  A list buffer does not need it: `gitlab--children'
+reads the rows that the buffer displays.")
+
+(defvar-local gitlab--sibling-open-function nil
+  "Function that opens a sibling of the current buffer.
+It receives the ID and the optional name of the sibling entry.
+`gitlab-next-sibling' and `gitlab-previous-sibling' call it.")
 
 (defvar-local gitlab--fetch-function nil
   "Function that fetches the data of the current detail buffer.
@@ -937,6 +977,95 @@ each kind."
       (funcall gitlab--parent-function)
     (user-error "The current GitLab buffer has no parent")))
 
+(defun gitlab--parent-buffer (&optional identity)
+  "Return the open parent buffer of the current buffer, or nil.
+IDENTITY defaults to the answer of
+`gitlab--parent-identity-function', a list of the major mode
+function and the object ID of the parent.  The lookup reads the
+buffer-local identity of every buffer, so a renamed parent buffer
+still answers."
+  (when-let* ((identity (or identity
+                           (and gitlab--parent-identity-function
+                                (funcall gitlab--parent-identity-function)))))
+    (gitlab--identity-buffer (car identity) (cadr identity)
+                             gitlab--context)))
+
+(defun gitlab--children ()
+  "Return the children of the current buffer in display order.
+Every entry is a cons of the child ID and its optional name.  A
+buffer with `gitlab--children-function' answers with it.  A list
+buffer reads the rows that it displays, so the sort column decides
+the order.  A buffer that holds no collection answers nil."
+  (cond
+   (gitlab--children-function (funcall gitlab--children-function))
+   ((derived-mode-p 'gitlab-list-mode) (gitlab-list--children))))
+
+(defun gitlab--siblings ()
+  "Return the ordered sibling entries of the current buffer.
+The function reads the children of the open parent buffer, because
+that buffer holds the order of its collection.  Signal `user-error'
+when the buffer names no parent, when the parent view is not open
+or when the parent view holds no child."
+  (unless gitlab--parent-identity-function
+    (user-error "The current GitLab buffer has no parent"))
+  (let ((identity (funcall gitlab--parent-identity-function)))
+    (unless identity
+      (user-error "No parent is known for %s" (or gitlab--id "this buffer")))
+    (let ((parent (gitlab--parent-buffer identity)))
+      (unless parent
+        (user-error "Open the %s first" gitlab--parent-label))
+      (let ((entries (with-current-buffer parent (gitlab--children))))
+        (unless entries
+          (user-error "The %s holds no children" gitlab--parent-label))
+        entries))))
+
+(defun gitlab--sibling-position (entries)
+  "Return the position of the current object in ENTRIES, or nil.
+The ID of the current buffer names the entry, so a changed sort
+order keeps its meaning."
+  (seq-position entries gitlab--id
+                (lambda (entry id) (equal (car entry) id))))
+
+(defun gitlab--move-sibling (n)
+  "Open the sibling N entries after the current object.
+A negative N walks back.  Signal `user-error' when the buffer has
+no parent view, when the current object is not a child of that
+view or when the walk leaves the collection."
+  (unless gitlab--sibling-open-function
+    (user-error "The current GitLab buffer has no siblings"))
+  (let* ((entries (gitlab--siblings))
+         (position (gitlab--sibling-position entries)))
+    (unless position
+      (user-error "%s is not in the %s" gitlab--id gitlab--parent-label))
+    (let ((target (+ position n)))
+      (unless (and (<= 0 target) (< target (length entries)))
+        (user-error "No %s sibling for %s"
+                    (if (> n 0) "next" "previous") gitlab--id))
+      (let ((entry (nth target entries)))
+        (funcall gitlab--sibling-open-function (car entry) (cdr entry))))))
+
+(defun gitlab-next-sibling (&optional n)
+  "Open the N-th next sibling of the current GitLab object.
+The parent view must be open, because it holds the order of its
+children.  A job log reads the jobs of its pipeline buffer, a
+pipeline detail reads the rows of its pipeline list and a merge
+request detail reads the rows of its merge request list.  N
+defaults to 1, and a negative N walks back.
+
+Signal `user-error' when the buffer has no parent, when the parent
+view is not open, when the current object is not a child of the
+parent view and when the walk leaves the collection."
+  (interactive "p")
+  (gitlab--move-sibling (or n 1)))
+
+(defun gitlab-previous-sibling (&optional n)
+  "Open the N-th previous sibling of the current GitLab object.
+This is `gitlab-next-sibling' with the opposite direction, so it
+reads the same parent view.  N defaults to 1, and a negative N
+walks forward."
+  (interactive "p")
+  (gitlab--move-sibling (- (or n 1))))
+
 (defun gitlab-copy-id ()
   "Copy the identifier of the current buffer to the kill ring."
   (interactive)
@@ -1000,6 +1129,10 @@ without blocking Emacs."
 
 (define-key gitlab-detail-mode-map (kbd "RET") #'gitlab-open-at-point)
 (define-key gitlab-detail-mode-map [mouse-2] #'gitlab-mouse-open-at-point)
+(define-key gitlab-detail-mode-map (kbd "C-c C-n") #'gitlab-next-sibling)
+(define-key gitlab-detail-mode-map (kbd "C-c C-p") #'gitlab-previous-sibling)
+(define-key gitlab-detail-mode-map [mouse-9] #'gitlab-next-sibling)
+(define-key gitlab-detail-mode-map [mouse-8] #'gitlab-previous-sibling)
 (define-key gitlab-detail-mode-map (kbd "c") #'gitlab-copy-id)
 (define-key gitlab-detail-mode-map (kbd "w") #'gitlab-open-web)
 (define-key gitlab-detail-mode-map (kbd "p") #'gitlab-pop)
@@ -1110,6 +1243,21 @@ and `gitlab-list--open-function'.  The mode wires
 (defun gitlab-list--id-at-point ()
   "Return the row ID at point, or nil."
   (tabulated-list-get-id))
+
+(defun gitlab-list--children ()
+  "Return the rows of the current list buffer in display order.
+Every entry is a cons of the row ID and a nil name, because a
+collection holds no name for its objects.  The function reads the
+rows that the buffer displays, so the sort column decides the order
+and a renamed buffer or a moved row keeps its meaning."
+  (save-excursion
+    (goto-char (point-min))
+    (let (entries)
+      (while (not (eobp))
+        (when-let* ((id (gitlab-list--id-at-point)))
+          (push (cons id nil) entries))
+        (forward-line 1))
+      (nreverse entries))))
 
 (defun gitlab-list--goto-id (id)
   "Move point to the row of ID.
