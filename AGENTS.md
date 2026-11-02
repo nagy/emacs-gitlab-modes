@@ -425,15 +425,25 @@ without evil.  The suite never opens a network connection.
   `display` property of `── NAME (D.SSSs) ── ` with the `gitlab-title`
   face, and the anchor message of GitLab stays behind it on the same
   line.  The line from its start up to the end of the marker also
-  carries the property `gitlab-job-log-section-start`, so a copy
-  leaves the timestamp prefix out even while the buffer shows it.
+  carries the property `gitlab-job-log-section-start`, and the name
+  of the section is the property `gitlab-job-log-section-name` of
+  the same range.  The helper reads the marker before it deletes the
+  carriage returns of the line, because a carriage return ends the
+  name and keeps the message that follows it out of the name.
   The duration comes from the two UNIX times of the markers, so
-  no request is needed.  The end marker line, its newline and its
-  carriage return get `display ""` and the property
-  `gitlab-job-log-section-end`, and `gitlab-job-log--apply-timestamps`
-  skips such a line, so the timestamp toggle never shows part of a
-  hidden end marker.  A start marker covers its leading carriage
-  return and escape sequence, because glab passes them through.
+  no request is needed.  The end marker text gets `display ""` and
+  the property `gitlab-job-log-section-end`, and the newline above
+  it goes, so the marker joins the line before it.  A marker on a
+  line of its own would hide a newline inside a folded section, and
+  Emacs then draws the header of the next section on the header
+  line of the folded one.  The close writes the duration into the
+  property `gitlab-job-log-section-duration` of the start marker, so
+  a later imenu entry needs no end marker.
+  `gitlab-job-log--apply-timestamps` skips a line that starts with
+  `gitlab-job-log-section-end`, so the timestamp toggle never shows
+  part of a hidden end marker.  A start marker covers its leading
+  carriage return and escape sequence, because glab passes them
+  through.
   GitLab ends a trace line with a carriage return and an erase
   sequence, which a terminal uses to overwrite the line.  The ANSI
   conversion drops the escape sequence and leaves the carriage
@@ -453,7 +463,8 @@ without evil.  The suite never opens a network connection.
   folds `zc`, `zo` and `za` come from `evil-fold-list`.  New text
   inherits text properties from the line above, so
   `gitlab-job-log--insert-line` removes `invisible`, `display`,
-  `gitlab-job-log-section-start` and `gitlab-job-log-section-end`
+  `gitlab-job-log-section-start`, `gitlab-job-log-section-name`,
+  `gitlab-job-log-section-duration` and `gitlab-job-log-section-end`
   from the inserted range first.
   `gitlab-job-log--reveal-open-section` opens the section that the
   new output enters, so a live trace never hides behind a fold.
@@ -465,9 +476,16 @@ without evil.  The suite never opens a network connection.
   `permanent-local`, because the mode runs again on a second display
   of the same buffer, and both stay in the buffer: no file, no
   custom variable, no session state.
-- `gitlab-job-log--imenu-index` lists every start marker with the name
-  and, once the end marker arrived, the duration.  A section that
-  still streams shows its name alone.
+- `gitlab-job-log--section-starts` walks the property
+  `gitlab-job-log-section-start`, so it finds every section even
+  when a marker shares its line with the marker of a neighbour.
+  `gitlab-job-log--imenu-index` lists every start marker with the
+  `gitlab-job-log-section-name` of the marker and, once the end
+  marker arrived, the `gitlab-job-log-section-duration`.  A section
+  that still streams shows its name alone.
+  `gitlab-job-log--collapsed-names` reads the same property list and
+  asks `outline-invisible-p` at the heading line, so a name never
+  comes from a search of the buffer text.
 - List modes derive from `gitlab-list-mode`, which derives from
   `tabulated-list-mode`.  A derived mode sets
   `gitlab-list--fetch-function`, `gitlab-list--entries-function`,

@@ -522,11 +522,12 @@ section that a fold closed."
     (let ((start (gitlab-cli--insert-chunk (concat line "\n"))))
       (gitlab-job-log--delete-trailing-carriage-returns start)
       ;; Inserted text inherits properties from the line above, which
-      ;; may hide a folded section or a hidden end marker.
+      ;; may hide a folded section or the text of an end marker.
       (let ((inhibit-read-only t))
         (remove-list-of-text-properties
          start (point-max)
          '(invisible display gitlab-job-log-section-start
+           gitlab-job-log-section-name gitlab-job-log-section-duration
            gitlab-job-log-section-end)))
       (gitlab-job-log--apply-timestamps start (point-max))
       (unless (gitlab-job-log--apply-section start (point-max))
@@ -600,14 +601,17 @@ trace never hides behind a fold."
                                                 name time)
   "Record the open section of the line at LINE-START.
 MARKER-START and MARKER-END bound the marker text, NAME is the
-section name and TIME the UNIX time of the marker."
+section name and TIME the UNIX time of the marker.  The name
+becomes a text property of the marker, so the imenu index and the
+fold record read it without a search of the buffer text."
   (push (list name (copy-marker line-start) (copy-marker marker-start)
               (copy-marker marker-end) time)
         gitlab-job-log--sections)
   (gitlab-job-log--show-section-header marker-start marker-end name)
   (let ((inhibit-read-only t))
     (add-text-properties line-start marker-end
-                         '(gitlab-job-log-section-start t))))
+                         (list 'gitlab-job-log-section-start t
+                               'gitlab-job-log-section-name name))))
 
 (defun gitlab-job-log--take-section (name)
   "Remove the open section NAME from the stack and return its entry.
@@ -621,21 +625,37 @@ missing end marker never breaks the stack."
 (defun gitlab-job-log--close-section (line-start name time)
   "Close the section of the marker line that starts at LINE-START.
 NAME is the section name and TIME the UNIX time of the end marker.
-The helper fills the duration of the header, hides the marker
-line and folds the section again when the buffer recorded it as
+The helper fills the duration of the header and hides the marker
+text.  The marker joins the line above instead of keeping a line
+of its own, because a hidden newline inside a folded section makes
+Emacs draw the header of the next section on the same line.  The
+helper folds the section again when the buffer recorded it as
 folded."
   (let* ((entry (gitlab-job-log--take-section name))
          (line-end (save-excursion (goto-char line-start)
-                                   (line-end-position))))
+                                   (line-end-position)))
+         (join (> line-start (point-min))))
     (let ((inhibit-read-only t))
-      (add-text-properties line-start (min (point-max) (1+ line-end))
-                           '(display "" gitlab-job-log-section-end t)))
+      ;; A marker line at the start of the buffer has no line above, so
+      ;; it hides together with its newline.
+      (add-text-properties line-start
+                           (if join line-end
+                             (min (point-max) (1+ line-end)))
+                           '(display "" gitlab-job-log-section-end t))
+      (when join
+        (delete-region (1- line-start) line-start)))
     (when entry
       (gitlab-job-log--show-section-header
        (marker-position (nth 2 entry))
        (marker-position (nth 3 entry))
        name
        (max 0 (- time (nth 4 entry))))
+      ;; A later imenu entry reads the duration of the closed section.
+      (let ((inhibit-read-only t))
+        (put-text-property (marker-position (nth 1 entry))
+                           (marker-position (nth 3 entry))
+                           'gitlab-job-log-section-duration
+                           (max 0 (- time (nth 4 entry)))))
       (when (member name gitlab-job-log--collapsed)
         (gitlab-job-log--hide-section (marker-position (nth 1 entry)))))))
 
@@ -656,38 +676,42 @@ return that a reader sees as ^M."
 
 (defun gitlab-job-log--apply-section (start end)
   "Handle the section marker of the line between START and END.
-Return non-nil when the line holds a marker.  A marker line loses
-its carriage returns first, so neither a header nor the hidden end
-marker keeps the ^M of the redraw sequence."
+Return non-nil when the line holds a marker.  The helper reads the
+marker before the carriage returns of the line go, because a
+carriage return ends the name of a marker and keeps the message
+that follows it out of the name.  The marker line then loses its
+carriage returns, so neither a header nor an end marker keeps the
+^M of the redraw sequence."
   (save-excursion
     (goto-char start)
     (when (re-search-forward gitlab-job-log--section-regexp end t)
       (let* ((line-start (line-beginning-position))
-             (line-end (copy-marker (line-end-position))))
+             (line-end (copy-marker (line-end-position)))
+             (kind (match-string-no-properties 1))
+             (time (string-to-number (match-string-no-properties 2)))
+             (name (match-string-no-properties 3))
+             (marker-start (copy-marker
+                            (gitlab-job-log--marker-start
+                             (match-beginning 0) start)))
+             (marker-end (copy-marker
+                          (gitlab-job-log--marker-end
+                           (match-end 0) line-end))))
         (unwind-protect
             (progn
               (gitlab-job-log--delete-carriage-returns line-start line-end)
-              (goto-char line-start)
-              (when (re-search-forward gitlab-job-log--section-regexp
-                                       line-end t)
-                (let ((kind (match-string-no-properties 1))
-                      (time (string-to-number (match-string-no-properties 2)))
-                      (name (match-string-no-properties 3))
-                      (marker-start (gitlab-job-log--marker-start
-                                     (match-beginning 0) start))
-                      (marker-end (gitlab-job-log--marker-end
-                                   (match-end 0) line-end)))
-                  (if (string= kind "start")
-                      (gitlab-job-log--push-section line-start marker-start
-                                                    marker-end name time)
-                    (gitlab-job-log--close-section line-start name time))))
+              (if (string= kind "start")
+                  (gitlab-job-log--push-section line-start marker-start
+                                                marker-end name time)
+                (gitlab-job-log--close-section line-start name time))
               t)
+          (set-marker marker-start nil)
+          (set-marker marker-end nil)
           (set-marker line-end nil))))))
 
 (defun gitlab-job-log--replaced-p (position string)
   "Return non-nil when a copy leaves out POSITION of STRING.
 The log replaces a hidden timestamp prefix, the text of a section
-marker and a whole end marker line with text properties, so a copy
+marker and the text of an end marker with text properties, so a copy
 matches what the buffer shows."
   (or (stringp (get-text-property position 'display string))
       (get-text-property position 'gitlab-job-log-section-start string)
@@ -758,24 +782,41 @@ behind."
   "Return the text between BEG and END without the replaced ranges.
 DELETE non-nil asks for the deletion of the region, as
 `filter-buffer-substring' documents.  A hidden timestamp prefix, a
-section header and an end marker line leave the copy, so a kill
+section header and an end marker leave the copy, so a kill
 command never saves text that a reader did not see."
   (let ((string (if delete
                     (delete-and-extract-region beg end)
                   (buffer-substring beg end))))
     (gitlab-job-log--strip-replaced string)))
 
+(defun gitlab-job-log--section-starts ()
+  "Return the start of every section marker of the current buffer.
+The positions come in buffer order.  The helper reads the text
+property `gitlab-job-log-section-start', so a marker that shares a
+line with the marker of its neighbour never confuses it."
+  (let (starts
+        (position (point-min)))
+    (save-excursion
+      (while (< position (point-max))
+        (when (get-text-property position 'gitlab-job-log-section-start)
+          (push position starts))
+        (setq position (or (next-single-property-change
+                            position 'gitlab-job-log-section-start
+                            nil (point-max))
+                           (point-max)))))
+    (nreverse starts)))
+
 (defun gitlab-job-log--collapsed-names ()
   "Return the names of the folded sections of the current buffer.
 `gitlab-job-log--start' calls this before it erases the buffer, so
 a restart keeps the folds of the old trace."
   (let (names)
-    (save-excursion
-      (goto-char (point-min))
-      (while (re-search-forward gitlab-job-log--section-regexp nil t)
-        (when (and (string= "start" (match-string-no-properties 1))
-                   (outline-invisible-p (line-end-position)))
-          (push (match-string-no-properties 3) names))))
+    (dolist (position (gitlab-job-log--section-starts))
+      (save-excursion
+        (goto-char position)
+        (when (outline-invisible-p (line-end-position))
+          (push (get-text-property position 'gitlab-job-log-section-name)
+                names))))
     names))
 
 (defun gitlab-job-log--enclosing-heading ()
@@ -804,26 +845,22 @@ middle of it."
 (defun gitlab-job-log--imenu-index ()
   "Return an imenu index of the sections of the current job log.
 The label holds the section name and, once the end marker arrived,
-the duration of the section."
-  (let ((index nil)
-        (open nil))
-    (save-excursion
-      (goto-char (point-min))
-      (while (re-search-forward gitlab-job-log--section-regexp nil t)
-        (let ((kind (match-string-no-properties 1))
-              (time (string-to-number (match-string-no-properties 2)))
-              (name (match-string-no-properties 3))
-              (line-start (line-beginning-position)))
-          (if (string= kind "start")
-              (let ((entry (cons name line-start)))
-                (push entry index)
-                (push (list name time entry) open))
-            (when-let* ((found (assoc name open)))
-              (setcar (nth 2 found)
-                      (format "%s (%s)" name
-                              (gitlab-job-log--duration-string
-                               (max 0 (- time (nth 1 found))))))
-              (setq open (cdr (memq found open))))))))
+the duration of the section.  The helper reads both from the text
+properties of the start marker, so the index follows a marker that
+shares a line with the marker of its neighbour."
+  (let (index)
+    (dolist (position (gitlab-job-log--section-starts))
+      (save-excursion
+        (goto-char position)
+        (let* ((name (get-text-property position
+                                        'gitlab-job-log-section-name))
+               (duration (get-text-property
+                          position 'gitlab-job-log-section-duration))
+               (label (if duration
+                          (format "%s (%s)" name
+                                  (gitlab-job-log--duration-string duration))
+                        name)))
+          (push (cons label (line-beginning-position)) index))))
     (nreverse index)))
 
 (defun gitlab-job-log--write (chunk)
@@ -1101,7 +1138,7 @@ the section around point, S-TAB cycles the whole buffer and imenu
 lists the sections.  The parent command opens the pipeline that
 holds the job.  Killing the buffer deletes the process.  A copy of
 a region leaves out the timestamp prefix while it stays hidden, the
-text of a section header and every end marker line."
+text of a section header and the text of every end marker."
   :group 'gitlab
   (gitlab--use-project-directory)
   (setq-local bookmark-make-record-function

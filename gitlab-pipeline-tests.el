@@ -719,6 +719,21 @@ A trace line ends with the carriage return and the erase sequence
 of GitLab, so the log must strip the carriage return from a
 section marker line.")
 
+(defconst gitlab-pipeline-tests--nested-trace
+  (concat
+   "2026-11-02T12:00:00.000Z 00O section_start:1761857977:prepare_executor"
+   "\r\e[0KPreparing the docker executor...\r\e[0K\n"
+   "2026-11-02T12:00:00.300Z 00O section_start:1761857978:prepare_script"
+   "\r\e[0KPreparing the \"docker\" executor...\r\e[0K\n"
+   "2026-11-02T12:00:00.700Z 00O section_end:1761857979:prepare_script\r\e[0K\n"
+   "2026-11-02T12:00:00.800Z 00O section_end:1761857980:prepare_executor\r\e[0K\n"
+   "2026-11-02T12:00:01.000Z 00O section_start:1761857981:get_sources"
+   "\r\e[0KGetting source from Git repository\r\e[0K\n"
+   "2026-11-02T12:00:09.600Z 00O section_end:1761857989:get_sources\r\e[0K\n")
+  "Trace text with nested sections and a message after every start marker.
+The message follows a carriage return, so the name of the marker
+ends at the carriage return and not at the message.")
+
 (defun gitlab-pipeline-tests--job-log-buffer (trace)
   "Return a job log buffer that holds TRACE."
   (let ((buffer (generate-new-buffer "*GitLab job log section test*")))
@@ -740,11 +755,10 @@ section marker line.")
     (goto-char (gitlab-pipeline-tests--position-of regexp))
     (line-beginning-position)))
 
-(defun gitlab-pipeline-tests--section-folded-p (line)
-  "Return non-nil when the heading on line number LINE hides its body."
+(defun gitlab-pipeline-tests--section-folded-p (regexp)
+  "Return non-nil when the section that starts in REGEXP hides its body."
   (save-excursion
-    (goto-char (point-min))
-    (forward-line line)
+    (goto-char (gitlab-pipeline-tests--line-start-of regexp))
     (outline-invisible-p (line-end-position))))
 
 (ert-deftest gitlab-pipeline-job-log-section-header ()
@@ -766,19 +780,82 @@ section marker line.")
                            (gitlab-pipeline-tests--position-of
                             "section_start:1761857987")
                            'display))))
-          ;; The end marker line disappears, its carriage return too.
-          (let ((line (gitlab-pipeline-tests--line-start-of
-                       "section_end:1761857986")))
-            (should (equal "" (get-text-property line 'display)))
-            (should (eq t (get-text-property line
+          ;; The end marker text stays in the buffer and disappears.
+          (let ((position (gitlab-pipeline-tests--position-of
+                           "section_end:1761857986")))
+            (should (eq t (get-text-property position
                                              'gitlab-job-log-section-end)))
-            (should (equal "" (get-text-property
-                                (save-excursion (goto-char line)
-                                                (line-end-position))
-                                'display))))
+            (should (equal "" (get-text-property position 'display)))
+            ;; The marker joins the line above, so no newline of the
+            ;; buffer carries a `display' property.  Emacs draws the
+            ;; next header on the line of a folded section when a
+            ;; hidden newline sits inside the fold.
+            (should-not (eq ?\n (char-before position)))
+            (save-excursion
+              (goto-char (point-min))
+              (while (search-forward "\n" nil t)
+                (should-not (stringp (get-text-property (1- (point))
+                                                        'display))))))
           ;; The anchor text of the start marker stays on its line.
           (should (string-match-p "Getting source from Git repository"
                                   (gitlab-test-buffer-string buffer))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-name-before-message ()
+  "The message after a start marker stays out of the section name."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--nested-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (should (equal '("prepare_executor (3.000s)"
+                           "prepare_script (1.000s)"
+                           "get_sources (8.000s)")
+                         (mapcar #'car (gitlab-job-log--imenu-index))))
+          (should (equal "── prepare_executor (3.000s) ── "
+                         (substring-no-properties
+                          (get-text-property
+                           (gitlab-pipeline-tests--position-of
+                            "section_start:1761857977")
+                           'display)))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-end-joins-line ()
+  "An end marker joins the line above and keeps no line of its own."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--nested-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (let ((first (gitlab-pipeline-tests--position-of
+                        "section_end:1761857979"))
+                (second (gitlab-pipeline-tests--position-of
+                         "section_end:1761857980")))
+            ;; The marker text stays in the buffer, behind the message
+            ;; of the section that it closes.
+            (should (eq t (get-text-property first
+                                             'gitlab-job-log-section-end)))
+            (should-not (eq ?\n (char-before first)))
+            ;; Two markers of two closing sections share one line.
+            (should-not (string-search
+                         "\n" (buffer-substring-no-properties first second)))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-fold-keeps-headers-apart ()
+  "Every folded section keeps its header on a line of its own."
+  (let ((buffer (gitlab-pipeline-tests--job-log-buffer
+                 gitlab-pipeline-tests--section-trace)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (dolist (regexp '("section_start:1761857977"
+                            "section_start:1761857987"))
+            (goto-char (gitlab-pipeline-tests--line-start-of regexp))
+            (call-interactively #'gitlab-job-log-toggle-section))
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857977"))
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857987"))
+          ;; Two headers, two rows of text.
+          (should (= 2 (progn (goto-char (point-min))
+                              (vertical-motion (point-max))))))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-carriage-returns ()
@@ -826,9 +903,11 @@ section marker line.")
           (goto-char (point-min))
           (forward-line 1)
           (call-interactively #'gitlab-job-log-toggle-section)
-          (should (gitlab-pipeline-tests--section-folded-p 0))
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857977"))
           (call-interactively #'gitlab-job-log-toggle-section)
-          (should-not (gitlab-pipeline-tests--section-folded-p 0)))
+          (should-not (gitlab-pipeline-tests--section-folded-p
+                       "section_start:1761857977")))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-fold-needs-heading ()
@@ -852,9 +931,11 @@ section marker line.")
         (with-current-buffer buffer
           (goto-char (point-max))
           (call-interactively #'gitlab-job-log-toggle-section)
-          (should (gitlab-pipeline-tests--section-folded-p 3))
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857987"))
           (gitlab-job-log--write "2026-10-30T20:59:53.000Z 00O more\n")
-          (should-not (gitlab-pipeline-tests--section-folded-p 3)))
+          (should-not (gitlab-pipeline-tests--section-folded-p
+                       "section_start:1761857987")))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-restart-keeps-folds ()
@@ -874,8 +955,10 @@ section marker line.")
           (let ((inhibit-read-only t))
             (erase-buffer))
           (gitlab-job-log--write gitlab-pipeline-tests--section-trace)
-          (should (gitlab-pipeline-tests--section-folded-p 0))
-          (should-not (gitlab-pipeline-tests--section-folded-p 3)))
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857977"))
+          (should-not (gitlab-pipeline-tests--section-folded-p
+                       "section_start:1761857987")))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-timestamps ()
@@ -886,19 +969,19 @@ section marker line.")
         (with-current-buffer buffer
           (let* ((marker (gitlab-pipeline-tests--position-of
                           "section_start:1761857977"))
-                 (end-line (gitlab-pipeline-tests--line-start-of
-                            "section_end:1761857986"))
+                 (end (gitlab-pipeline-tests--position-of
+                       "section_end:1761857986"))
                  (header (get-text-property marker 'display)))
             (gitlab-job-log-toggle-timestamps)
             (should (equal (substring-no-properties header)
                            (substring-no-properties
                             (get-text-property marker 'display))))
-            (should (equal "" (get-text-property end-line 'display)))
+            (should (equal "" (get-text-property end 'display)))
             (gitlab-job-log-toggle-timestamps)
             (should (equal (substring-no-properties header)
                            (substring-no-properties
                             (get-text-property marker 'display))))
-            (should (equal "" (get-text-property end-line 'display)))))
+            (should (equal "" (get-text-property end 'display)))))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-stream ()
