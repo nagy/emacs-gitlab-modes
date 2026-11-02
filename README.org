@@ -157,6 +157,38 @@ sort indicator of =tabulated-list-mode=.  A date column carries the
 merge request or pipeline, so =browse-url-at-point= and every caller
 that reads a URL work on the table.
 
+* Buffer names and buffer lists
+
+A detail buffer name holds the project context in front of the sigil:
+=*GitLab MR group/project!12*=.  A list buffer name appends the context:
+=*GitLab Merge Requests group/project*=.  The name is a convenience.
+Every display buffer keeps its major mode, its object ID and its
+context, and the display commands find an open buffer by that identity.
+A renamed buffer therefore stays reachable, so a user can call it
+anything.
+
+The variable =list-buffers-directory= holds the identifier of the buffer,
+in the same syntax as a bookmark, an Org link and an xref definition:
+
+- =group/project!12= for a merge request,
+- =group/project#12= for a pipeline,
+- =group/project&12= for a job log,
+- =group/project= for a list buffer.
+
+The value follows the buffer identity and not the buffer name, so a
+rename keeps it.  =list-buffers= and =ibuffer= show the project in their
+Dir column, and an =ibuffer= =filename= filter selects the buffers of one
+project:
+
+#+begin_src emacs-lisp
+(add-to-list 'ibuffer-saved-filter-groups
+             '("work" ("GitLab project" (filename . "^group/project"))))
+#+end_src
+
+Marginalia annotates a buffer with the same value.  A JSON export buffer
+copies the identifier of its source, because an export is a snapshot of
+it and not a second object.
+
 * Parent views
 
 =M-x gitlab-go-to-parent= opens the view one level above the current

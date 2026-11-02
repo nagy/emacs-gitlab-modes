@@ -286,9 +286,13 @@ without evil.  The suite never opens a network connection.
   and the object ID, so `list-buffers` shows `group/project!12` for a
   merge request, `#` for a pipeline and `&` for a job log.  A list
   buffer has no object ID and gets the project context alone.  The
-  project comes from `gitlab--identifier-repository`, which reads
-  `gitlab-git-context`, so a context from the Git remote reaches
-  bookmarks and Org links too.
+  project comes from the buffer-local `gitlab--context` that
+  `gitlab--use-project-directory` set, so the helper reads no Git
+  remote again and the value never comes from the buffer name.  A
+  renamed buffer keeps its identifier.  `gitlab--render` calls the
+  helper at its end, so the value follows a context change too.
+  `gitlab-export--fill` copies the value of its source buffer, so the
+  export and its source show one identifier.
 - `gitlab--prepare-detail` and `gitlab-pipeline--prepare-job-log`
   return a buffer without displaying it.  The xref backend uses them, so
   a definition never moves the window configuration.  Both take the

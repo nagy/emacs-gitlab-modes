@@ -307,6 +307,19 @@ Kill every GitLab buffer that BODY opened."
                           list-buffers-directory)))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-context-list-buffers-directory-rename ()
+  "A rename keeps the identifier in `list-buffers-directory'."
+  (gitlab-test-with-environment
+   (let ((buffer (with-temp-buffer
+                   (let ((gitlab-repository "group/alpha"))
+                     (gitlab-display-merge-request "12")))))
+     (unwind-protect
+         (with-current-buffer buffer
+           (should (equal "group/alpha!12" list-buffers-directory))
+           (rename-buffer "*my merge request*" t)
+           (should (equal "group/alpha!12" list-buffers-directory)))
+       (kill-buffer buffer)))))
+
 ;;; Repository prompt
 
 (ert-deftest gitlab-context-read-repository ()

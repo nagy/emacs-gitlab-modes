@@ -79,6 +79,24 @@
                  (kill-buffer export)))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-export-json-copies-the-buffer-identifier ()
+  "The export buffer shows the identifier of its source buffer."
+  (gitlab-test-with-environment
+   (let ((buffer (let ((gitlab-repository "group/project"))
+                   (gitlab-display-merge-request "12"))))
+     (unwind-protect
+         (progn
+           (should (gitlab-export-tests--wait-for-render buffer))
+           (with-current-buffer buffer
+             (should (equal "group/project!12" list-buffers-directory))
+             (let ((export (gitlab-export-json)))
+               (unwind-protect
+                   (with-current-buffer export
+                     (should (equal "group/project!12"
+                                    list-buffers-directory)))
+                 (kill-buffer export)))))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-export-json-keeps-the-list-answer ()
   "A pipeline list export matches the glab array."
   (gitlab-test-with-environment

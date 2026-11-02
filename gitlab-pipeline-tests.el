@@ -446,6 +446,20 @@
              (should (equal "5001" list-buffers-directory))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-job-log-list-buffers-directory-project ()
+  "A job log names its project and its job in `list-buffers-directory'."
+  (gitlab-test-with-environment
+   (let ((buffer (let ((gitlab-repository "group/project"))
+                   (gitlab-pipeline--prepare-job-log "5001" "unit-tests"))))
+     (unwind-protect
+         (progn
+           (gitlab-test-wait
+            (lambda ()
+              (with-current-buffer buffer gitlab-job-log--finished)))
+           (with-current-buffer buffer
+             (should (equal "group/project&5001" list-buffers-directory))))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-job-log-parent-stored ()
   "A job log that knows its pipeline opens the pipeline buffer."
   (gitlab-test-with-environment

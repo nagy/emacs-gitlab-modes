@@ -446,14 +446,19 @@ buffer stays reachable.  An indirect buffer never answers."
 identifier syntax of `gitlab-data-identifier'.  A list buffer has
 no object ID and shows the project path alone.  A buffer without
 a project leaves the variable nil, so `list-buffers' shows the
-`default-directory'."
+`default-directory'.
+
+The value comes from the buffer-local `gitlab--kind', `gitlab--id'
+and `gitlab--context', never from the buffer name, so a renamed
+buffer keeps its identifier.  `gitlab--use-project-directory' sets
+the context, so the helper reads no Git remote again."
   (let ((kind (or gitlab--kind gitlab-list--kind)))
     (setq-local list-buffers-directory
                 (and kind
                      (gitlab-data-identifier
                       kind
                       gitlab--id
-                      (gitlab--identifier-repository))))))
+                      gitlab--context)))))
 
 (defun gitlab--status-state (data)
   "Return the status text of the decoded object DATA."
@@ -651,7 +656,8 @@ line or the mode line."
   (let ((inhibit-read-only t))
     (funcall (or gitlab--render-function #'gitlab--render-default)
              gitlab--id gitlab--last-data))
-  (gitlab--apply-target))
+  (gitlab--apply-target)
+  (gitlab--update-list-buffers-directory))
 
 (defun gitlab--force-render ()
   "Render the last data again, even when it did not change.

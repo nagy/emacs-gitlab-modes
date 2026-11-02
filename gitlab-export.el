@@ -95,8 +95,10 @@ Use `js-json-mode' when the library is present and
   "Replace the text of BUFFER with TEXT.
 SOURCE holds the GitLab view that TEXT came from.  BUFFER takes the
 project root of SOURCE through `gitlab--use-project-directory',
-keeps SOURCE for `gitlab-export--revert-buffer', and stays
-read-only and unmodified."
+copies the `list-buffers-directory' of SOURCE, keeps SOURCE for
+`gitlab-export--revert-buffer', and stays read-only and unmodified.
+Two buffers then show one identifier in `list-buffers', because an
+export is a snapshot of its source and not a second object."
   (with-current-buffer buffer
     (funcall (gitlab-export--mode))
     (gitlab--use-project-directory
@@ -109,6 +111,8 @@ read-only and unmodified."
       (unless (bolp)
         (insert "\n")))
     (setq buffer-read-only t)
+    (setq-local list-buffers-directory
+                (with-current-buffer source list-buffers-directory))
     (setq-local gitlab-export--source source)
     (setq-local revert-buffer-function #'gitlab-export--revert-buffer)
     (set-buffer-modified-p nil)))
