@@ -189,6 +189,13 @@ A header line shows the column names, and the sort column carries the
 sort indicator of =tabulated-list-mode=.  A date column carries the
 =gitlab-date= face.
 
+A list buffer fits the width of every column to its rows.  A column
+takes the width of its longest cell, or the width of its header when
+that is wider.  When the columns are wider than the window, the widest
+columns shrink together to one common cap, so no column goes below its
+header.  A resize refits the table at once.  =gitlab-list-fit-columns=
+set to nil keeps the widths of the table format of the collection.
+
 =thing-at-point 'url= on a row returns the upstream web URL of that
 merge request or pipeline, so =browse-url-at-point= and every caller
 that reads a URL work on the table.

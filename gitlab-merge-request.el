@@ -98,7 +98,9 @@ that invocation only."
    ("Branches" 32 t)
    ("Labels" 18 t)
    ("Updated" 20 t)]
-  "Table format of the merge request list.")
+  "Table format of the merge request list.
+A list buffer fits every width to its rows, so these numbers apply
+only with `gitlab-list-fit-columns' nil.")
 
 (defun gitlab-merge-request--rows (data)
   "Return an alist of merge request ID to row for DATA."

@@ -564,11 +564,33 @@ without evil.  The suite never opens a network connection.
   strings, so the helper reads the sorted column from the entry and
   strips the `!` of a merge request IID.  A date column goes through
   `gitlab-list--date-cell`, so the cell carries `gitlab-date`.
+- A list buffer fits the width of every column to its rows when
+  `gitlab-list-fit-columns` is non-nil, the default.
+  `gitlab-list--column-minimum` keeps a column at the width of its
+  header, its pad and the sort indicator, so a fitted column never
+  hides its name.  `gitlab-list--fit-widths` finds the largest cap
+  that keeps the total width within the window and clips every
+  wider column to it, so the widest columns shrink together.  The
+  answer keeps the label, the sort predicate and the properties of
+  each column.  `gitlab-list--base-format` holds the format that the
+  collection declared, because `tabulated-list-format` itself holds
+  the fitted answer and a second fitting must not compound it.  Do
+  not read the cell strings from the entries without
+  `gitlab-list--entry-cells`: an entry is a list of an ID and a
+  vector of cells.
+- A resize refits through `window-size-change-functions`.  The hook
+  runs during redisplay, so `gitlab-list--window-size-changed` only
+  queues the buffer in `gitlab-list--refit-buffers` and a zero delay
+  timer runs `gitlab-list--run-refits`, which reprints through
+  `gitlab-list--refit`.  A refit compares
+  `gitlab-list--available-width` with `gitlab-list--fit-width` of the
+  last fitting, so a hook that fires for the echo area reprints
+  nothing.
 - A list buffer shows the column names of `tabulated-list-format'
   in its header line, with the sort column marked by
-  `tabulated-list-sort-key'.  `gitlab-list--render' calls
-  `tabulated-list-init-header' after `tabulated-list-print', because
-  the printer alone sets no header, and keeps the answer in
+  `tabulated-list-sort-key'.  `gitlab-list--render' fits the columns,
+  prints the rows and then calls `tabulated-list-init-header',
+  because the printer alone sets no header, and keeps the answer in
   `gitlab--header-line-format'.  `gitlab--set-error' replaces the
   header line of a detail buffer, and `gitlab--clear-error' restores
   `gitlab--header-line-format`.  A list error goes to
@@ -707,7 +729,10 @@ without evil.  The suite never opens a network connection.
 - Byte-compilation runs with warnings as errors.  Declare a function
   from another file with `declare-function` when the file does not
   require it.  The test helper marks its dynamically bound variables
-  special at compile time.
+  special at compile time.  A `dotimes` form with a RESULT form makes
+  Emacs 31 report "Unused lexical variable" for a loop variable that
+  the body reads, so write the loop without a result form and put the
+  answer after it.
 - `checkdoc` and `package-lint` must pass through `checks.checkdoc` and
   `checks.package-lint`.  The package-lint check whitelists `gitlab`
   and `ol-gitlab` as shared prefixes.

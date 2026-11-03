@@ -125,7 +125,9 @@ A longer name is truncated by the table layout, not by the data."
    ("Ref" 34 t)
    ("Source" 20 t)
    ("Updated" 20 t)]
-  "Table format of the pipeline list.")
+  "Table format of the pipeline list.
+A list buffer fits every width to its rows, so these numbers apply
+only with `gitlab-list-fit-columns' nil.")
 
 (defun gitlab-pipeline--rows (data)
   "Return an alist of pipeline ID to row for DATA."

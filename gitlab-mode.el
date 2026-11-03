@@ -209,6 +209,16 @@ collection kind in KIND and nil in ID."
   :type 'hook
   :group 'gitlab)
 
+(defcustom gitlab-list-fit-columns t
+  "Whether a list buffer sizes its columns to the shown content.
+A fitted column takes the width of its widest cell, or the width of
+its header when that is wider.  When the columns are wider than the
+window, the widest columns shrink to one common cap, so no column
+goes below its header.  A nil value keeps the widths of the table
+format of the collection."
+  :type 'boolean
+  :group 'gitlab)
+
 ;;; Faces
 
 (defface gitlab-title
@@ -1214,9 +1224,211 @@ arguments or the origin buffer."
   "Return timestamp VALUE as a table cell with `gitlab-date'."
   (propertize (gitlab--format-date value) 'face 'gitlab-date))
 
+(defvar-local gitlab-list--base-format nil
+  "Table format of the current list buffer before fitting.
+`tabulated-list-format' holds the fitted format, so the fitting
+reads this value and never compounds its own answer.")
+
+(defvar-local gitlab-list--fitted-format nil
+  "Last table format that `gitlab-list--fit-columns' installed.")
+
+(defvar-local gitlab-list--fit-width nil
+  "Column budget of the last fitting, or nil before the first one.")
+
+(defun gitlab-list--width-window (&optional hint)
+  "Return the window whose width decides the columns.
+Prefer HINT while it shows the buffer, then the selected window
+while it shows the buffer, then the first window that shows it.
+The selected window alone is no answer, because it can show another
+buffer in another frame, and one buffer holds one
+`tabulated-list-format' for every window."
+  (let ((shown (get-buffer-window-list (current-buffer) nil t)))
+    (cond
+     ((memq hint shown) hint)
+     ((memq (selected-window) shown) (selected-window))
+     ((car shown))
+     (t (selected-window)))))
+
+(defun gitlab-list--available-width (&optional window)
+  "Return the column budget of WINDOW in the current buffer.
+The budget is the body width of the window less the table padding."
+  (let ((window (gitlab-list--width-window window)))
+    (max (- (window-width window) (max tabulated-list-padding 0)) 1)))
+
+(defun gitlab-list--cell-text (cell)
+  "Return the text of table CELL, or nil for a cell without text."
+  (cond
+   ((stringp cell) cell)
+   ((and (consp cell) (stringp (car cell))) (car cell))
+   (t nil)))
+
+(defun gitlab-list--cell-at (cells index)
+  "Return one cell of a table row.
+CELLS holds the cells of one entry, and INDEX names the column.
+The answer is nil when the row holds no such column."
+  (cond
+   ((vectorp cells) (and (< index (length cells)) (aref cells index)))
+   ((listp cells) (nth index cells))
+   (t nil)))
+
+(defun gitlab-list--entry-cells (entry)
+  "Return the column list of table ENTRY.
+An entry is a list of an ID and a vector of cells, or a cons of an
+ID and that vector."
+  (let ((cells (cdr entry)))
+    (cond
+     ((vectorp cells) cells)
+     ((and (consp cells) (null (cdr cells)) (vectorp (car cells)))
+      (car cells))
+     (t cells))))
+
+(defun gitlab-list--column-minimum (column sort-key)
+  "Return the smallest width that COLUMN can take in a fitted table.
+SORT-KEY names the sorted column, whose header takes the indicator.
+The limit holds the header label, its right padding and the sort
+indicator of the sorted column.  `tabulated-list-init-header'
+adds that indicator as two characters."
+  (let* ((label (or (car-safe column) ""))
+         (pad (or (plist-get (nthcdr 3 column) :pad-right) 1))
+         (width (string-width label)))
+    (+ width
+       (max pad 0)
+       (if (and sort-key (equal sort-key label)) 2 0))))
+
+(defun gitlab-list--fit-widths (wants minimums available)
+  "Return the column widths that fit the content into the window.
+WANTS and MINIMUMS are vectors of one width per column, and
+AVAILABLE is the column budget.  No width goes below the minimum
+of its column.  The function finds the largest cap that keeps the
+total within AVAILABLE and clips every wider column to it, so the
+widest columns shrink together."
+  (let ((cap (let ((low 0) (high 1) (widths (length wants)))
+               (dotimes (index widths)
+                 (setq high (max high (aref wants index))))
+               (while (< low high)
+                 (let* ((middle (/ (+ low high 1) 2))
+                        (total 0))
+                   (dotimes (index widths)
+                     (setq total (+ total (max (aref minimums index)
+                                               (min (aref wants index)
+                                                    middle)))))
+                   (if (<= total available)
+                       (setq low middle)
+                     (setq high (1- middle)))))
+               low))
+        (fitted (make-vector (length wants) 0)))
+    (dotimes (index (length wants))
+      (aset fitted index (max (aref minimums index)
+                              (min (aref wants index) cap))))
+    fitted))
+
+(defun gitlab-list--fit-format (format entries available)
+  "Return FORMAT with the column widths fitted to ENTRIES.
+AVAILABLE is the number of columns that the window offers.  Every
+column keeps its label, its sort predicate and its properties."
+  (let* ((count (length format))
+         (sort-key (car-safe tabulated-list-sort-key))
+         (wants (make-vector count 0))
+         (minimums (make-vector count 0)))
+    (dotimes (index count)
+      (let ((minimum (gitlab-list--column-minimum
+                      (aref format index)
+                      sort-key)))
+        (aset minimums index minimum)
+        (aset wants index minimum)))
+    (dolist (entry entries)
+      (let ((cells (gitlab-list--entry-cells entry)))
+        (dotimes (index count)
+          (when-let* ((text (gitlab-list--cell-text
+                             (gitlab-list--cell-at cells index))))
+            (aset wants index (max (aref wants index)
+                                   (string-width text)))))))
+    (let ((widths (gitlab-list--fit-widths wants minimums available))
+          (fitted (make-vector count nil)))
+      (dotimes (index count)
+        (let ((column (copy-sequence (aref format index))))
+          (when (listp column)
+            (setcar (nthcdr 1 column) (aref widths index)))
+          (aset fitted index column)))
+      (vconcat fitted))))
+
+(defun gitlab-list--fit-columns (&optional window)
+  "Fit the table columns of the current list buffer to its content.
+WINDOW hints the window whose width limits the columns.  With
+`gitlab-list-fit-columns' nil the function restores the widths of
+the table format of the collection."
+  (unless (equal tabulated-list-format gitlab-list--fitted-format)
+    (setq gitlab-list--base-format tabulated-list-format))
+  (when (and gitlab-list--base-format (derived-mode-p 'gitlab-list-mode))
+    (let ((width (gitlab-list--available-width window)))
+      (setq gitlab-list--fitted-format
+            (when gitlab-list-fit-columns
+              (gitlab-list--fit-format gitlab-list--base-format
+                                       tabulated-list-entries
+                                       width))
+            gitlab-list--fit-width
+            (when gitlab-list-fit-columns width))
+      (setq tabulated-list-format (or gitlab-list--fitted-format
+                                      gitlab-list--base-format)))))
+
+(defun gitlab-list--refit (window)
+  "Fit the columns of the current list buffer and print the rows again.
+WINDOW supplies the new width.  The reprint keeps point on the
+row that holds it."
+  (gitlab-list--fit-columns window)
+  (tabulated-list-print t)
+  (tabulated-list-init-header)
+  (setq-local gitlab--header-line-format header-line-format))
+
+(defvar gitlab-list--refit-buffers nil
+  "List buffers that wait for a column refit.")
+
+(defvar gitlab-list--refit-timer nil
+  "Timer that runs the pending column refits, or nil.")
+
+(defun gitlab-list--run-refits ()
+  "Refit the columns of the list buffers that wait for it."
+  (setq gitlab-list--refit-timer nil)
+  (dolist (buffer (prog1 gitlab-list--refit-buffers
+                    (setq gitlab-list--refit-buffers nil)))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (when (and (derived-mode-p 'gitlab-list-mode)
+                   gitlab-list-fit-columns
+                   gitlab-list--base-format
+                   (not (equal (gitlab-list--available-width)
+                               gitlab-list--fit-width)))
+          (gitlab-list--refit (gitlab-list--width-window)))))))
+
+(defun gitlab-list--schedule-refit ()
+  "Queue a column refit of the current list buffer.
+`window-size-change-functions' runs during redisplay, and a reprint
+must wait for the redisplay to end, so the refit goes through a
+zero delay timer."
+  (cl-pushnew (current-buffer) gitlab-list--refit-buffers)
+  (unless (timerp gitlab-list--refit-timer)
+    (setq gitlab-list--refit-timer
+          (run-at-time 0 nil #'gitlab-list--run-refits))))
+
+(defun gitlab-list--window-size-changed (frame)
+  "Queue a column refit for the list buffers that FRAME shows.
+A resize changes the space that the columns share.  A buffer that
+no window of FRAME shows keeps the widths that it already holds."
+  (dolist (window (window-list frame 'nomini))
+    (with-current-buffer (window-buffer window)
+      (when (and (derived-mode-p 'gitlab-list-mode)
+                 gitlab-list-fit-columns
+                 gitlab-list--base-format
+                 (not (equal (gitlab-list--available-width window)
+                             gitlab-list--fit-width)))
+        (gitlab-list--schedule-refit)))))
+
+(add-hook 'window-size-change-functions #'gitlab-list--window-size-changed)
+
 (defun gitlab-list--render (_id data)
   "Render collection DATA into the current list buffer.
-`tabulated-list-init-header' builds the header line from
+`gitlab-list--fit-columns' sizes the columns to the rows.
+`tabulated-list-init-header' then builds the header line from
 `tabulated-list-format' and `tabulated-list-sort-key', so the
 header line names the columns and marks the sort column.  The
 function keeps that value in `gitlab--header-line-format', because
@@ -1226,6 +1438,7 @@ installed."
     (setq gitlab-list--rows (funcall gitlab-list--rows-function data)))
   (when gitlab-list--entries-function
     (setq tabulated-list-entries (funcall gitlab-list--entries-function data)))
+  (gitlab-list--fit-columns)
   (tabulated-list-print t)
   (tabulated-list-init-header)
   (setq-local gitlab--header-line-format header-line-format))

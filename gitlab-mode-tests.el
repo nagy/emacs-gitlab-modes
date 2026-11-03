@@ -287,6 +287,77 @@
                                 gitlab-cli-directory)))
              (kill-buffer buffer))))))))
 
+(defun gitlab-mode-test--column-widths ()
+  "Return the width of every column of the current list buffer."
+  (mapcar (lambda (column) (nth 1 column))
+          (append tabulated-list-format nil)))
+
+(ert-deftest gitlab-mode-list-fit-columns ()
+  "A list render sizes every column to its content."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 7 t) ("Title" 42 t)])
+     (setq-local tabulated-list-sort-key nil)
+     (setq-local tabulated-list-entries
+                 '(("1" ["!1" "short"])
+                   ("2" ["!22" "a much longer title"])))
+     (cl-letf (((symbol-function 'gitlab-list--available-width)
+                (lambda (&optional _window) 200)))
+       (gitlab-list--render nil nil))
+     (should (equal '(3 19) (gitlab-mode-test--column-widths)))
+     (should (equal "ID" (car (aref tabulated-list-format 0))))
+     (should (equal 't (nth 2 (aref tabulated-list-format 0)))))))
+
+(ert-deftest gitlab-mode-list-fit-columns-clip ()
+  "Fitted columns shrink together and keep their header width."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 7 t) ("Title" 42 t)])
+     (setq-local tabulated-list-sort-key '("ID" . t))
+     (setq-local tabulated-list-entries
+                 '(("1" ["!1" "a much longer title"])))
+     (cl-letf (((symbol-function 'gitlab-list--available-width)
+                (lambda (&optional _window) 12)))
+       (gitlab-list--render nil nil))
+     ;; The ID header takes "ID", one pad and the sort indicator, so
+     ;; it keeps five columns and the title takes the rest.
+     (should (equal '(5 7) (gitlab-mode-test--column-widths)))
+     (should (= 12 (apply #'+ (gitlab-mode-test--column-widths)))))))
+
+(ert-deftest gitlab-mode-list-fit-columns-off ()
+  "A nil `gitlab-list-fit-columns' keeps the widths of the format."
+  (gitlab-test-with-environment
+   (let ((gitlab-list-fit-columns nil))
+     (with-temp-buffer
+       (gitlab-list-mode)
+       (setq-local tabulated-list-format [("ID" 7 t) ("Title" 42 t)])
+       (setq-local tabulated-list-sort-key nil)
+       (setq-local tabulated-list-entries '(("1" ["!1" "short"])))
+       (gitlab-list--render nil nil)
+       (should (equal '(7 42) (gitlab-mode-test--column-widths)))))))
+
+(ert-deftest gitlab-mode-list-refit-resize ()
+  "A narrower window refits the columns and keeps the rows."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 7 t) ("Title" 42 t)])
+     (setq-local tabulated-list-sort-key nil)
+     (setq-local tabulated-list-entries
+                 '(("1" ["!1" "a much longer title"])))
+     (cl-letf (((symbol-function 'gitlab-list--available-width)
+                (lambda (&optional _window) 200)))
+       (gitlab-list--render nil nil))
+     (should (equal '(3 19) (gitlab-mode-test--column-widths)))
+     (cl-letf (((symbol-function 'gitlab-list--available-width)
+                (lambda (&optional _window) 12)))
+       (gitlab-list--schedule-refit)
+       (gitlab-list--run-refits))
+     (should (equal '(3 9) (gitlab-mode-test--column-widths)))
+     (should (string-match-p "a much" (buffer-string))))))
+
 (ert-deftest gitlab-mode-list-number-sort ()
   "A numeric column sorts entries and ignores the IID sigil."
   (gitlab-test-with-environment
