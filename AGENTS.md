@@ -623,7 +623,11 @@ without evil.  The suite never opens a network connection.
   `evil-fold-list` and `outline-minor-mode`.  `gitlab-export-json`
   takes the `evil-yank` remap, so `y` exports the JSON of a detail
   buffer or of a list buffer in normal state, and visual state keeps
-  the ID copy.  Do not
+  the ID copy.  `revert-buffer-quick` takes the `evil-replace` and
+  the `evil-enter-replace-state` remaps, so `r` and `R` refresh with
+  less confirmation than the `gr` key, which stays a plain
+  `revert-buffer` string.  A display buffer takes no text edit, so
+  the two replace commands have no meaning here.  Do not
   `require` evil at the top of the file:
   evil runs `evil-after-load-hook` before it provides its feature, so
   a plain `require` recurses there.  The file requires evil only when

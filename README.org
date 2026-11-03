@@ -447,6 +447,8 @@ command, for example =[remap evil-ret]= for the row open command.  A
 remap follows the command and not the key, so a user who moves
 =evil-ret= to another key keeps the row open command on the new key.
 A key with no evil command, such as =gr=, stays a plain key binding.
+=r= and =R= refresh through =revert-buffer-quick=, so they ask for
+less confirmation than =gr=.
 
 ** Org links
 

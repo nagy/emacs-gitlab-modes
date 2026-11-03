@@ -50,7 +50,7 @@
 ;; command, such as gr, stays a plain key binding.
 ;;
 ;; Detail buffers: RET opens the pipeline, merge request, web page
-;; or commit at point; q quits the window; gr refreshes; p pops back;
+;; or commit at point; q quits the window; gr, r and R refresh; p pops back;
 ;; C-x C-j opens the parent list; c copies the ID; w opens the web
 ;; page.
 ;;
@@ -58,9 +58,15 @@
 ;; web page; S sorts the current column.  A visual line selection
 ;; followed by y copies every selected row ID, one per line.
 ;;
-;; Job log buffers: q quits; gr restarts the trace; ~ toggles the
+;; Job log buffers: q quits; gr, r and R restart the trace; ~ toggles the
 ;; timestamps; C-x C-j opens the pipeline; c copies the job ID; G and
 ;; gg reach the end and the start.
+;;
+;; Every buffer binds the two replace commands, `evil-replace' and
+;; `evil-enter-replace-state', through a remap to
+;; `revert-buffer-quick', so a refresh asks for less confirmation than
+;; a plain `revert-buffer'.  A display buffer takes no text edit, so
+;; the replace commands have no meaning here.
 
 ;;; Code:
 
@@ -91,6 +97,8 @@ the bindings off until a user calls `gitlab-evil-mode'."
     ("<mouse-2>" . gitlab-mouse-open-at-point)
     ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
+    ([remap evil-replace] . revert-buffer-quick)
+    ([remap evil-enter-replace-state] . revert-buffer-quick)
     ([remap evil-paste-after] . gitlab-pop)
     ([remap dired-jump] . gitlab-go-to-parent)
     ([remap dired-up-directory] . gitlab-go-to-parent)
@@ -106,6 +114,8 @@ that evil already binds.")
     ("<mouse-2>" . gitlab-list-mouse-open)
     ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
+    ([remap evil-replace] . revert-buffer-quick)
+    ([remap evil-enter-replace-state] . revert-buffer-quick)
     ([remap evil-change-whole-line] . tabulated-list-sort)
     ([remap evil-change] . gitlab-list-copy-id)
     ([remap evil-yank-line] . gitlab-list-copy-id)
@@ -124,6 +134,8 @@ that evil already binds.")
 (defvar gitlab-evil-job-log-keys
   '(([remap evil-record-macro] . quit-window)
     ("gr" . gitlab-job-log-restart)
+    ([remap evil-replace] . revert-buffer-quick)
+    ([remap evil-enter-replace-state] . revert-buffer-quick)
     ("TAB" . gitlab-job-log-toggle-section)
     ([remap dired-jump] . gitlab-go-to-parent)
     ([remap dired-up-directory] . gitlab-go-to-parent)
