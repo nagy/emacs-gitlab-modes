@@ -21,8 +21,10 @@
 ;;; Commentary:
 
 ;; Offline tests of `gitlab-export-json'.  The suite compares the
-;; export with the fixture that the mock glab prints, so a raw answer
-;; must survive the fetch byte for byte.
+;; object export with the fixture that the mock glab prints, so a raw
+;; answer must survive the fetch byte for byte.  It compares a list
+;; export by its shape, because the export puts one array element on
+;; one line.
 
 ;;; Code:
 
@@ -97,8 +99,18 @@
                  (kill-buffer export)))))
        (kill-buffer buffer)))))
 
-(ert-deftest gitlab-export-json-keeps-the-list-answer ()
-  "A pipeline list export matches the glab array."
+(ert-deftest gitlab-export-json-array-lines ()
+  "A top-level array takes one element per line."
+  (should (equal (gitlab-export--array-lines "[{\"id\":1},{\"id\":2}]")
+                 "[\n  {\"id\":1},\n  {\"id\":2}\n]"))
+  (should (equal (gitlab-export--array-lines "[1,2]")
+                 "[\n  1,\n  2\n]"))
+  (should (equal (gitlab-export--array-lines "[]") "[]"))
+  (should (equal (gitlab-export--array-lines "{\"id\":1}") "{\"id\":1}"))
+  (should (equal (gitlab-export--array-lines "not json") "not json")))
+
+(ert-deftest gitlab-export-json-puts-each-list-element-on-one-line ()
+  "A pipeline list export holds one pipeline per line."
   (gitlab-test-with-environment
    (let ((buffer (generate-new-buffer "*gitlab-export-list*")))
      (unwind-protect
@@ -111,10 +123,27 @@
              (let ((export (gitlab-export-json)))
                (unwind-protect
                    (with-current-buffer export
-                     (should (equal
-                              (string-trim-right (buffer-string))
-                              (gitlab-export-tests--fixture
-                               "ci-list.json"))))
+                     (let ((lines (split-string
+                                   (string-trim-right (buffer-string))
+                                   "\n")))
+                       ;; Two pipelines, one open bracket and one close.
+                       (should (= 4 (length lines)))
+                       (should (equal "[" (car lines)))
+                       (should (equal "]" (car (last lines))))
+                       (should (equal '("  {" "  {")
+                                      (mapcar (lambda (line)
+                                                (substring line 0 3))
+                                              (butlast (cdr lines)))))
+                       (should (equal
+                                (json-parse-string
+                                 (gitlab-export-tests--fixture
+                                  "ci-list.json")
+                                 :object-type 'alist
+                                 :array-type 'list)
+                                (json-parse-string
+                                 (buffer-string)
+                                 :object-type 'alist
+                                 :array-type 'list)))))
                  (kill-buffer export)))))
        (kill-buffer buffer)))))
 

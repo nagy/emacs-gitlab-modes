@@ -28,10 +28,15 @@
 
 ;; `gitlab-export-json' writes the glab JSON answer of the current
 ;; display buffer into one read-only `js-json-mode' buffer.  A detail
-;; buffer exports one object and a list buffer exports one array.  The
-;; command keeps the raw standard output of the fetch, so the text
-;; matches `glab ... --output json' byte for byte, up to one trailing
-;; newline, including empty arrays and false values.
+;; buffer exports one object and a list buffer exports one array.  For
+;; one object the command keeps the raw standard output of the fetch,
+;; so the text matches `glab ... --output json' byte for byte, up to
+;; one trailing newline.
+;;
+;; A top-level array becomes one element per line, because glab prints
+;; a list answer on one line and that line hides the element boundary
+;; in a buffer that does not wrap.  Every element stays compact, so a
+;; later grep finds a whole element on one line.
 ;;
 ;; A fetch that merges two answers, as the pipeline jobs fallback
 ;; does, has no single glab text.  The export then encodes the decoded
@@ -72,17 +77,53 @@ their JSON form."
         (json-encoding-default-indentation "  "))
     (json-encode data)))
 
+(defun gitlab-export--array-p (data)
+  "Return non-nil when DATA is a decoded JSON array.
+The decoder returns an alist for an object and a list for an array.
+The key of an alist is an atom, while an element of an array is an
+atom or a list, so a list before an atom names an object.  An empty
+array and an empty object both decode to nil, so nil names no
+array."
+  (and (consp data)
+       (not (and (consp (car data))
+                 (atom (caar data))))))
+
+(defun gitlab-export--array-lines (text)
+  "Return TEXT with one element of its top-level array per line.
+Encode every element on one line and indent it by two spaces.  Return
+TEXT unchanged when it does not decode, when it holds no array, and
+when the array is empty."
+  (let ((data (condition-case nil
+                  (json-parse-string text
+                                     :object-type 'alist
+                                     :array-type 'list
+                                     :null-object nil
+                                     :false-object :false)
+                (error nil))))
+    (if (gitlab-export--array-p data)
+        (let ((json-false :false)
+              (json-null nil)
+              (json-encoding-pretty-print nil))
+          (concat "[\n"
+                  (mapconcat (lambda (element)
+                               (concat "  " (json-encode element)))
+                             data ",\n")
+                  "\n]"))
+      text)))
+
 (defun gitlab-export--text ()
   "Return the JSON text of the current display buffer.
 Use the raw glab answer when the fetch kept one.  Otherwise encode
-`gitlab--last-data'."
-  (cond
-   ((and (stringp gitlab--raw-text)
-         (not (string-blank-p gitlab--raw-text)))
-    gitlab--raw-text)
-   (gitlab--rendered
-    (gitlab-export--json-text gitlab--last-data))
-   (t (user-error "This GitLab buffer has no data yet"))))
+`gitlab--last-data'.  A top-level array becomes one element per
+line through `gitlab-export--array-lines'."
+  (gitlab-export--array-lines
+   (cond
+    ((and (stringp gitlab--raw-text)
+          (not (string-blank-p gitlab--raw-text)))
+     gitlab--raw-text)
+    (gitlab--rendered
+     (gitlab-export--json-text gitlab--last-data))
+    (t (user-error "This GitLab buffer has no data yet")))))
 
 (defun gitlab-export--mode ()
   "Return the major mode of the JSON export buffer.
@@ -136,8 +177,8 @@ Ignore ARGUMENTS, as `revert-buffer-function' requires.  Signal a
   "Export the data of the current GitLab buffer as JSON.
 Write one read-only `js-json-mode' buffer and reuse it on the next
 call.  A detail buffer exports one object and a list buffer exports
-one array, as the glab command that filled the buffer prints them.
-The command refuses a buffer without data, such as a job log.
+one array with one element per line.  The command refuses a buffer
+without data, such as a job log.
 `revert-buffer' in the export buffer reads the source buffer again.
 The display base modes remap `js-json-mode' to this command."
   (interactive nil gitlab-detail-mode gitlab-list-mode)

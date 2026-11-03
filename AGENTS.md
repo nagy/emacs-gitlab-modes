@@ -601,8 +601,14 @@ without evil.  The suite never opens a network connection.
   buffer.  The transport binds `gitlab-cli-response-text` around an
   asynchronous SUCCESS callback, and the refresh pipeline stores that
   raw text in the buffer-local `gitlab--raw-text`.  The export uses the
-  raw text, so it matches `glab ... --output json` byte for byte.  A
-  fetch that merges two answers sets `gitlab--raw-text` to nil, and the
+  raw text for one object, so it matches `glab ... --output json`
+  byte for byte there.  A top-level array becomes one element per line
+  through `gitlab-export--array-lines`, because glab prints a list
+  answer on one line.  Every element stays compact, so a grep finds a
+  whole element on one line, and the two spaces of indent show the
+  elements of the array.  `gitlab-export--array-p` reads a decoded
+  array, and an empty array keeps the text of glab.  A fetch that
+  merges two answers sets `gitlab--raw-text` to nil, and the
   export encodes `gitlab--last-data` with `json-false` bound to
   `:false`.  One buffer, named by `gitlab-export-json-buffer-name`,
   serves every export.  It stays read-only, unmodified and a snapshot.

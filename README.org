@@ -308,9 +308,12 @@ loads through autoloads.  The export command carries an autoload
 cookie, so the first such key loads the export layer.
 With evil, =y= exports in a detail buffer and in the normal state of a
 list buffer.
-The export keeps the raw =glab= output of the fetch, so empty arrays and
-false values stay as =glab= printed them.  The export adds one trailing
-newline when the raw text lacks one.
+The export keeps the raw =glab= output of the fetch for one object, so
+false values stay as =glab= printed them.  A list answer becomes one
+array element per line with two spaces of indent, because =glab= prints
+a list on one line and that line hides the element boundary in a
+buffer that does not wrap.  An empty array stays as =glab= printed it.
+The export adds one trailing newline when the raw text lacks one.
 
 A pipeline whose answer lacked the jobs array costs one more request,
 and the data layer merges two answers.  No single =glab= text describes
