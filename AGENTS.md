@@ -423,9 +423,15 @@ without evil.  The suite never opens a network connection.
   and drops a trailing `mode-line-end-spaces`, because that construct
   fills the rest of the line and would push the section past the
   right edge.  The mode keeps that list in
-  `gitlab-job-log--mode-line-base` and appends the literal symbol
-  `mode-line-format-right-align` and the text, so
-  the section sits on the right.  `post-command-hook` and the chunk
+  `gitlab-job-log--mode-line-base`, and
+  `gitlab-job-log--mode-line-format` appends the text to it.  Add the
+  literal symbol `mode-line-format-right-align` only when the base
+  format does not hold one: `mode--line-format-right-align` reads the
+  first such symbol of `mode-line-format` and right-aligns every
+  construct behind it, so a second symbol aligns the section against
+  itself and pushes the whole right block off the edge.  A user format
+  with its own right block therefore needs the plain text alone.
+  `post-command-hook` and the chunk
   filter call `gitlab-job-log--mode-line-maybe-update`, which rebuilds
   the format only when the region signature changes.  The signature
   holds the region bounds and `buffer-chars-modified-tick`.  The

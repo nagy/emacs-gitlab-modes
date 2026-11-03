@@ -383,7 +383,7 @@ of glab and never reach the buffer.")
 (defvar-local gitlab-job-log--mode-line-base nil
   "Mode line format of the job log buffer without the region section.
 `gitlab-job-log--mode-line-format-base' builds it, and
-`gitlab-job-log--update-mode-line' appends the section to it.")
+`gitlab-job-log--mode-line-format' appends the section to it.")
 
 (defvar-local gitlab-job-log--mode-line-cache ""
   "Region section of the mode line, as last installed.
@@ -1071,12 +1071,25 @@ region and a new trace line both change this value."
   "Return the mode line format of the job log without the region section.
 The last construct of the default format fills the rest of the mode
 line, so a section that follows it would sit past the right edge.
-The helper drops that construct, which keeps the right-aligned
-section on the visible line in a terminal and in a window system."
+The helper drops that construct, which keeps the section on the
+visible line in a terminal."
   (let ((base (default-value 'mode-line-format)))
     (if (eq (car (last base)) 'mode-line-end-spaces)
         (butlast base)
       base)))
+
+(defun gitlab-job-log--mode-line-format (text)
+  "Return a mode line format that shows TEXT at the right edge.
+A base format that holds `mode-line-format-right-align' of its own
+already right-aligns every construct behind that symbol, so TEXT goes
+behind it and needs no second symbol.  A second symbol would align
+the section against itself and push the whole right block off the
+edge.  A base format without the symbol receives one."
+  (append gitlab-job-log--mode-line-base
+          (unless (memq 'mode-line-format-right-align
+                        gitlab-job-log--mode-line-base)
+            (list 'mode-line-format-right-align))
+          (list text)))
 
 (defun gitlab-job-log--update-mode-line ()
   "Rebuild the region section of the mode line and install it.
@@ -1092,8 +1105,7 @@ because `post-command-hook' runs it after every command."
       (setq mode-line-format
             (if (string-empty-p text)
                 gitlab-job-log--mode-line-base
-              (append gitlab-job-log--mode-line-base
-                      (list 'mode-line-format-right-align text))))))
+              (gitlab-job-log--mode-line-format text)))))
   (force-mode-line-update))
 
 (defun gitlab-job-log--mode-line-maybe-update ()

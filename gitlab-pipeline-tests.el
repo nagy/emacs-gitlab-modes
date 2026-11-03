@@ -423,6 +423,33 @@ filled line leaves no room for the section."
                            mode-line-format))))
       (kill-buffer buffer))))
 
+(ert-deftest gitlab-pipeline-job-log-mode-line-shared-right-align ()
+  "A base that right-aligns receives no second symbol.
+A user format already holds a right block behind
+`mode-line-format-right-align', so the section joins that block and
+the mode line keeps one alignment."
+  (let ((original (default-value 'mode-line-format))
+        (base '("%e" "LEFT" mode-line-format-right-align "RIGHT"))
+        (buffer nil))
+    (unwind-protect
+        (progn
+          (set-default 'mode-line-format base)
+          (setq buffer
+                (gitlab-pipeline-tests--job-log-with-trace
+                 (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                         "2026-10-30T20:59:38.250Z 00O two\n")))
+          (with-current-buffer buffer
+            (gitlab-job-log--update-mode-line)
+            (should (equal base (butlast mode-line-format)))
+            (should (= 1 (seq-count (lambda (item)
+                                      (eq item 'mode-line-format-right-align))
+                                    mode-line-format)))
+            (should (equal gitlab-job-log--mode-line-cache
+                           (car (last mode-line-format))))))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))
+      (set-default 'mode-line-format original))))
+
 (ert-deftest gitlab-pipeline-job-log-mode-line-without-region ()
   "The mode line drops the region section when the region is gone."
   (let ((buffer
