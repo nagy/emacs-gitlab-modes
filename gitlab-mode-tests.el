@@ -54,8 +54,50 @@
     (should (eq 'gitlab-id
                 (get-text-property
                  0 'face (gitlab--format-field-value key "42")))))
-  (should-not (get-text-property
-               0 'face (gitlab--format-field-value 'ref "main"))))
+  (should (eq 'gitlab-branch
+              (get-text-property
+               0 'face (gitlab--format-field-value 'ref "main")))))
+
+(ert-deftest gitlab-mode-author-face ()
+  "An author field and a branch field carry their own face."
+  (let ((author (gitlab--format-author
+                 '((name . "Alice") (username . "alice")))))
+    (should (equal "Alice (@alice)" author))
+    (should (eq 'gitlab-author (get-text-property 0 'face author)))
+    (should (eq 'gitlab-id (get-text-property 7 'face author))))
+  (should (equal "@alice" (gitlab--format-author '((username . "alice")))))
+  (should (eq 'gitlab-author
+              (get-text-property 0 'face (gitlab--format-author "Bob"))))
+  (should (equal "-" (gitlab--format-author nil)))
+  (should-not (get-text-property 0 'face (gitlab--format-author nil)))
+  (should (eq 'gitlab-branch
+              (get-text-property 0 'face (gitlab--format-branch "main"))))
+  (should (eq 'gitlab-tag
+              (get-text-property
+               0 'face (gitlab--format-branch "v1.0" t))))
+  (should (equal "-" (gitlab--format-branch nil)))
+  (dolist (key '(source_branch target_branch ref))
+    (should (eq 'gitlab-branch
+                (get-text-property
+                 0 'face (gitlab--format-field-value key "main")))))
+  (should (eq 'gitlab-author
+              (get-text-property
+               0 'face (gitlab--format-field-value
+                        'author '((name . "Alice")))))))
+
+(ert-deftest gitlab-mode-tag-field-face ()
+  "A ref that the tag flag marks a tag takes `gitlab-tag'."
+  (let ((data '((ref . "v1.0") (tag . t))))
+    (should (eq 'gitlab-tag
+                (get-text-property
+                 0 'face (gitlab--format-field-value
+                          'ref (gitlab-data-field "ref" data) data))))
+    (should (eq 'gitlab-branch
+                (get-text-property
+                 0 'face (gitlab--format-field-value
+                          'ref "v1.0" '((ref . "v1.0") (tag . :false))))))
+    (should-not (get-text-property
+                 0 'face (gitlab--format-field-value 'tag t data)))))
 
 (ert-deftest gitlab-mode-render-fields ()
   "A field table has labels, values and a field property."

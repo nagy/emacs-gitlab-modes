@@ -621,13 +621,37 @@ without evil.  The suite never opens a network connection.
   loads the export layer through its autoload cookie.
 - Every face inherits a standard face and lives in `gitlab-mode.el`.
   Status faces come from `gitlab-status-faces`; do not apply a
-  font-lock face in a renderer.
-- Colors, dates, identifiers and status values go through
-  `gitlab--field-value-face`, `gitlab--format-date` and
+  font-lock face in a renderer.  `gitlab-author` inherits
+  `magit-log-author`, `gitlab-branch` inherits `magit-branch-remote`
+  and `gitlab-tag` inherits `magit-tag`.  Magit stays optional:
+  Emacs ignores an undefined parent face, so no name goes into
+  `Package-Requires` nor into a `require`.
+- Colors, dates, identifiers, authors, branches and status values go
+  through `gitlab--field-value-face`, `gitlab--format-date` and
   `gitlab-status-face`.  A new date field goes into
   `gitlab-date-fields`; a new identifier field goes into
   `gitlab-id-fields`, so `id`, `iid`, `project_id`, `sha` and
-  `before_sha` share `gitlab-id`.
+  `before_sha` share `gitlab-id`.  A new author field goes into
+  `gitlab-author-fields`, and a new branch or ref field goes into
+  `gitlab-branch-fields`.
+- A ref that the `tag` flag of the object marks a tag takes
+  `gitlab-tag` instead of `gitlab-branch`.  A name goes into
+  `gitlab-tag-fields` for the field table, and the renderer passes
+  the decoded flag to `gitlab--format-branch`.  Read a flag with
+  `gitlab--tag-flag-p`, because JSON false decodes to `:false` and a
+  plain truth test reads it as true.  `gitlab--format-field-value`
+  takes the object as an optional third argument for that answer,
+  so a caller without the object passes the flag to
+  `gitlab--format-branch` itself.
+- A renderer that prints an author calls `gitlab--format-author`, and
+  a renderer that prints a branch or a ref calls
+  `gitlab--format-branch`, because `gitlab--format-value` adds no
+  face.  `gitlab--format-author` gives the name `gitlab-author` and
+  the account name `gitlab-id`, so `Alice (@alice)` shows two faces.
+  The merge request list uses both in its Author and Branches
+  columns, the commit list and the notes header use the first, and
+  the pipeline list uses the second in its Ref column.  The commit
+  list gives the short SHA `gitlab-id`.
 - Interactive entry points carry `;;;###autoload` cookies.  The
   optional layers keep their own files and are not required by
   `gitlab-modes.el`.

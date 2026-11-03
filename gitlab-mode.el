@@ -201,6 +201,29 @@ Every field that names one object or one commit belongs here, so
   :type '(repeat string)
   :group 'gitlab)
 
+(defcustom gitlab-author-fields
+  '("author")
+  "Field names that take `gitlab-author'.
+A field that names the user who wrote an object belongs here."
+  :type '(repeat string)
+  :group 'gitlab)
+
+(defcustom gitlab-branch-fields
+  '("source_branch" "target_branch" "ref")
+  "Field names that take `gitlab-branch'.
+A field that names a branch or a ref belongs here, so the branch
+fields of a merge request and the ref of a pipeline look alike."
+  :type '(repeat string)
+  :group 'gitlab)
+
+(defcustom gitlab-tag-fields
+  '("ref")
+  "Field names that take `gitlab-tag' for a tag.
+A pipeline answers a `tag' flag beside its ref, so a ref that the
+flag marks a tag takes `gitlab-tag' instead of `gitlab-branch'."
+  :type '(repeat string)
+  :group 'gitlab)
+
 (defcustom gitlab-change-functions nil
   "Hook run after a display buffer renders changed data.
 Each function receives KIND, ID and DATA: the resource kind, its
@@ -239,6 +262,30 @@ format of the collection."
 (defface gitlab-date
   '((t :inherit shadow))
   "Face of a timestamp field."
+  :group 'gitlab)
+
+(defface gitlab-author
+  '((t :inherit magit-log-author))
+  "Face of an author name.
+The face inherits `magit-log-author', so an author looks the same
+as in a Magit log.  Magit stays optional, because Emacs ignores an
+undefined parent face."
+  :group 'gitlab)
+
+(defface gitlab-branch
+  '((t :inherit magit-branch-remote))
+  "Face of a branch name.
+The face inherits `magit-branch-remote', so a branch looks the
+same as in a Magit buffer.  Magit stays optional, because Emacs
+ignores an undefined parent face."
+  :group 'gitlab)
+
+(defface gitlab-tag
+  '((t :inherit magit-tag))
+  "Face of a tag name.
+The face inherits `magit-tag', so a tag looks the same as in a
+Magit buffer.  Magit stays optional, because Emacs ignores an
+undefined parent face."
   :group 'gitlab)
 
 (defface gitlab-error
@@ -788,6 +835,39 @@ tooltip both work."
       "-"))
    (t (format "%s" value))))
 
+(defun gitlab--format-author (value)
+  "Return author VALUE as display text with the `gitlab-author' face.
+The name takes `gitlab-author' and the account name takes
+`gitlab-id'.  VALUE is a decoded user object, a plain name, or
+nil."
+  (cond
+   ((gitlab-data-alist-p value)
+    (let ((name (gitlab-data-field "name" value))
+          (username (gitlab-data-field "username" value)))
+      (cond
+       ((and name username)
+        (concat (propertize (format "%s" name) 'face 'gitlab-author)
+                " ("
+                (propertize (format "@%s" username) 'face 'gitlab-id)
+                ")"))
+       (username
+        (propertize (format "@%s" username) 'face 'gitlab-id))
+       (t (propertize (gitlab--format-object value)
+                      'face 'gitlab-author)))))
+   ((and (stringp value) (not (string-empty-p value)))
+    (propertize value 'face 'gitlab-author))
+   (t (gitlab--format-value value))))
+
+(defun gitlab--format-branch (value &optional tag)
+  "Return branch or ref VALUE as display text with `gitlab-branch'.
+TAG is the decoded `tag' flag of the object that holds VALUE, so a
+ref of a tag takes `gitlab-tag'."
+  (if (and (stringp value) (not (string-empty-p value)))
+      (propertize value 'face (if (gitlab--tag-flag-p tag)
+                                  'gitlab-tag
+                                'gitlab-branch))
+    (gitlab--format-value value)))
+
 (defun gitlab--format-date (value)
   "Return timestamp VALUE in a compact readable form."
   (if (stringp value)
@@ -818,33 +898,66 @@ tooltip both work."
     (cdr (assoc-string status gitlab-status-faces t))))
 
 (defun gitlab--date-field-p (key)
-  "Return non-nil when KEY names a date field."
-  (and (stringp (symbol-name key))
-       (cl-some (lambda (name)
-                  (string-equal-ignore-case
-                   (replace-regexp-in-string " " "_" name)
-                   (symbol-name key)))
-                gitlab-date-fields)))
+  "Return non-nil when KEY names a date field.
+A space and an underscore are the same, so one entry serves a
+field name and a list column name."
+  (gitlab--field-name-p
+   (replace-regexp-in-string " " "_" (format "%s" key))
+   gitlab-date-fields))
 
 (defun gitlab--id-field-p (key)
   "Return non-nil when KEY names an identifier field."
-  (and (stringp (symbol-name key))
-       (cl-some (lambda (name)
-                  (string-equal-ignore-case name (symbol-name key)))
-                gitlab-id-fields)))
+  (gitlab--field-name-p key gitlab-id-fields))
 
-(defun gitlab--field-value-face (key value)
-  "Return the face for the value of field KEY holding VALUE."
+(defun gitlab--field-name-p (key names)
+  "Return non-nil when KEY names a field of the list NAMES.
+KEY is a symbol or a string, and the comparison ignores case."
+  (when (or (symbolp key) (stringp key))
+    (let ((name (if (symbolp key) (symbol-name key) key)))
+      (cl-some (lambda (other)
+                 (string-equal-ignore-case other name))
+               names))))
+
+(defun gitlab--author-field-p (key)
+  "Return non-nil when KEY names an author field."
+  (gitlab--field-name-p key gitlab-author-fields))
+
+(defun gitlab--branch-field-p (key)
+  "Return non-nil when KEY names a branch or a ref field."
+  (gitlab--field-name-p key gitlab-branch-fields))
+
+(defun gitlab--tag-field-p (key)
+  "Return non-nil when KEY names a field that a tag flag can mark."
+  (gitlab--field-name-p key gitlab-tag-fields))
+
+(defun gitlab--tag-flag-p (value)
+  "Return non-nil when VALUE is a true flag.
+JSON false decodes to `:false', so a plain truth test would read a
+false flag as true."
+  (and value (not (eq value :false))))
+
+(defun gitlab--tag-p (data)
+  "Return non-nil when the `tag' flag of DATA marks a tag."
+  (gitlab--tag-flag-p (gitlab-data-field "tag" data)))
+
+(defun gitlab--field-value-face (key value &optional data)
+  "Return the face for the value of field KEY holding VALUE.
+DATA is the object that holds KEY, when the caller has it.  A ref
+that the `tag' flag of DATA marks a tag takes `gitlab-tag'."
   (cond
    ((and (stringp value) (gitlab--status-face value)))
    ((gitlab--status-face (symbol-name key)))
+   ((gitlab--author-field-p key) 'gitlab-author)
+   ((and (gitlab--tag-field-p key) (gitlab--tag-p data)) 'gitlab-tag)
+   ((gitlab--branch-field-p key) 'gitlab-branch)
    ((gitlab--date-field-p key) 'gitlab-date)
    ((gitlab--id-field-p key) 'gitlab-id)
    ((eq key 'title) 'gitlab-title)
    (t nil)))
 
-(defun gitlab--format-field-value (key value)
-  "Return the display text of KEY with VALUE, including navigation."
+(defun gitlab--format-field-value (key value &optional data)
+  "Return the display text of KEY with VALUE, including navigation.
+DATA is the object that holds KEY, when the caller has it."
   (let ((text
          (cond
           ((eq key 'web_url)
@@ -867,7 +980,7 @@ tooltip both work."
           ((memq key '(duration queued_duration))
            (gitlab--format-duration value))
           (t (gitlab--format-value value)))))
-    (if-let* ((face (gitlab--field-value-face key value)))
+    (if-let* ((face (gitlab--field-value-face key value data)))
         (propertize text 'face face)
       text)))
 
@@ -912,7 +1025,7 @@ Return the position before the first field."
         (insert (propertize (format (format "%%-%ds " width) label)
                             'gitlab-field key
                             'face 'gitlab-field-name))
-        (insert (gitlab--format-field-value key value))
+        (insert (gitlab--format-field-value key value data))
         (insert "\n")))))
 
 (defun gitlab--render-fields (title data &optional keys)

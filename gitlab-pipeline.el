@@ -144,7 +144,9 @@ only with `gitlab-list-fit-columns' nil.")
      (let* ((id (gitlab-data-id-string
                  (gitlab-data-field "id" pipeline)))
             (status (gitlab-data-field-string "status" pipeline))
-            (ref (gitlab-data-field-string "ref" pipeline))
+            (ref (gitlab--format-branch
+                  (gitlab-data-field "ref" pipeline)
+                  (gitlab-data-field "tag" pipeline)))
             (source (gitlab-data-field-string "source" pipeline))
             (updated (gitlab-list--date-cell
                       (gitlab-data-field "updated_at" pipeline))))

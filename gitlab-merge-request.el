@@ -118,10 +118,12 @@ only with `gitlab-list-fit-columns' nil.")
             (id (gitlab-data-id-string iid))
             (title (gitlab-data-field-string "title" merge-request))
             (state (gitlab-data-field-string "state" merge-request))
-            (author (gitlab--format-value
+            (author (gitlab--format-author
                      (gitlab-data-field "author" merge-request)))
-            (source (gitlab-data-field-string "source_branch" merge-request))
-            (target (gitlab-data-field-string "target_branch" merge-request))
+            (source (gitlab--format-branch
+                     (gitlab-data-field "source_branch" merge-request)))
+            (target (gitlab--format-branch
+                     (gitlab-data-field "target_branch" merge-request)))
             (labels (gitlab--format-value
                      (gitlab-data-field "labels" merge-request)))
             (updated (gitlab-list--date-cell
@@ -220,9 +222,10 @@ because a ref of another project would be wrong."
             (insert
              (propertize
               (format "%s %s  (%s, %s)\n"
-                      (alist-get 'short commit)
+                      (propertize (alist-get 'short commit)
+                                  'face 'gitlab-id)
                       (alist-get 'subject commit)
-                      (alist-get 'author commit)
+                      (gitlab--format-author (alist-get 'author commit))
                       (gitlab--format-date (alist-get 'date commit)))
               'gitlab-commit-sha (alist-get 'sha commit)
               'mouse-face 'highlight
@@ -240,15 +243,15 @@ because a ref of another project would be wrong."
       (if (null gitlab-merge-request--notes)
           (insert "No notes.\n")
         (dolist (note gitlab-merge-request--notes)
-          (let ((author (gitlab--format-value
+          (let ((author (gitlab--format-author
                          (gitlab-data-field "author" note)))
                 (created (gitlab--format-date
                           (gitlab-data-field "created_at" note)))
                 (body (gitlab-data-field-string "body" note))
                 (system (gitlab-data-field "system" note)))
-            (insert (propertize
-                     (format "%s  %s%s\n" author created
-                             (if system "  (system)" ""))
+            (insert author "  "
+                    (propertize
+                     (format "%s%s\n" created (if system "  (system)" ""))
                      'face 'gitlab-field-name))
             (insert (if (string-empty-p body) "(no text)" body)
                     "\n\n")))))))

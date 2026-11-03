@@ -136,11 +136,57 @@
     (should (equal "7" (car (car entries))))
     (should (equal "!7" (aref row 0)))
     (should (equal "Seven" (aref row 1)))
-    (should (equal "Alice (@alice)" (aref row 3)))
-    (should (equal "feature -> main" (aref row 4)))
+    (should (equal "Alice (@alice)" (substring-no-properties (aref row 3))))
+    (should (eq 'gitlab-author (get-text-property 0 'face (aref row 3))))
+    (should (eq 'gitlab-id (get-text-property 7 'face (aref row 3))))
+    (should (equal "feature -> main" (substring-no-properties (aref row 4))))
+    (should (eq 'gitlab-branch (get-text-property 0 'face (aref row 4))))
+    (should (eq 'gitlab-branch (get-text-property 11 'face (aref row 4))))
     (should (equal "UX" (aref row 5)))
     (should (equal "2026-10-31 20:57:30" (aref row 6)))
     (should (eq 'gitlab-date (get-text-property 0 'face (aref row 6))))))
+
+(ert-deftest gitlab-merge-request-commit-rows-faces ()
+  "A commit row marks its SHA, its author and its date."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (setq-local gitlab--id "12")
+     (cl-letf (((symbol-function 'gitlab-git-merge-request-commits)
+                (lambda (&rest _)
+                  (list :commits
+                        (list '((sha . "abc123def")
+                                (short . "abc123d")
+                                (subject . "Fix")
+                                (author . "Bob")
+                                (date . "2026-10-31T20:57:30Z")))
+                        :total 1))))
+       (gitlab-merge-request--insert-commits nil))
+     (goto-char (point-min))
+     (re-search-forward "abc123d")
+     (should (eq 'gitlab-id (get-text-property (match-beginning 0) 'face)))
+     (should (equal "abc123def"
+                    (get-text-property (match-beginning 0)
+                                       'gitlab-commit-sha)))
+     (re-search-forward "Bob")
+     (should (eq 'gitlab-author (get-text-property (match-beginning 0) 'face)))
+     (should (string-match-p "2026-10-31 20:57:30" (buffer-string))))))
+
+(ert-deftest gitlab-merge-request-notes-author-face ()
+  "The notes header marks the author and the account name."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (setq-local gitlab-merge-request--notes
+                 (list '((author (name . "Alice") (username . "alice"))
+                         (created_at . "2026-10-31T20:57:30.763Z")
+                         (body . "Fine."))))
+     (setq-local gitlab-merge-request--notes-loaded t)
+     (gitlab-merge-request--insert-notes)
+     (goto-char (point-min))
+     (re-search-forward "Alice")
+     (should (eq 'gitlab-author (get-text-property (match-beginning 0) 'face)))
+     (re-search-forward "@alice")
+     (should (eq 'gitlab-id (get-text-property (match-beginning 0) 'face)))
+     (should (string-match-p "Fine." (buffer-string))))))
 
 (ert-deftest gitlab-merge-request-detail-parent ()
   "A merge request detail buffer opens the merge request list.

@@ -567,10 +567,23 @@ the mode line keeps one alignment."
     (should (equal "9" (car (car entries))))
     (should (equal "9" (aref row 0)))
     (should (equal "success" (aref row 1)))
-    (should (equal "main" (aref row 2)))
+    (should (equal "main" (substring-no-properties (aref row 2))))
+    (should (eq 'gitlab-branch (get-text-property 0 'face (aref row 2))))
     (should (equal "push" (aref row 3)))
     (should (equal "2026-10-31 20:57:30" (aref row 4)))
     (should (eq 'gitlab-date (get-text-property 0 'face (aref row 4))))))
+
+(ert-deftest gitlab-pipeline-entries-tag-ref ()
+  "A pipeline that runs on a tag marks its ref a tag."
+  (let* ((data '(((id . 9) (status . "success")
+                  (ref . "v1.0") (tag . t))))
+         (row (cadr (car (gitlab-pipeline--entries data)))))
+    (should (equal "v1.0" (substring-no-properties (aref row 2))))
+    (should (eq 'gitlab-tag (get-text-property 0 'face (aref row 2)))))
+  (let* ((data '(((id . 10) (status . "success")
+                  (ref . "main") (tag . :false))))
+         (row (cadr (car (gitlab-pipeline--entries data)))))
+    (should (eq 'gitlab-branch (get-text-property 0 'face (aref row 2))))))
 
 (ert-deftest gitlab-pipeline-job-log-list-buffers-directory ()
   "A job log names its job in `list-buffers-directory'."
