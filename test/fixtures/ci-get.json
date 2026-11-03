@@ -29,15 +29,15 @@
   "archived": false,
   "jobs": [
     {
-      "id": 5001,
-      "name": "unit-tests",
-      "stage": "test",
-      "status": "success",
-      "duration": 100.234765,
-      "queued_duration": 0.078558,
+      "id": 5003,
+      "name": "package:android",
+      "stage": "build",
+      "status": "manual",
+      "duration": 0,
+      "queued_duration": 0,
       "failure_reason": "",
-      "allow_failure": false,
-      "web_url": "https://gitlab.example/group/project/-/jobs/5001"
+      "allow_failure": true,
+      "web_url": "https://gitlab.example/group/project/-/jobs/5003"
     },
     {
       "id": 5002,
@@ -51,15 +51,15 @@
       "web_url": "https://gitlab.example/group/project/-/jobs/5002"
     },
     {
-      "id": 5003,
-      "name": "package:android",
-      "stage": "build",
-      "status": "manual",
-      "duration": 0,
-      "queued_duration": 0,
+      "id": 5001,
+      "name": "unit-tests",
+      "stage": "test",
+      "status": "success",
+      "duration": 100.234765,
+      "queued_duration": 0.078558,
       "failure_reason": "",
-      "allow_failure": true,
-      "web_url": "https://gitlab.example/group/project/-/jobs/5003"
+      "allow_failure": false,
+      "web_url": "https://gitlab.example/group/project/-/jobs/5001"
     }
   ]
 }

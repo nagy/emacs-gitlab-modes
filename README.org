@@ -57,7 +57,9 @@ A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 
 A pipeline buffer shows the pipeline fields at the top and the jobs
-table below.  =RET= on a job streams its log into a separate buffer.
+table below.  The table lists the oldest job first, because glab
+answers the jobs array newest first.  =RET= on a job streams its log
+into a separate buffer.
 The log buffer keeps ANSI colors, stays read-only and kills its process
 when the buffer dies.  The log has no timeout and streams until =glab=
 exits, so a long job keeps writing.  =g= restarts the trace.  The

@@ -40,6 +40,8 @@
 ;; because the pipeline fields occupy the top of the same buffer.
 ;; Every row carries `gitlab-job-id' and `gitlab-job-name', so RET at a
 ;; row opens the job log and a refresh restores point to the same job.
+;; The rows read oldest first: glab answers the jobs array newest
+;; first, so the table sorts a copy of it by job ID.
 ;;
 ;; The job log streams `glab ci trace JOB-ID' into a read-only buffer.
 ;; ANSI colors become faces.  Killing the buffer deletes the process.
@@ -223,11 +225,27 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
      (field (gitlab--goto-field field))
      (t (goto-char (point-min))))))
 
+(defun gitlab-pipeline--sort-jobs (jobs)
+  "Return JOBS in creation order.
+GitLab answers the jobs array newest first.  The job ID grows with
+the creation time of the job, so a numeric sort of the IDs puts the
+oldest job at the top of the table.  The sort is stable and works
+on a copy, because a caller may still hold the answered array."
+  (sort (copy-sequence jobs)
+        (lambda (a b)
+          (< (string-to-number
+              (gitlab-data-id-string (gitlab-data-field "id" a)))
+             (string-to-number
+              (gitlab-data-id-string (gitlab-data-field "id" b)))))))
+
 (defun gitlab-pipeline--insert-jobs (data)
-  "Insert the jobs table of pipeline DATA at the end of the buffer."
+  "Insert the jobs table of pipeline DATA at the end of the buffer.
+The oldest job comes first, because GitLab answers the jobs array
+newest first."
   (goto-char (point-max))
   (insert "\n" (propertize "Jobs" 'face 'gitlab-title) "\n\n")
-  (let ((jobs (gitlab-data-field "jobs" data)))
+  (let ((jobs (gitlab-pipeline--sort-jobs
+               (gitlab-data-field "jobs" data))))
     (if (null jobs)
         (insert "No jobs.\n")
       (let* ((name-width (max 12 gitlab-pipeline-job-name-width))
@@ -261,9 +279,10 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
 
 (defun gitlab-pipeline--children ()
   "Return the job rows of the current pipeline buffer in display order.
-Every entry is a cons of the job ID and the job name.  The jobs
-array of the pipeline answer fixes that order, so the table and the
-sibling commands never disagree."
+Every entry is a cons of the job ID and the job name.  The table
+rows fix that order, so the table and the sibling commands never
+disagree.  The table lists the oldest job first, because
+`gitlab-pipeline--sort-jobs' sorts the answered array by job ID."
   (save-excursion
     (goto-char (point-min))
     (let (entries)

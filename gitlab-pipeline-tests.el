@@ -719,6 +719,31 @@ The list belongs to the project of the pipeline."
                           (gitlab--children))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-detail-jobs-ascending ()
+  "The job table lists the oldest job first.
+The fixture answers the jobs newest first, as glab does."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline-tests--detail-buffer "1001")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (should (equal '(("5001" . "unit-tests")
+                            ("5002" . "lint:linux")
+                            ("5003" . "package:android"))
+                          (gitlab-pipeline--children))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-sort-jobs ()
+  "The job sort reads a numeric ID and keeps the answered array."
+  (let* ((jobs '(((id . 3) (name . "c"))
+                 ((id . "20") (name . "b"))
+                 ((id . 1) (name . "a"))))
+         (sorted (gitlab-pipeline--sort-jobs jobs)))
+    (should (equal '("a" "c" "b") (mapcar (lambda (job)
+                                               (gitlab-data-field-string
+                                                "name" job))
+                                             sorted)))
+    (should (equal 3 (gitlab-data-field "id" (car jobs))))))
+
 (ert-deftest gitlab-pipeline-job-log-next-sibling ()
   "The next sibling of a job log is the next job of its pipeline."
   (gitlab-test-with-environment

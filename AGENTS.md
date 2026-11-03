@@ -349,7 +349,10 @@ without evil.  The suite never opens a network connection.
   `tabulated-list-mode`, because the pipeline fields occupy the same
   buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`.
   `gitlab-pipeline--render` restores point to the same job row or to
-  the same field line.
+  the same field line.  The table lists the oldest job first, because
+  glab answers the jobs array newest first.  `gitlab-pipeline--sort-jobs`
+  copies the array and sorts it by numeric job ID, so the table, the
+  sibling commands and the imenu agree on one chronological order.
 - The job log streams `glab ci trace`.  `gitlab-cli-stream` inserts
   chunks into a read-only buffer, applies ANSI colors and clears the
   modified flag.  Killing the buffer deletes the process.  The buffer
