@@ -378,6 +378,9 @@ above.  The `invisible' property keeps the cursor on its line."
                          (gitlab-pipeline-tests--visible-line-text)))
           (should (eq t (get-text-property (point-min)
                                            'gitlab-job-log-timestamp)))
+          (should (eq 'gitlab-date (get-text-property (point-min) 'face)))
+          ;; The stream identifier and its separator keep no timestamp face.
+          (should-not (get-text-property (+ (point-min) 25) 'face))
           (gitlab-job-log-toggle-timestamps)
           (should-not (get-text-property (point-min) 'invisible))
           (should (equal shown (gitlab-test-buffer-string buffer))))

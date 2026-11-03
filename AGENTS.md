@@ -379,7 +379,8 @@ without evil.  The suite never opens a network connection.
 - GitLab prefixes a trace line with an ISO 8601 timestamp and a stream
   identifier (00O, 01O, 01E, 00O+) when the job enables runner
   timestamps.  `gitlab-job-log--apply-timestamps` marks the whole
-  prefix with the text property `gitlab-job-log-timestamp` and hides
+  prefix with the text property `gitlab-job-log-timestamp`, gives the
+  timestamp alone the face `gitlab-date`, and hides
   it with the `invisible` property
   `gitlab-job-log--hidden-prefix` when
   `gitlab-job-log-show-timestamps` is nil.  Do not hide the prefix

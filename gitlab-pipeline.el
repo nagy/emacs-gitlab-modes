@@ -491,7 +491,8 @@ the text."
   "Apply the timestamp option to the lines between START and END.
 The helper marks the prefix of each trace line, the timestamp and
 the stream identifier, with the text property
-`gitlab-job-log-timestamp' and hides it when
+`gitlab-job-log-timestamp', gives the timestamp alone the face
+`gitlab-date', and hides the prefix when
 `gitlab-job-log-show-timestamps' is nil.  The helper hides the
 prefix with the `invisible' property, because Emacs draws the
 cursor at the end of the previous line when point sits in a
@@ -505,9 +506,11 @@ about it."
         (unless (get-text-property (point) 'gitlab-job-log-section-end)
           (when (looking-at gitlab-job-log--timestamp-regexp)
             (let ((prefix (match-beginning 1))
+                  (timestamp-end (match-end 1))
                   (prefix-end (gitlab-job-log--prefix-end (match-end 1))))
               (add-text-properties prefix prefix-end
                                    '(gitlab-job-log-timestamp t))
+              (put-text-property prefix timestamp-end 'face 'gitlab-date)
               (if gitlab-job-log-show-timestamps
                   (remove-text-properties prefix prefix-end
                                           '(invisible nil))
