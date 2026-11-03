@@ -447,11 +447,14 @@ object, so a caller can cancel it."
   "Insert TEXT at the end of the current buffer.
 The buffer may be read-only and stays unmodified.  With
 `gitlab-cli-ansi-color', SGR sequences become faces.  Return the
-start position of the inserted text."
+start position of the inserted text.  The helper keeps point, so a
+stream never moves the cursor of its buffer.  A caller that follows
+the tail moves point itself."
   (let ((inhibit-read-only t)
         (start (point-max)))
-    (goto-char (point-max))
-    (insert text)
+    (save-excursion
+      (goto-char start)
+      (insert text))
     (when gitlab-cli-ansi-color
       (ansi-color-apply-on-region start (point-max)))
     (set-buffer-modified-p nil)

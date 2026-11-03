@@ -942,24 +942,39 @@ neighbour."
           (push (cons label (line-beginning-position)) index))))
     (nreverse index)))
 
+(defun gitlab-job-log--tail-p ()
+  "Return non-nil when new output follows the end of the log.
+The log follows only when point sits on the last line of a buffer
+that already holds text.  An empty log therefore keeps point at its
+start, and a reader who moves point away from the end stops the
+follow until the reader returns to the end."
+  (and (eobp) (not (bobp))))
+
 (defun gitlab-job-log--write (chunk)
   "Write one CHUNK of trace output into the current buffer.
 The helper keeps the tail of the previous chunk, so a line that a
-chunk cut in two reaches the buffer as one line."
-  (let* ((text (concat gitlab-job-log--pending chunk))
+chunk cut in two reaches the buffer as one line.  It follows the
+tail when `gitlab-job-log--tail-p' holds before the write."
+  (let* ((follow (gitlab-job-log--tail-p))
+         (text (concat gitlab-job-log--pending chunk))
          (lines (split-string text "\n"))
          (tail (car (last lines))))
     (setq gitlab-job-log--pending tail)
     (dolist (line (butlast lines))
       (gitlab-job-log--insert-line line))
+    (when follow
+      (goto-char (point-max)))
     (gitlab-job-log--mode-line-maybe-update)))
 
 (defun gitlab-job-log--flush ()
   "Write the incomplete line that waits for its end."
-  (let ((line gitlab-job-log--pending))
+  (let ((follow (gitlab-job-log--tail-p))
+        (line gitlab-job-log--pending))
     (setq gitlab-job-log--pending nil)
     (when (and line (not (string-empty-p line)))
-      (gitlab-job-log--insert-line line)))
+      (gitlab-job-log--insert-line line))
+    (when follow
+      (goto-char (point-max))))
   (gitlab-job-log--mode-line-maybe-update))
 
 (defun gitlab-job-log--filter (process chunk)
@@ -1168,7 +1183,9 @@ up without a request."
 (defun gitlab-job-log--start ()
   "Clear the current buffer and start the trace process.
 The helper reads the folded sections of the old trace first, so a
-restart folds the same sections again when their markers arrive."
+restart folds the same sections again when their markers arrive.
+It puts point on the first line, because a display command shows the
+trace from its start."
   (gitlab-job-log--kill)
   (setq-local gitlab-job-log--collapsed (gitlab-job-log--collapsed-names))
   (setq gitlab-job-log--finished nil
@@ -1177,6 +1194,7 @@ restart folds the same sections again when their markers arrive."
         gitlab-job-log--banner t)
   (let ((inhibit-read-only t))
     (erase-buffer))
+  (goto-char (point-min))
   (set-buffer-modified-p nil)
   (gitlab-job-log--mode-line-maybe-update)
   (gitlab-job-log--set-header
@@ -1236,6 +1254,8 @@ trace on a jump, because a trace streams and has no snapshot."
   "Display the live trace of one GitLab CI job.
 The buffer is read-only and fills while `glab ci trace' runs.  The
 banner that glab prints before the trace never reaches the buffer.
+The trace shows from its first line, and new output carries point
+along only while point sits at the end.
 g restarts the trace and ~ toggles the timestamp prefix of every
 line, which holds the timestamp and the stream identifier.  A
 hidden prefix uses the `invisible' property, so point at the start

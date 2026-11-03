@@ -233,6 +233,48 @@
          (should-not (buffer-modified-p))))
      (kill-buffer first))))
 
+(ert-deftest gitlab-pipeline-job-log-point-stays-at-start ()
+  "A job log opens at its first line and keeps point there."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log
+                  "5001" "unit-tests")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (should (= (point) (point-min))))
+           (should
+            (gitlab-test-wait
+             (lambda ()
+               (with-current-buffer buffer gitlab-job-log--finished))))
+           (with-current-buffer buffer
+             (should (> (point-max) (point-min)))
+             (should (= (point) (point-min)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-log-point-follows-tail ()
+  "A log follows output only when point sits at its end."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log
+                  "5001" "unit-tests")))
+     (unwind-protect
+         (progn
+           (should
+            (gitlab-test-wait
+             (lambda ()
+               (with-current-buffer buffer gitlab-job-log--finished))))
+           (with-current-buffer buffer
+             ;; Point below the last line keeps its place.
+             (goto-char (point-min))
+             (gitlab-job-log--write "added line\n")
+             (should (= (point) (point-min)))
+             (should (string-match-p "added line" (buffer-string)))
+             ;; Point on the last line follows the new output.
+             (goto-char (point-max))
+             (gitlab-job-log--write "tail line\n")
+             (should (eobp))
+             (should (string-suffix-p "tail line\n" (buffer-string)))))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-job-log-drops-banner ()
   "The job log hides the banner that glab prints before the trace."
   (gitlab-test-with-environment

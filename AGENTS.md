@@ -357,6 +357,16 @@ without evil.  The suite never opens a network connection.
   so a second display of the same job never appends a second trace.
   `gitlab-job-log-restart` serves as `revert-buffer-function`, so it
   accepts and ignores the two `revert-buffer` arguments.
+- A stream never moves point.  `gitlab-cli--insert-chunk` inserts
+  through `save-excursion`, so `gitlab-job-log--start` puts point on
+  the first line and the trace grows below it.  The log follows the
+  tail only through `gitlab-job-log--tail-p`: point must sit at
+  `point-max` of a buffer that already holds text, and both
+  `gitlab-job-log--write` and `gitlab-job-log--flush` read that
+  answer before they insert.  An empty buffer at its start therefore
+  never counts as the tail, and a reader who moves away from the end
+  keeps the place.  A transport that moved point itself would fight
+  this policy.
 - The job log installs a chunk filter, because a process filter
   receives arbitrary chunks.  `gitlab-job-log--write` joins the tail of
   the previous chunk (`gitlab-job-log--pending`), so a line that a

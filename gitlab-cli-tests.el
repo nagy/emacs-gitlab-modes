@@ -119,6 +119,24 @@
              (delete-process process)))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-cli-insert-chunk-keeps-point ()
+  "A streamed chunk never moves point."
+  (with-temp-buffer
+    (gitlab-cli--insert-chunk "first\n")
+    (should (= 1 (point)))
+    (should (equal "first\n" (buffer-string))))
+  (with-temp-buffer
+    (gitlab-cli--insert-chunk "first\n")
+    (goto-char (point-max))
+    (gitlab-cli--insert-chunk "second\n")
+    (should (= 7 (point)))
+    (should (equal "first\nsecond\n" (buffer-string))))
+  (with-temp-buffer
+    (gitlab-cli--insert-chunk "first\n")
+    (goto-char 3)
+    (gitlab-cli--insert-chunk "second\n")
+    (should (= 3 (point)))))
+
 (ert-deftest gitlab-cli-project-endpoint ()
   "The API endpoint encodes a namespace path, or keeps :id."
   (let ((gitlab-repository "group/sub/project"))

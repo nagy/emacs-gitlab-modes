@@ -60,7 +60,10 @@ A pipeline buffer shows the pipeline fields at the top and the jobs
 table below.  =RET= on a job streams its log into a separate buffer.
 The log buffer keeps ANSI colors, stays read-only and kills its process
 when the buffer dies.  The log has no timeout and streams until =glab=
-exits, so a long job keeps writing.  =g= restarts the trace.
+exits, so a long job keeps writing.  =g= restarts the trace.  The
+buffer opens at its first line and keeps point there while the trace
+grows.  When point sits on the last line, new output carries it along,
+so a reader who wants the tail jumps to the end once.
 
 The log buffer drops the banner that =glab ci trace= prints before the
 trace, because the header line already names the job.  GitLab puts an
