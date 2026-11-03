@@ -62,6 +62,7 @@
   "Return IID without a leading !.
 A merge request list row shows !IID in its cell, so the text
 property may carry the sigil.  The glab command needs the number."
+  (declare (pure t) (side-effect-free t))
   (string-remove-prefix "!" iid))
 
 (defun gitlab-xref--property-identifier ()

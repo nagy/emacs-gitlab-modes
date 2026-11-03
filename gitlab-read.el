@@ -69,6 +69,7 @@ one prompt reaches every instance the user can authenticate to."
 
 (defun gitlab-read--strip (text prefixes)
   "Return TEXT without a leading character from PREFIXES."
+  (declare (pure t) (side-effect-free t))
   (let ((text (string-trim (or text ""))))
     (while (and (> (length text) 1)
                 (memq (aref text 0) prefixes))
@@ -80,6 +81,7 @@ one prompt reaches every instance the user can authenticate to."
 CHOICES is an alist of label to value and INPUT is the typed
 text.  A matching label wins; otherwise the function returns
 INPUT without a leading ! or #."
+  (declare (pure t) (side-effect-free t))
   (or (cdr (assoc input choices))
       (gitlab-read--strip input '(?! ?#))))
 

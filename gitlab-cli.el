@@ -137,6 +137,7 @@ comes back in that spelling."
 Return nil when REPOSITORY is not a URL.  The function knows the
 form with a scheme, such as https://host/path, and the scp form,
 such as git@host:path."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((string-match
      "\\`[[:alpha:]][[:alnum:]+.-]*://\\(?:[^@/]+@\\)?\\([^/:]+\\)\\(?::[0-9]+\\)?/\\(.+\\)\\'"
@@ -153,6 +154,7 @@ git@gitlab.example.com:group/project.git.  HOST is nil when the
 text names no host or names `gitlab-cli-default-host', so the
 default instance stays out of buffer names and out of the glab
 arguments.  PATH carries no surrounding slash and no .git suffix."
+  (declare (side-effect-free t))
   (let ((text (and repository (string-trim repository))))
     (if (or (null text) (string-empty-p text))
         (cons nil nil)
@@ -175,10 +177,12 @@ arguments.  PATH carries no surrounding slash and no .git suffix."
 
 (defun gitlab-cli-repository-path (repository)
   "Return the project path of REPOSITORY, or nil."
+  (declare (side-effect-free t))
   (cdr (gitlab-cli-repository-split repository)))
 
 (defun gitlab-cli-repository-host (repository)
   "Return the instance host of REPOSITORY, or nil for the default."
+  (declare (side-effect-free t))
   (car (gitlab-cli-repository-split repository)))
 
 (defun gitlab-cli-repository-normalize (repository)
@@ -186,6 +190,7 @@ arguments.  PATH carries no surrounding slash and no .git suffix."
 The value names the project and its instance, so a prompt, a
 bookmark and a buffer name spell one project one way.  A URL, a Git
 URL and a bare path all come back in that spelling."
+  (declare (side-effect-free t))
   (let* ((split (gitlab-cli-repository-split repository))
          (host (car split))
          (path (cdr split)))
@@ -198,6 +203,7 @@ URL and a bare path all come back in that spelling."
   "Return the --repo value of REPOSITORY.
 glab selects another instance from a URL, so a host-carrying
 project becomes https://HOST/PATH."
+  (declare (side-effect-free t))
   (let* ((split (gitlab-cli-repository-split repository))
          (host (car split))
          (path (cdr split)))
@@ -229,6 +235,7 @@ when it belongs to no project."
   "Return non-nil when ARGUMENTS name a repository.
 The helper knows the long form, both as a separate word and with
 an equal sign, and the short form, both alone and joined."
+  (declare (pure t) (side-effect-free t))
   (cl-some (lambda (argument)
              (or (string= argument "--repo")
                  (string-prefix-p "--repo=" argument)
@@ -276,6 +283,7 @@ current repository."
 
 (defun gitlab-cli--trim-message (text)
   "Return TEXT trimmed and shortened to a readable error message."
+  (declare (pure t) (side-effect-free t))
   (let ((text (string-trim (or text ""))))
     (if (> (length text) 2000)
         (concat (substring text 0 2000) "...")
@@ -285,6 +293,7 @@ current repository."
   "Return a message for exit STATUS and STANDARD-ERROR.
 The stderr text wins when it holds a line; the status covers a
 silent failure."
+  (declare (pure t) (side-effect-free t))
   (let ((text (gitlab-cli--trim-message standard-error)))
     (if (string-empty-p text)
         (format "glab exited with status %s" status)
@@ -295,6 +304,7 @@ silent failure."
 PARSE is `json' for a JSON answer and nil for plain text.  An
 empty JSON answer decodes to nil; invalid JSON signals
 `gitlab-cli-error'."
+  (declare (pure t) (side-effect-free t))
   (pcase parse
     ('json
      (if (string-blank-p text)

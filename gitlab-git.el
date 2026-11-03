@@ -147,6 +147,7 @@ The function asks only a Magit that the user already loaded with
 Git config value and must not load the whole Magit library for it.
 A plain `git' call gives the same answer, so the fallback costs
 nothing but one process."
+  (declare (side-effect-free t))
   (and gitlab-git-use-magit
        (featurep 'magit)
        (fboundp 'magit-get-all)))
@@ -175,6 +176,7 @@ nothing but one process."
 
 (defun gitlab-git--remote-url-p (url)
   "Return non-nil when URL names a remote server, not a local path."
+  (declare (pure t) (side-effect-free t))
   (and (stringp url)
        (not (string-prefix-p "file://" url))
        (or (string-match-p "\\`[[:alpha:]][[:alnum:]+.-]*://" url)

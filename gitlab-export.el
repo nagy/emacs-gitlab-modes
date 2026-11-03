@@ -71,6 +71,7 @@ text instead of collecting buffers."
 The decoder uses the keyword `:false' for JSON false and nil for
 JSON null.  Bind `json-false' and `json-null' so both values keep
 their JSON form."
+  (declare (pure t) (side-effect-free t))
   (let ((json-false :false)
         (json-null nil)
         (json-encoding-pretty-print t)
@@ -84,6 +85,7 @@ The key of an alist is an atom, while an element of an array is an
 atom or a list, so a list before an atom names an object.  An empty
 array and an empty object both decode to nil, so nil names no
 array."
+  (declare (pure t) (side-effect-free t))
   (and (consp data)
        (not (and (consp (car data))
                  (atom (caar data))))))
@@ -93,6 +95,7 @@ array."
 Encode every element on one line and indent it by two spaces.  Return
 TEXT unchanged when it does not decode, when it holds no array, and
 when the array is empty."
+  (declare (pure t) (side-effect-free t))
   (let ((data (condition-case nil
                   (json-parse-string text
                                      :object-type 'alist

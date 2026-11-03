@@ -763,6 +763,13 @@ without evil.  The suite never opens a network connection.
   Emacs 31 report "Unused lexical variable" for a loop variable that
   the body reads, so write the loop without a result form and put the
   answer after it.
+- A helper that reads only its arguments carries
+  `(declare (pure t) (side-effect-free t))`, so the byte-compiler
+  folds a call with constant arguments.  A helper that also reads a
+  defcustom, a defconst or a defvar carries
+  `(declare (side-effect-free t))` alone.  A helper that touches a
+  buffer, a process or a file carries no such declaration.  The
+  annotation goes after the docstring and before the body.
 - `checkdoc` and `package-lint` must pass through `checks.checkdoc` and
   `checks.package-lint`.  The package-lint check whitelists `gitlab`
   and `ol-gitlab` as shared prefixes.

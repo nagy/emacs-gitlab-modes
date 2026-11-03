@@ -521,6 +521,7 @@ user opened it from."
 
 (defun gitlab--contextual-name (name context)
   "Return NAME with CONTEXT before the closing star."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((null context) name)
    ((string-suffix-p "*" name)
@@ -560,11 +561,13 @@ the context, so the helper reads no Git remote again."
 
 (defun gitlab--status-state (data)
   "Return the status text of the decoded object DATA."
+  (declare (side-effect-free t))
   (let ((status (gitlab-data-field "status" data)))
     (and (stringp status) status)))
 
 (defun gitlab--transitional-state-p (state)
   "Return non-nil when STATE still changes without user action."
+  (declare (side-effect-free t))
   (and (stringp state)
        (cl-some (lambda (name) (string-equal-ignore-case name state))
                 gitlab-transitional-states)))
@@ -572,6 +575,7 @@ the context, so the helper reads no Git remote again."
 (defun gitlab--transitional-p (data)
   "Return non-nil when DATA holds a status that still changes.
 DATA is one decoded object or a list of decoded objects."
+  (declare (side-effect-free t))
   (cond
    ((gitlab-data-alist-p data)
     (gitlab--transitional-state-p (gitlab--status-state data)))
@@ -585,6 +589,7 @@ DATA is one decoded object or a list of decoded objects."
 
 (defun gitlab--final-state-p (state)
   "Return non-nil when STATE cannot change without a user action."
+  (declare (side-effect-free t))
   (and (stringp state)
        (not (gitlab--transitional-state-p state))))
 
@@ -768,6 +773,7 @@ The notes command uses this after it fetched comments."
 
 (defun gitlab--field-label (key)
   "Return the display label of the JSON field KEY."
+  (declare (pure t) (side-effect-free t))
   (capitalize (replace-regexp-in-string "_" " " (symbol-name key))))
 
 (defun gitlab--json-encode (value)
@@ -780,6 +786,7 @@ The notes command uses this after it fetched comments."
   "Return TEXT with navigation PROPERTY set to VALUE.
 The string also carries a mouse face and HELP, so a click and a
 tooltip both work."
+  (declare (pure t) (side-effect-free t))
   (propertize text
               property value
               'mouse-face 'highlight
@@ -787,6 +794,7 @@ tooltip both work."
 
 (defun gitlab--format-object (object)
   "Return a readable one-line form of the decoded OBJECT."
+  (declare (pure t) (side-effect-free t))
   (let ((username (gitlab-data-field "username" object))
         (name (gitlab-data-field "name" object))
         (title (gitlab-data-field "title" object))
@@ -822,6 +830,7 @@ tooltip both work."
 
 (defun gitlab--format-value (value)
   "Return VALUE as display text."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((eq value :false) "no")
    ((eq value t) "yes")
@@ -840,6 +849,7 @@ tooltip both work."
 The name takes `gitlab-author' and the account name takes
 `gitlab-id'.  VALUE is a decoded user object, a plain name, or
 nil."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((gitlab-data-alist-p value)
     (let ((name (gitlab-data-field "name" value))
@@ -862,6 +872,7 @@ nil."
   "Return branch or ref VALUE as display text with `gitlab-branch'.
 TAG is the decoded `tag' flag of the object that holds VALUE, so a
 ref of a tag takes `gitlab-tag'."
+  (declare (pure t) (side-effect-free t))
   (if (and (stringp value) (not (string-empty-p value)))
       (propertize value 'face (if (gitlab--tag-flag-p tag)
                                   'gitlab-tag
@@ -870,6 +881,7 @@ ref of a tag takes `gitlab-tag'."
 
 (defun gitlab--format-date (value)
   "Return timestamp VALUE in a compact readable form."
+  (declare (pure t) (side-effect-free t))
   (if (stringp value)
       (let ((text (replace-regexp-in-string "T" " " value)))
         (setq text (replace-regexp-in-string "\\.[0-9]+" "" text))
@@ -881,6 +893,7 @@ ref of a tag takes `gitlab-tag'."
 
 (defun gitlab--format-duration (value)
   "Return seconds VALUE as hours, minutes and seconds."
+  (declare (pure t) (side-effect-free t))
   (if (numberp value)
       (let* ((total (round value))
              (hours (/ total 3600))
@@ -894,6 +907,7 @@ ref of a tag takes `gitlab-tag'."
 
 (defun gitlab--status-face (status)
   "Return the face for STATUS, or nil."
+  (declare (side-effect-free t))
   (when (stringp status)
     (cdr (assoc-string status gitlab-status-faces t))))
 
@@ -901,17 +915,20 @@ ref of a tag takes `gitlab-tag'."
   "Return non-nil when KEY names a date field.
 A space and an underscore are the same, so one entry serves a
 field name and a list column name."
+  (declare (side-effect-free t))
   (gitlab--field-name-p
    (replace-regexp-in-string " " "_" (format "%s" key))
    gitlab-date-fields))
 
 (defun gitlab--id-field-p (key)
   "Return non-nil when KEY names an identifier field."
+  (declare (side-effect-free t))
   (gitlab--field-name-p key gitlab-id-fields))
 
 (defun gitlab--field-name-p (key names)
   "Return non-nil when KEY names a field of the list NAMES.
 KEY is a symbol or a string, and the comparison ignores case."
+  (declare (pure t) (side-effect-free t))
   (when (or (symbolp key) (stringp key))
     (let ((name (if (symbolp key) (symbol-name key) key)))
       (cl-some (lambda (other)
@@ -920,30 +937,36 @@ KEY is a symbol or a string, and the comparison ignores case."
 
 (defun gitlab--author-field-p (key)
   "Return non-nil when KEY names an author field."
+  (declare (side-effect-free t))
   (gitlab--field-name-p key gitlab-author-fields))
 
 (defun gitlab--branch-field-p (key)
   "Return non-nil when KEY names a branch or a ref field."
+  (declare (side-effect-free t))
   (gitlab--field-name-p key gitlab-branch-fields))
 
 (defun gitlab--tag-field-p (key)
   "Return non-nil when KEY names a field that a tag flag can mark."
+  (declare (side-effect-free t))
   (gitlab--field-name-p key gitlab-tag-fields))
 
 (defun gitlab--tag-flag-p (value)
   "Return non-nil when VALUE is a true flag.
 JSON false decodes to `:false', so a plain truth test would read a
 false flag as true."
+  (declare (pure t) (side-effect-free t))
   (and value (not (eq value :false))))
 
 (defun gitlab--tag-p (data)
   "Return non-nil when the `tag' flag of DATA marks a tag."
+  (declare (side-effect-free t))
   (gitlab--tag-flag-p (gitlab-data-field "tag" data)))
 
 (defun gitlab--field-value-face (key value &optional data)
   "Return the face for the value of field KEY holding VALUE.
 DATA is the object that holds KEY, when the caller has it.  A ref
 that the `tag' flag of DATA marks a tag takes `gitlab-tag'."
+  (declare (side-effect-free t))
   (cond
    ((and (stringp value) (gitlab--status-face value)))
    ((gitlab--status-face (symbol-name key)))
@@ -958,6 +981,7 @@ that the `tag' flag of DATA marks a tag takes `gitlab-tag'."
 (defun gitlab--format-field-value (key value &optional data)
   "Return the display text of KEY with VALUE, including navigation.
 DATA is the object that holds KEY, when the caller has it."
+  (declare (side-effect-free t))
   (let ((text
          (cond
           ((eq key 'web_url)
@@ -1335,6 +1359,7 @@ arguments or the origin buffer."
 
 (defun gitlab-list--date-cell (value)
   "Return timestamp VALUE as a table cell with `gitlab-date'."
+  (declare (pure t) (side-effect-free t))
   (propertize (gitlab--format-date value) 'face 'gitlab-date))
 
 (defvar-local gitlab-list--base-format nil
@@ -1370,6 +1395,7 @@ The budget is the body width of the window less the table padding."
 
 (defun gitlab-list--cell-text (cell)
   "Return the text of table CELL, or nil for a cell without text."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((stringp cell) cell)
    ((and (consp cell) (stringp (car cell))) (car cell))
@@ -1379,6 +1405,7 @@ The budget is the body width of the window less the table padding."
   "Return one cell of a table row.
 CELLS holds the cells of one entry, and INDEX names the column.
 The answer is nil when the row holds no such column."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((vectorp cells) (and (< index (length cells)) (aref cells index)))
    ((listp cells) (nth index cells))
@@ -1388,6 +1415,7 @@ The answer is nil when the row holds no such column."
   "Return the column list of table ENTRY.
 An entry is a list of an ID and a vector of cells, or a cons of an
 ID and that vector."
+  (declare (pure t) (side-effect-free t))
   (let ((cells (cdr entry)))
     (cond
      ((vectorp cells) cells)
@@ -1401,6 +1429,7 @@ SORT-KEY names the sorted column, whose header takes the indicator.
 The limit holds the header label, its right padding and the sort
 indicator of the sorted column.  `tabulated-list-init-header'
 adds that indicator as two characters."
+  (declare (pure t) (side-effect-free t))
   (let* ((label (or (car-safe column) ""))
          (pad (or (plist-get (nthcdr 3 column) :pad-right) 1))
          (width (string-width label)))
@@ -1415,6 +1444,7 @@ AVAILABLE is the column budget.  No width goes below the minimum
 of its column.  The function finds the largest cap that keeps the
 total within AVAILABLE and clips every wider column to it, so the
 widest columns shrink together."
+  (declare (pure t) (side-effect-free t))
   (let ((cap (let ((low 0) (high 1) (widths (length wants)))
                (dotimes (index widths)
                  (setq high (max high (aref wants index))))
@@ -1669,6 +1699,7 @@ a merge request IID carries a leading !, so keep the digits only."
 
 (defun gitlab-list--id-cell (id property)
   "Return ID as a propertized table cell with PROPERTY set."
+  (declare (pure t) (side-effect-free t))
   (gitlab--nav-string id property id "Open"))
 
 ;; The commands are defined above the keymap bindings, so the
@@ -1702,6 +1733,7 @@ one syntax.")
 
 (defun gitlab--bookmark-base-kind (kind)
   "Return the object kind of the list KIND, or KIND itself."
+  (declare (pure t) (side-effect-free t))
   (intern (string-remove-suffix "-list" (symbol-name kind))))
 
 (defun gitlab--identifier-repository ()

@@ -366,6 +366,7 @@ project, because the local checkout holds no ref of that project."
   "Return the detail buffer name for merge request IID.
 CONTEXT is the project identity of the display buffer, nil when the
 project is unknown."
+  (declare (pure t) (side-effect-free t))
   (if context
       (format "*GitLab MR %s!%s*" context iid)
     (format "*GitLab MR !%s*" iid)))

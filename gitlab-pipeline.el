@@ -235,6 +235,7 @@ GitLab answers the jobs array newest first.  The job ID grows with
 the creation time of the job, so a numeric sort of the IDs puts the
 oldest job at the top of the table.  The sort is stable and works
 on a copy, because a caller may still hold the answered array."
+  (declare (pure t) (side-effect-free t))
   (sort (copy-sequence jobs)
         (lambda (a b)
           (< (string-to-number
@@ -584,6 +585,7 @@ section that a fold closed."
 
 (defun gitlab-job-log--line-count-string (lines)
   "Return LINES as a count of lines, in the singular for one."
+  (declare (pure t) (side-effect-free t))
   (format "%d line%s" lines (if (= lines 1) "" "s")))
 
 (defun gitlab-job-log--section-header (name &optional duration lines depth)
@@ -593,6 +595,7 @@ marker, and LINES counts the trace lines between them.  DEPTH is
 the nesting depth of the section, so a nested header indents to
 show its parent.  A section without an end marker shows neither a
 duration nor a line count."
+  (declare (pure t) (side-effect-free t))
   (concat (make-string (* gitlab-job-log--indent-width (or depth 0)) ?\s)
           (cond
            ((and duration lines)
@@ -807,6 +810,7 @@ carriage returns, so neither a header nor an end marker keeps the
 The log hides a hidden timestamp prefix, the text of a section
 marker and the text of an end marker with text properties, so a copy
 matches what the buffer shows."
+  (declare (pure t) (side-effect-free t))
   (or (stringp (get-text-property position 'display string))
       (get-text-property position 'invisible string)
       (get-text-property position 'gitlab-job-log-section-start string)
@@ -815,6 +819,7 @@ matches what the buffer shows."
 (defun gitlab-job-log--replaced-ranges (string)
   "Return the ranges of STRING that a copy leaves out.
 The ranges come in order and never overlap."
+  (declare (pure t) (side-effect-free t))
   (let ((length (length string))
         (position 0)
         ranges)
@@ -839,6 +844,7 @@ The ranges come in order and never overlap."
 A line that keeps no text keeps no newline either, so a hidden end
 marker or the header of a section never leaves an empty line
 behind."
+  (declare (pure t) (side-effect-free t))
   (let* ((length (length string))
          (keep (make-vector length t)))
     (dolist (range (gitlab-job-log--replaced-ranges string))
@@ -1014,6 +1020,7 @@ tail when `gitlab-job-log--tail-p' holds before the write."
   "Return TIMESTAMP as a time value in seconds.
 TIMESTAMP has the form that `gitlab-job-log--timestamp-regexp'
 matches, so the fields sit at fixed offsets."
+  (declare (pure t) (side-effect-free t))
   (let ((fraction (if (string-match "\\.\\([0-9]+\\)" timestamp)
                       (string-to-number
                        (concat "0." (match-string 1 timestamp)))
@@ -1071,6 +1078,7 @@ span.  The helper reads both bounds before it moves point, because
 Keep at most three decimals and drop the trailing zeroes, so a
 whole second reads without a fraction.  The form grows by hours
 and minutes only when needed."
+  (declare (pure t) (side-effect-free t))
   (let* ((milliseconds (round (* 1000 (max 0 seconds))))
          (millis (% milliseconds 1000))
          (total (/ (- milliseconds millis) 1000))
@@ -1090,6 +1098,7 @@ and minutes only when needed."
 (defun gitlab-job-log--escape-mode-line (text)
   "Return TEXT with every percent sign doubled.
 The mode line reads a percent sign as the start of a substitution."
+  (declare (pure t) (side-effect-free t))
   (replace-regexp-in-string "%" "%%" text t t))
 
 (defun gitlab-job-log--mode-line-text ()
@@ -1347,6 +1356,7 @@ text of a section header and the text of every end marker."
 
 (defun gitlab-pipeline--job-log-buffer-name (job-id context)
   "Return the job log buffer name of JOB-ID in CONTEXT."
+  (declare (pure t) (side-effect-free t))
   (if context
       (format "*GitLab Job %s&%s*" context job-id)
     (format "*GitLab Job %s*" job-id)))

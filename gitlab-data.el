@@ -90,6 +90,7 @@ buffer with a final status.  The comparison ignores case."
   "Return non-nil when VALUE is a non-empty alist.
 A JSON object decodes to an alist with symbol keys.  A JSON array
 of objects is a list of alists, not an alist."
+  (declare (pure t) (side-effect-free t))
   (and (consp value)
        (consp (car value))
        (not (consp (caar value)))))
@@ -99,6 +100,7 @@ of objects is a list of alists, not an alist."
 NAME is a string or a symbol, compared as a symbol.  Return
 DEFAULT when DATA has no such field.  Nested objects stay
 alists; call this function again to read them."
+  (declare (side-effect-free t))
   (let* ((key (if (symbolp name) name (intern name)))
          (pair (and (consp data) (assq key data))))
     (if pair (cdr pair) default)))
@@ -116,6 +118,7 @@ Return DATA.  A missing field is appended."
 (defun gitlab-data-field-string (name data &optional default)
   "Return field NAME of DATA as a string.
 A nil field returns DEFAULT, which defaults to the empty string."
+  (declare (side-effect-free t))
   (let ((value (gitlab-data-field name data)))
     (cond
      ((null value) (or default ""))
@@ -128,6 +131,7 @@ A nil field returns DEFAULT, which defaults to the empty string."
 (defun gitlab-data-id-string (id)
   "Return ID as a string suitable for a glab argument.
 ID is a number, a string or a symbol."
+  (declare (pure t) (side-effect-free t))
   (cond
    ((stringp id) id)
    ((numberp id) (number-to-string id))
@@ -147,6 +151,7 @@ underscores only, so a sigil never appears in a path.")
   "Return the sigil of KIND.
 KIND is `merge-request', `pipeline' or `job'.  Signal `gitlab-error'
 for another value."
+  (declare (pure t) (side-effect-free t))
   (or (alist-get kind gitlab-data-identifier-signs)
       (signal 'gitlab-error
               (list (format "Unknown GitLab kind: %S" kind)))))
@@ -158,6 +163,7 @@ repository.  Org links, bookmarks and xref share the form, so one
 parser serves all three.  KIND is `merge-request', `pipeline' or
 `job'.  A nil ID returns the repository path alone, which names a
 collection rather than one object."
+  (declare (pure t) (side-effect-free t))
   (let ((id (and id (gitlab-data-id-string id))))
     (cond
      ((or (null id) (string-empty-p id))
@@ -174,6 +180,7 @@ the sigil of KIND yields ID alone, so an older Org link or
 bookmark stays valid; REPOSITORY is nil then.  A TEXT that holds
 the sigil in the first position yields an empty repository, which
 the caller reads as nil."
+  (declare (pure t) (side-effect-free t))
   (let* ((text (string-trim (or text "")))
          (sign (gitlab-data-identifier-sign kind))
          (position (cl-search sign text :from-end t)))
@@ -505,6 +512,7 @@ defaults to `gitlab-repository', because the URL needs the project
 path; display buffers prefer the web_url field of their own data.
 A repository of another instance makes the URL use that instance,
 and `gitlab-web-base-url' serves the default one."
+  (declare (side-effect-free t))
   (let* ((repository (or repository gitlab-repository))
          (split (gitlab-cli-repository-split repository))
          (host (car split))

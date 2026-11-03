@@ -61,6 +61,7 @@
 
 (defun gitlab-org--kind (type)
   "Return the GitLab kind of the Org link TYPE."
+  (declare (pure t) (side-effect-free t))
   (pcase type
     ("gitlab-mr" 'merge-request)
     ("gitlab-pipeline" 'pipeline)
@@ -88,6 +89,7 @@ Signal `user-error' for a PATH without an ID."
 
 (defun gitlab-org--html-escape (text)
   "Return TEXT with the HTML special characters escaped."
+  (declare (pure t) (side-effect-free t))
   (let ((text (replace-regexp-in-string "&" "&amp;" text)))
     (setq text (replace-regexp-in-string "<" "&lt;" text))
     (setq text (replace-regexp-in-string ">" "&gt;" text))
