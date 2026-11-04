@@ -1,0 +1,41 @@
+[
+  {
+    "id": 6003,
+    "name": "deploy",
+    "stage": "deploy",
+    "status": "running",
+    "created_at": "2026-11-04T09:59:00.000Z",
+    "started_at": "2026-11-04T09:59:05.000Z",
+    "finished_at": null,
+    "duration": null,
+    "queued_duration": 5,
+    "allow_failure": false,
+    "web_url": "https://gitlab.example/group/project/-/jobs/6003"
+  },
+  {
+    "id": 6002,
+    "name": "lint:linux",
+    "stage": "test",
+    "status": "failed",
+    "created_at": "2026-11-04T09:56:10.000Z",
+    "started_at": "2026-11-04T09:58:00.000Z",
+    "finished_at": "2026-11-04T09:59:06.000Z",
+    "duration": 66.25,
+    "queued_duration": 3,
+    "allow_failure": false,
+    "web_url": "https://gitlab.example/group/project/-/jobs/6002"
+  },
+  {
+    "id": 6001,
+    "name": "unit-tests",
+    "stage": "test",
+    "status": "success",
+    "created_at": "2026-11-04T09:55:00.000Z",
+    "started_at": "2026-11-04T09:56:00.000Z",
+    "finished_at": "2026-11-04T09:57:40.000Z",
+    "duration": 100.234765,
+    "queued_duration": 0.5,
+    "allow_failure": false,
+    "web_url": "https://gitlab.example/group/project/-/jobs/6001"
+  }
+]

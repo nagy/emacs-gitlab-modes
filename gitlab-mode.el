@@ -31,6 +31,16 @@
 ;; object as a read-only field table.  The list mode derives from
 ;; `tabulated-list-mode' and renders a collection as a table.
 ;;
+;; A row of a list buffer expands into child rows through
+;; `gitlab-list--child-function', and a mode that fetches the child
+;; rows answers the row that reports a fetch in flight.  The child
+;; rows follow their parent in the table, so the sort of the table
+;; keeps a row and its children together.  The set of expanded rows
+;; belongs to the buffer, so an automatic refresh never collapses a
+;; row under the reader.  `gitlab-list--stamp-child' marks every cell
+;; of a child row with its parent, so a command at a child row
+;; reaches the parent and a render keeps the line of the parent.
+;;
 ;; Both modes keep themselves current through `auto-revert-mode'.
 ;; The buffer-local `buffer-stale-function' decides when a refresh is
 ;; due; `revert-buffer-function' starts the asynchronous fetch.  The
@@ -239,6 +249,14 @@ Each function receives KIND, ID and DATA: the resource kind, its
 identifier and the decoded answer.  A list buffer passes its
 collection kind in KIND and nil in ID."
   :type 'hook
+  :group 'gitlab)
+
+(defcustom gitlab-list-expand-indent 3
+  "Number of spaces that indent the child rows of an expanded row.
+A list mode that expands a row answers its child rows through
+`gitlab-list--child-function', and every cell of a child row takes
+that many spaces in front of its first column."
+  :type 'natnum
   :group 'gitlab)
 
 (defcustom gitlab-list-fit-columns t
@@ -488,6 +506,42 @@ It receives SUCCESS and ERROR and returns a process object or nil.")
   "Kind of the collection in the current list buffer.
 The value is `merge-request' or `pipeline'.  `gitlab-change-functions'
 receives this value because a list buffer has no single ID.")
+
+(defvar-local gitlab-list--child-function nil
+  "Function that returns the child rows of an expanded list row.
+The function receives the row ID and answers nil for a row without
+child rows, or a list of table entries in the form that
+`tabulated-list-entries' documents.  The base mode indents no cell
+of its own, so a mode that shows a child row in a table puts the
+indentation of `gitlab-list-expand-indent' in that row.  A mode
+that fetches the child rows starts the fetch here and answers the
+row that reports a fetch in flight.")
+
+(defvar-local gitlab-list--child-reset-function nil
+  "Function that forgets the child rows of one list row.
+The function receives a row ID.  `gitlab-list-toggle-expansion'
+calls it just before it expands the row, so a mode can retry a
+fetch that failed.  A nil value keeps the child rows of the mode.")
+
+(defvar-local gitlab-list--row-id-function nil
+  "Function that returns the plain ID string of a list row ID.
+The value is nil when the row ID already serves, as it does for a
+merge request IID.  A mode that keys a child row by a composite ID
+sets this function, so `c', the bookmark target and the export read
+the object ID and not the composite.")
+
+(defvar-local gitlab-list--row-data-function nil
+  "Function that returns the decoded data of one list row.
+The function receives a row ID and answers an alist or nil.  A list
+mode sets it when the row data of a child row lives outside
+`gitlab-list--rows'.")
+
+(defvar-local gitlab-list--expanded nil
+  "Hash table of the row IDs that the current list buffer shows expanded.
+The table speaks of the buffer alone, so an automatic refresh keeps
+every expanded row open.  Killing the buffer drops the table.")
+
+(put 'gitlab-list--expanded 'permanent-local t)
 
 ;;; Small helpers
 
@@ -804,13 +858,30 @@ lines keeps the right one."
           (forward-line 1))
         count))))
 
+(defun gitlab--line-property (property)
+  "Return the first value of PROPERTY on the current line, or nil.
+A table row splits its cells into many runs of text, so a property
+of a child row can start after the padding that the printer put in
+front of the first cell."
+  (declare (side-effect-free t))
+  (save-excursion
+    (goto-char (line-beginning-position))
+    (let ((end (line-end-position))
+          (value nil))
+      (while (and (not value) (< (point) end))
+        (setq value (get-text-property (point) property))
+        (unless value (forward-char 1)))
+      value)))
+
 (defun gitlab--line-identity ()
   "Return the identity of the line of point, or nil.
 The identity is a cons of a kind and a value: `job' and the job
 ID, `sha' and the commit SHA, `field' and the field name, `row'
 and the list row ID, or `text' and a cons of the text of the line
-and its ordinal among the equal lines above it.  A line of
-whitespace alone has no identity, because its text would match
+and its ordinal among the equal lines above it.  A child row of an
+expanded list row answers with the parent row, so a render that
+replaces the child row keeps the place through the parent.  A line
+of whitespace alone has no identity, because its text would match
 every blank line."
   (let ((start (line-beginning-position)))
     (or (when-let* ((id (get-text-property start 'gitlab-job-id)))
@@ -820,7 +891,8 @@ every blank line."
         (when-let* ((field (get-text-property start 'gitlab-field)))
           (cons 'field field))
         (when-let* ((id (tabulated-list-get-id)))
-          (cons 'row id))
+          (cons 'row (or (gitlab--line-property 'gitlab-list-parent-id)
+                         id)))
         (let ((text (gitlab--line-text)))
           (unless (string-empty-p text)
             (cons 'text (cons text (gitlab--line-occurrence text))))))))
@@ -1093,6 +1165,16 @@ ref of a tag takes `gitlab-tag'."
          ((> minutes 0) (format "%dm %ds" minutes seconds))
          (t (format "%ds" seconds))))
     (gitlab--format-value value)))
+
+(defun gitlab--elapsed-seconds (timestamp)
+  "Return the seconds between TIMESTAMP and now, or nil.
+TIMESTAMP is the ISO 8601 text of a GitLab answer, and the answer
+takes no negative value."
+  (declare (side-effect-free t))
+  (when (and (stringp timestamp) (not (string-empty-p timestamp)))
+    (let ((start (ignore-errors (float-time (date-to-time timestamp)))))
+      (when start
+        (max 0 (- (float-time) start))))))
 
 (defun gitlab--status-face (status)
   "Return the face for STATUS, or nil."
@@ -1709,7 +1791,7 @@ the table format of the collection."
 WINDOW supplies the new width.  The reprint keeps point on the
 row that holds it."
   (gitlab-list--fit-columns window)
-  (tabulated-list-print t)
+  (gitlab-list--print)
   (tabulated-list-init-header)
   (setq-local gitlab--header-line-format header-line-format))
 
@@ -1758,8 +1840,202 @@ no window of FRAME shows keeps the widths that it already holds."
 
 (add-hook 'window-size-change-functions #'gitlab-list--window-size-changed)
 
+;;; Sorting
+
+(defun gitlab-list--cell-sort-text (cell)
+  "Return the text that the sorting of a list column compares for CELL.
+A cell that holds no text compares as the empty string."
+  (declare (pure t) (side-effect-free t))
+  (or (gitlab-list--cell-text cell) ""))
+
+(defun gitlab-list--sorter ()
+  "Return the sorting predicate of the current list buffer, or nil.
+The predicate comes from the SORT element of the sorted column, and
+an element of t requests the default of `tabulated-list-mode', a
+string comparison of the cells.  A descending key reverses the
+predicate, so the caller sorts the parent rows alone, because the
+reversal would turn a child row in front of its parent."
+  (when (and tabulated-list-sort-key (car tabulated-list-sort-key))
+    (let* ((index (tabulated-list--column-number
+                   (car tabulated-list-sort-key)))
+           (predicate (nth 2 (aref tabulated-list-format index))))
+      (when (eq predicate t)
+        (setq predicate
+              (lambda (a b)
+                (string< (gitlab-list--cell-sort-text
+                          (gitlab-list--cell-at (cadr a) index))
+                         (gitlab-list--cell-sort-text
+                          (gitlab-list--cell-at (cadr b) index))))))
+      (when predicate
+        (if (cdr tabulated-list-sort-key)
+            (lambda (a b) (funcall predicate b a))
+          predicate)))))
+
+(defun gitlab-list--weave (entries)
+  "Return ENTRIES with the child rows of every expanded row.
+The child rows follow their parent in the list, so the sort of the
+printer never separates a row from its children."
+  (if (null gitlab-list--child-function)
+      entries
+    (let (rows)
+      (dolist (entry entries)
+        (push entry rows)
+        (when (gitlab-list--row-expanded-p (car entry))
+          (dolist (child (funcall gitlab-list--child-function (car entry)))
+            (push (list (car child)
+                        (gitlab-list--stamp-child
+                         (gitlab-list--entry-cells child) (car entry)))
+                  rows))))
+      (nreverse rows))))
+
+(defun gitlab-list--ordered-entries (entries)
+  "Return ENTRIES sorted, with the child rows behind their parent.
+ENTRIES holds the rows of the collection alone.  The sort stays
+out of reach of the child rows, so a descending order never turns
+a child in front of its parent."
+  (let ((sorter (gitlab-list--sorter)))
+    (gitlab-list--weave (if sorter
+                            (sort (copy-sequence entries) sorter)
+                          entries))))
+
+(defun gitlab-list--print ()
+  "Print the rows of the current list buffer in the order they hold.
+`tabulated-list-print' sorts the list that it receives, so the sort
+key steps aside while the function runs.  The sorted order and the
+child rows already stand in `tabulated-list-entries'."
+  (let ((tabulated-list-sort-key nil))
+    (tabulated-list-print t)))
+
+;;; Row expansion
+
+(defun gitlab-list--row-id-string (id)
+  "Return ID as the plain ID string of a list row."
+  (if gitlab-list--row-id-function
+      (funcall gitlab-list--row-id-function id)
+    (gitlab-data-id-string id)))
+
+(defun gitlab-list--expanded-p (id)
+  "Return non-nil when the table shows the child rows of row ID."
+  (declare (side-effect-free t))
+  (and (hash-table-p gitlab-list--expanded)
+       (gethash id gitlab-list--expanded)))
+
+(defun gitlab-list--set-expanded (id value)
+  "Show the child rows of row ID when VALUE is non-nil, else hide them.
+Return VALUE."
+  (unless (hash-table-p gitlab-list--expanded)
+    (setq gitlab-list--expanded (make-hash-table :test #'equal)))
+  (if value
+      (puthash id t gitlab-list--expanded)
+    (remhash id gitlab-list--expanded))
+  value)
+
+(defun gitlab-list--parent-id-at-point ()
+  "Return the ID of the row that holds the child row at point, or nil."
+  (declare (side-effect-free t))
+  (gitlab--line-property 'gitlab-list-parent-id))
+
+(defun gitlab-list--target-expands-p (id)
+  "Return non-nil when a pending target names a child row of ID.
+A bookmark that a child row made expands the row that holds it, so
+the first render shows the child row and the jump reaches it."
+  (declare (side-effect-free t))
+  (pcase gitlab--target
+    (`(job-row ,_job ,parent) (equal parent id))
+    (_ nil)))
+
+(defun gitlab-list--row-expanded-p (id)
+  "Return non-nil when the table shows the child rows of row ID.
+A pending target that names a child row of ID expands the row for
+the whole life of the buffer, so a bookmark jump opens the row."
+  (or (gitlab-list--expanded-p id)
+      (and (gitlab-list--target-expands-p id)
+           (gitlab-list--set-expanded id t))))
+
+(defun gitlab-list--stamp-child (cells parent)
+  "Return CELLS marked as a child row of the row PARENT.
+Every cell takes the text property `gitlab-list-parent-id', so a
+command at a child row reaches its parent and a render keeps the
+line of the parent."
+  (let ((copy (copy-sequence cells)))
+    (dotimes (index (length copy))
+      (let ((cell (aref copy index)))
+        (when (and (stringp cell) (not (string-empty-p cell)))
+          (aset copy index
+                (propertize cell 'gitlab-list-parent-id parent)))))
+    copy))
+
+(defun gitlab-list--reprint ()
+  "Print the rows of the current list buffer again without a fetch."
+  (if gitlab--last-data
+      (gitlab--render)
+    (user-error "The list holds no rows")))
+
+(defun gitlab-list-toggle-expansion (&optional row)
+  "Expand or collapse the row at point, or the row ROW.
+A child row collapses the row of its parent.  Expanding a row asks
+its mode to forget an answer that this call retries, and the mode
+starts a fetch when the table prints the expanded row."
+  (interactive nil gitlab-list-mode)
+  (let* ((child (gitlab-list--parent-id-at-point))
+         (id (or row child (gitlab-list--id-at-point))))
+    (cond
+     ((null id)
+      (user-error "No row at point"))
+     ((null gitlab-list--child-function)
+      (user-error "The current list holds no child rows"))
+     ((gitlab-list--expanded-p id)
+      (gitlab-list--set-expanded id nil))
+     (t
+      (when gitlab-list--child-reset-function
+        (funcall gitlab-list--child-reset-function id))
+      (gitlab-list--set-expanded id t)))
+    (gitlab-list--reprint)))
+
+(defun gitlab-list-mouse-toggle (event)
+  "Expand or collapse the row of the click EVENT.
+A double click makes no region, so the function drops the one that
+the click started."
+  (interactive "e" gitlab-list-mode)
+  (mouse-set-point event)
+  (deactivate-mark)
+  (gitlab-list-toggle-expansion))
+
+(defun gitlab-list--parent-rows ()
+  "Return the row IDs of the collection of the current list buffer."
+  (if gitlab-list--entries-function
+      (mapcar #'car (funcall gitlab-list--entries-function gitlab--last-data))
+    nil))
+
+(defun gitlab-list-expand-all ()
+  "Expand every row of the current list buffer.
+A mode that fetches the child rows runs one fetch per row."
+  (interactive nil gitlab-list-mode)
+  (unless gitlab-list--child-function
+    (user-error "The current list holds no child rows"))
+  (dolist (id (gitlab-list--parent-rows))
+    (gitlab-list--set-expanded id t))
+  (gitlab-list--reprint))
+
+(defun gitlab-list-collapse-all ()
+  "Collapse every row of the current list buffer."
+  (interactive nil gitlab-list-mode)
+  (when (hash-table-p gitlab-list--expanded)
+    (clrhash gitlab-list--expanded))
+  (gitlab-list--reprint))
+
+(defun gitlab-list--click-selects-row (&rest _arguments)
+  "Return nil, so one click selects a row and follows no link.
+`tabulated-list-mode' binds `follow-link' to `mouse-face', and one
+click on a cell with a mouse face would then open the row.  A list
+buffer keeps the click for the selection, so a double click can
+toggle the row and the middle button can open it."
+  nil)
+
 (defun gitlab-list--render (_id data)
   "Render collection DATA into the current list buffer.
+`gitlab-list--ordered-entries' sorts the parent rows and puts the
+child rows of every expanded row behind its parent.
 `gitlab-list--fit-columns' sizes the columns to the rows.
 `tabulated-list-init-header' then builds the header line from
 `tabulated-list-format' and `tabulated-list-sort-key', so the
@@ -1770,9 +2046,11 @@ installed."
   (when gitlab-list--rows-function
     (setq gitlab-list--rows (funcall gitlab-list--rows-function data)))
   (when gitlab-list--entries-function
-    (setq tabulated-list-entries (funcall gitlab-list--entries-function data)))
+    (setq tabulated-list-entries
+          (gitlab-list--ordered-entries
+           (funcall gitlab-list--entries-function data))))
   (gitlab-list--fit-columns)
-  (tabulated-list-print t)
+  (gitlab-list--print)
   (tabulated-list-init-header)
   (setq-local gitlab--header-line-format header-line-format))
 
@@ -1784,9 +2062,11 @@ resizing and point keeping by row identity come for free.
 
 A derived mode sets `gitlab-list--fetch-function',
 `gitlab-list--entries-function', `gitlab-list--rows-function'
-and `gitlab-list--open-function'.  The mode wires
-`auto-revert-mode' through `buffer-stale-function' and
-`revert-buffer-function'."
+and `gitlab-list--open-function'.  A mode whose rows expand sets
+`gitlab-list--child-function' as well, and
+`gitlab-list--child-reset-function' when its child rows load from
+a request.  The mode wires `auto-revert-mode' through
+`buffer-stale-function' and `revert-buffer-function'."
   :group 'gitlab
   (gitlab--init-list-buffer)
   (setq-local thing-at-point-provider-alist
@@ -1804,13 +2084,16 @@ and `gitlab-list--open-function'.  The mode wires
 Every entry is a cons of the row ID and a nil name, because a
 collection holds no name for its objects.  The function reads the
 rows that the buffer displays, so the sort column decides the order
-and a renamed buffer or a moved row keeps its meaning."
+and a renamed buffer or a moved row keeps its meaning.  A child row
+of an expanded row stays out, because it belongs to the parent row
+and not to the collection."
   (save-excursion
     (goto-char (point-min))
     (let (entries)
       (while (not (eobp))
         (when-let* ((id (gitlab-list--id-at-point)))
-          (push (cons id nil) entries))
+          (unless (gitlab-list--parent-id-at-point)
+            (push (cons id nil) entries)))
         (forward-line 1))
       (nreverse entries))))
 
@@ -1829,9 +2112,13 @@ Return non-nil when the function found the row."
     found))
 
 (defun gitlab-list--row-at-point ()
-  "Return the decoded row data at point, or nil."
+  "Return the decoded row data at point, or nil.
+`gitlab-list--row-data-function' answers first, so a mode can read
+the data of a child row, and the collection alist answers last."
   (when-let* ((id (gitlab-list--id-at-point)))
-    (alist-get id gitlab-list--rows nil nil #'equal)))
+    (or (and gitlab-list--row-data-function
+             (funcall gitlab-list--row-data-function id))
+        (alist-get id gitlab-list--rows nil nil #'equal))))
 
 (defun gitlab-list--thing-at-point-url ()
   "Return the upstream web URL of the row at point.
@@ -1861,9 +2148,9 @@ that reads a URL work on a table row."
   (interactive nil gitlab-list-mode)
   (let ((id (gitlab-list--id-at-point)))
     (if id
-        (progn
-          (kill-new (gitlab-data-id-string id))
-          (message "Copied %s" id))
+        (let ((text (gitlab-list--row-id-string id)))
+          (kill-new text)
+          (message "Copied %s" text))
       (user-error "No row at point"))))
 
 (defun gitlab-list-open-web ()
@@ -1893,10 +2180,38 @@ a merge request IID carries a leading !, so keep the digits only."
   (gitlab--nav-string (propertize id 'face 'gitlab-id)
                       property id "Open"))
 
+(defun gitlab-list-sort (&optional column)
+  "Sort the rows of the current list buffer by the column at point.
+A numeric prefix COLUMN names the column, and a prefix of -1
+returns the order of the collection.  A second call on the column
+that already sorts the table reverses the direction.  The child
+rows of an expanded row travel with their parent, so a sort never
+separates a row from the rows that it holds."
+  (interactive "P")
+  (when (and column (or (>= column (length tabulated-list-format))
+                        (< column -1)))
+    (user-error "Invalid column number"))
+  (if (equal column -1)
+      (setq tabulated-list-sort-key nil)
+    (let ((name (if column
+                    (car (aref tabulated-list-format column))
+                  (get-text-property (point) 'tabulated-list-column-name))))
+      (unless name
+        (user-error "Point is not in a column"))
+      (unless (nth 2 (assoc name (append tabulated-list-format nil)))
+        (user-error "Cannot sort by %s" name))
+      (if (equal name (car-safe tabulated-list-sort-key))
+          (setcdr tabulated-list-sort-key
+                  (not (cdr tabulated-list-sort-key)))
+        (setq tabulated-list-sort-key (cons name nil)))))
+  (gitlab--render))
+
 ;; The commands are defined above the keymap bindings, so the
 ;; byte-compiler knows every key target.
 (define-key gitlab-list-mode-map (kbd "RET") #'gitlab-list-open)
 (define-key gitlab-list-mode-map [mouse-2] #'gitlab-list-mouse-open)
+(define-key gitlab-list-mode-map (kbd "TAB") #'gitlab-list-toggle-expansion)
+(define-key gitlab-list-mode-map (kbd "S") #'gitlab-list-sort)
 (define-key gitlab-list-mode-map (kbd "c") #'gitlab-list-copy-id)
 (define-key gitlab-list-mode-map (kbd "w") #'gitlab-list-open-web)
 (define-key gitlab-list-mode-map [remap js-json-mode] #'gitlab-export-json)
@@ -1949,11 +2264,15 @@ collection bookmark keeps its meaning when the table changes."
   "Return the position target of the current display buffer, or nil.
 A list buffer returns its row, a pipeline buffer the job row or
 the field line at point, and any other detail buffer the field
-line at point."
+line at point.  A child row of an expanded list row names the row
+of the job and the parent row, so a jump opens the parent again."
   (cond
    ((derived-mode-p 'gitlab-list-mode)
     (when-let* ((id (gitlab-list--id-at-point)))
-      (cons 'row (gitlab-data-id-string id))))
+      (if-let* ((job (gitlab--line-property 'gitlab-job-id)))
+          (cons 'job-row
+                (list job (gitlab-list--parent-id-at-point)))
+        (cons 'row (gitlab-list--row-id-string id)))))
    (t
     (or (when-let* ((job (get-text-property (point) 'gitlab-job-id)))
           (cons 'job job))
@@ -1994,16 +2313,30 @@ filtered table comes back the same."
 A bookmark jump stores the field line, job row or list row of the
 saved view there, because the first render erases the buffer and
 moves point to its start.  A later refresh keeps point through the
-text property that the renderer reads.  Return non-nil when a
-target was applied, so `gitlab--render' leaves that position
-alone."
+text property that the renderer reads.  A child row of a list
+buffer expands its parent before the render, so the child row
+stands in the table.  A child row whose fetch still runs keeps the
+target until a render shows the row, and the jump waits on the
+parent row meanwhile.  Return non-nil when a target was applied,
+so `gitlab--render' leaves that position alone."
   (when gitlab--target
-    (let ((target (prog1 gitlab--target
-                    (setq gitlab--target nil))))
+    (let ((target gitlab--target))
       (pcase target
-        (`(field . ,name) (gitlab--goto-property 'gitlab-field name))
-        (`(job . ,id) (gitlab--goto-property 'gitlab-job-id id))
-        (`(row . ,id) (gitlab-list--goto-id id)))
+        (`(job-row ,job ,parent)
+         (cond
+          ((gitlab--goto-property 'gitlab-job-id job)
+           (setq gitlab--target nil))
+          ((gitlab-list--goto-id parent)
+           ;; The jobs of the row still load, so the target waits for
+           ;; the render that shows the job row.
+           nil)
+          (t (setq gitlab--target nil))))
+        (_
+         (setq gitlab--target nil)
+         (pcase target
+           (`(field . ,name) (gitlab--goto-property 'gitlab-field name))
+           (`(job . ,id) (gitlab--goto-property 'gitlab-job-id id))
+           (`(row . ,id) (gitlab-list--goto-id id)))))
       t)))
 
 (defun gitlab--bookmark-list-setup (arguments sort)

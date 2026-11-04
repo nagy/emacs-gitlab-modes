@@ -73,6 +73,243 @@
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))
 
+;;; Expanded job rows
+
+(defconst gitlab-pipeline-tests--job-fixture
+  "GITLAB_TEST_PIPELINE_JOBS=pipeline-list-jobs.json"
+  "Process environment entry that selects the expanded jobs fixture.")
+
+(defun gitlab-pipeline-tests--jobs-list-buffer ()
+  "Return a rendered pipeline list buffer, or signal a test failure.
+The caller kills the buffer."
+  (let ((buffer (generate-new-buffer "*GitLab pipeline jobs test*")))
+    (with-current-buffer buffer
+      (gitlab-pipeline-list-mode)
+      (gitlab-list--refresh))
+    (should (gitlab-test-wait
+             (lambda ()
+               (with-current-buffer buffer
+                 (= 2 (length tabulated-list-entries))))))
+    buffer))
+
+(defun gitlab-pipeline-tests--expand (buffer pipeline-id)
+  "Expand PIPELINE-ID in BUFFER and wait for the job rows."
+  (with-current-buffer buffer
+    (gitlab-list-toggle-expansion pipeline-id))
+  (should (gitlab-test-wait
+           (lambda ()
+             (with-current-buffer buffer
+               (plist-get (gitlab-pipeline--jobs-state pipeline-id)
+                          :loaded)))))
+  buffer)
+
+(defun gitlab-pipeline-tests--row-ids (buffer)
+  "Return the row IDs of the rendered rows of BUFFER."
+  (with-current-buffer buffer
+    (mapcar #'car tabulated-list-entries)))
+
+(ert-deftest gitlab-pipeline-list-expands-jobs ()
+  "TAB expands a pipeline row into five column job rows."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons gitlab-pipeline-tests--job-fixture process-environment))
+         (buffer nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (gitlab-pipeline-tests--expand buffer "1003")
+           (with-current-buffer buffer
+             (should (equal '("1004" "1003"
+                              ("1003" . "6001")
+                              ("1003" . "6002")
+                              ("1003" . "6003"))
+                            (gitlab-pipeline-tests--row-ids buffer)))
+             (should (string-match-p "unit-tests" (buffer-string)))
+             (let* ((entry (nth 2 tabulated-list-entries))
+                    (cells (gitlab-list--entry-cells entry)))
+               (should (equal "6001"
+                              (string-trim (substring-no-properties
+                                            (aref cells 0)))))
+               (should (equal "success" (aref cells 1)))
+               (should (equal "unit-tests" (aref cells 2)))
+               (should (equal "test" (aref cells 3)))
+               (should (string-match-p "2026-11-04 09:57:40"
+                                       (aref cells 4)))
+               (should (equal "1003"
+                              (get-text-property
+                               0 'gitlab-list-parent-id (aref cells 0))))
+               (should (equal "6001"
+                              (get-text-property 0 'gitlab-job-id
+                                                 (aref cells 0)))))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-list-collapses-jobs ()
+  "A second TAB hides the job rows of the pipeline again."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons gitlab-pipeline-tests--job-fixture process-environment))
+         (buffer nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (gitlab-pipeline-tests--expand buffer "1003")
+           (with-current-buffer buffer
+             (gitlab-list-toggle-expansion "1003")
+             (should (equal '("1004" "1003")
+                            (gitlab-pipeline-tests--row-ids buffer)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-list-job-row-commands ()
+  "A job row copies its own ID and names the row of its pipeline."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons gitlab-pipeline-tests--job-fixture process-environment))
+         (buffer nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (gitlab-pipeline-tests--expand buffer "1003")
+           (with-current-buffer buffer
+             (should (gitlab--goto-property 'gitlab-job-id "6002"))
+             (should (equal '(job . "6002") (gitlab--line-identity)))
+             (should (equal "https://gitlab.example/group/project/-/jobs/6002"
+                            (gitlab-list--thing-at-point-url)))
+             (should (equal '(job-row "6002" "1003")
+                            (gitlab--bookmark-target)))
+             (let ((kill-ring nil))
+               (gitlab-list-copy-id)
+               (should (equal "6002" (car kill-ring))))
+             (should (equal '("1004" "1003")
+                            (mapcar #'car (gitlab-list--children))))
+             ;; TAB on a child row collapses the row of the parent.
+             (gitlab-list-toggle-expansion)
+             (should (equal '("1004" "1003")
+                            (gitlab-pipeline-tests--row-ids buffer)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-list-sort-keeps-jobs ()
+  "A sort keeps the job rows behind the row of their pipeline.
+The descending direction reverses the predicate that
+`tabulated-list-print' sorts with, so the list layer sorts the
+parent rows alone and adds the child rows after the sort."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons gitlab-pipeline-tests--job-fixture process-environment))
+         (buffer nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (gitlab-pipeline-tests--expand buffer "1003")
+           (gitlab-pipeline-tests--expand buffer "1004")
+           (with-current-buffer buffer
+             (gitlab-list-sort 0)
+             (should (equal '("1003"
+                              ("1003" . "6001")
+                              ("1003" . "6002")
+                              ("1003" . "6003")
+                              "1004"
+                              ("1004" . "6001")
+                              ("1004" . "6002")
+                              ("1004" . "6003"))
+                            (gitlab-pipeline-tests--row-ids buffer)))
+             (gitlab-list-sort 0)
+             (should (equal '("1004"
+                              ("1004" . "6001")
+                              ("1004" . "6002")
+                              ("1004" . "6003")
+                              "1003"
+                              ("1003" . "6001")
+                              ("1003" . "6002")
+                              ("1003" . "6003"))
+                            (gitlab-pipeline-tests--row-ids buffer)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-list-jobs-error-row ()
+  "A failed jobs fetch reports the condition in a child row."
+  (gitlab-test-with-environment
+   (let ((buffer nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (with-current-buffer buffer
+             (gitlab-list--set-expanded "1003" t)
+             (gitlab-pipeline--jobs-set "1003"
+                                        :error '(error "boom"))
+             (gitlab--render)
+             (should (equal '("1004" "1003" (note . "1003"))
+                            (gitlab-pipeline-tests--row-ids buffer)))
+             (should (string-match-p "Jobs: boom" (buffer-string)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-list-job-row-opens-log ()
+  "RET on a job row opens the log of that job.
+The row names its pipeline, so the log walks up without a request."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons gitlab-pipeline-tests--job-fixture process-environment))
+         (buffer nil)
+         (log nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (gitlab-pipeline-tests--expand buffer "1003")
+           (with-current-buffer buffer
+             (should (gitlab--goto-property 'gitlab-job-id "6002"))
+             (gitlab-list-open))
+           (setq log (get-buffer "*GitLab Job 6002*"))
+           (should log)
+           (with-current-buffer log
+             (should (equal "6002" gitlab--id))
+             (should (equal "1003" gitlab-job-log--pipeline-id))))
+       (when (buffer-live-p log) (kill-buffer log))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-list-refetches-live-jobs ()
+  "A running pipeline takes one jobs answer per list refresh.
+A final pipeline keeps its answer, because nothing changes its
+jobs without a user action."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons gitlab-pipeline-tests--job-fixture process-environment))
+         (buffer nil))
+     (unwind-protect
+         (progn
+           (setq buffer (gitlab-pipeline-tests--jobs-list-buffer))
+           (gitlab-pipeline-tests--expand buffer "1003")
+           (gitlab-pipeline-tests--expand buffer "1004")
+           (with-current-buffer buffer
+             (should (= 1 (plist-get (gitlab-pipeline--jobs-state "1004")
+                                     :tick)))
+             (gitlab-list--refresh))
+           (should (gitlab-test-wait
+                    (lambda ()
+                      (with-current-buffer buffer
+                        (let ((state (gitlab-pipeline--jobs-state "1004")))
+                          (and (= 2 (plist-get state :tick))
+                               (plist-get state :loaded)))))))
+           (with-current-buffer buffer
+             (should (= 1 (plist-get (gitlab-pipeline--jobs-state "1003")
+                                     :tick)))
+             (should (plist-get (gitlab-pipeline--jobs-state "1003")
+                                :loaded))
+             (should (= 8 (length tabulated-list-entries)))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-job-time-cell ()
+  "A finished job shows its end, a running job the time it runs."
+  (let ((finished '((status . "success")
+                    (started_at . "2026-11-04T09:56:00.000Z")
+                    (finished_at . "2026-11-04T09:57:40.000Z")))
+        (running '((status . "running")
+                   (started_at . "2020-01-01T00:00:00.000Z")))
+        (queued '((status . "created"))))
+    (should (equal "2026-11-04 09:57:40"
+                   (substring-no-properties
+                    (gitlab-pipeline--job-time-cell finished))))
+    (should (string-match-p "\\`running [0-9]+h"
+                            (gitlab-pipeline--job-time-cell running)))
+    (should (equal "-" (gitlab-pipeline--job-time-cell queued)))))
+
 (ert-deftest gitlab-pipeline-finished-buffer-does-not-poll ()
   "A fetched finished pipeline is not stale."
   (gitlab-test-with-environment

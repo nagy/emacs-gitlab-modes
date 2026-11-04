@@ -244,8 +244,65 @@
              (should (null gitlab--target))))
        (kill-buffer buffer)))))
 
-;;; Jump handler
+(ert-deftest gitlab-bookmark-apply-target-job-list-row ()
+  "A job-row target expands the pipeline and lands on the job row.
+The row waits for the jobs fetch, so the target stays until the
+render that shows the job row arrives."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons "GITLAB_TEST_PIPELINE_JOBS=pipeline-list-jobs.json"
+                process-environment))
+         (buffer (generate-new-buffer "*GitLab pipeline list target test*"))
+         (gitlab--pending-target '(job-row "6002" "1003")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-pipeline-list-mode)
+             (gitlab-list--refresh))
+           (should (gitlab-test-wait
+                    (lambda ()
+                      (with-current-buffer buffer
+                        (equal "6002"
+                               (get-text-property (point)
+                                                  'gitlab-job-id))))))
+           (with-current-buffer buffer
+             (should (equal "6002" (get-text-property (point) 'gitlab-job-id)))
+             (should (gitlab-list--expanded-p "1003"))
+             (should (null gitlab--target))))
+       (kill-buffer buffer)))))
 
+(ert-deftest gitlab-bookmark-list-record-job-row ()
+  "A record made on a child row names the job and its pipeline."
+  (gitlab-test-with-environment
+   (let ((process-environment
+          (cons "GITLAB_TEST_PIPELINE_JOBS=pipeline-list-jobs.json"
+                process-environment))
+         (buffer (generate-new-buffer "*GitLab pipeline list job record*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-pipeline-list-mode)
+             (gitlab-list--refresh))
+           (should (gitlab-test-wait
+                    (lambda ()
+                      (with-current-buffer buffer
+                        (= 2 (length tabulated-list-entries))))))
+           (with-current-buffer buffer
+             (gitlab-list-toggle-expansion "1003"))
+           (should (gitlab-test-wait
+                    (lambda ()
+                      (with-current-buffer buffer
+                        (plist-get (gitlab-pipeline--jobs-state "1003")
+                                   :loaded)))))
+           (with-current-buffer buffer
+             (should (gitlab--goto-property 'gitlab-job-id "6001"))
+             (let ((record (gitlab-bookmark-tests--record)))
+               (should (eq 'pipeline-list (alist-get 'kind (cdr record))))
+               (should (equal '(job-row "6001" "1003")
+                              (alist-get 'target (cdr record)))))))
+       (kill-buffer buffer)))))
+
+;;; Jump handler
 (ert-deftest gitlab-bookmark-jump-restores-project ()
   "A jump restores the project, the directory and the target."
   (let (opened repository directory target)

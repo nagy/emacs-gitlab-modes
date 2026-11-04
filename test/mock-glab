@@ -28,7 +28,7 @@ case "$arguments" in
       cat "$fixture_dir/ci-get.json"
     fi
     ;;
-  *"pipelines/"*"/jobs"*) cat "$fixture_dir/pipeline-jobs.json" ;;
+  *"pipelines/"*"/jobs"*) cat "$fixture_dir/${GITLAB_TEST_PIPELINE_JOBS:-pipeline-jobs.json}" ;;
   *"jobs/"*) cat "$fixture_dir/job-show.json" ;;
   *"ci trace"*) cat "$fixture_dir/${GITLAB_TEST_TRACE:-job-trace.txt}" ;;
   *)

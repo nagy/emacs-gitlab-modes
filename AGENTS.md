@@ -23,17 +23,17 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab-merge-request-approve` and its asynchronous form are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` remap of both base modes. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command, the approval command and the merge request list as the parent view of a detail buffer. |
-| `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
+| `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
 | `test/gitlab-test-helpers.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
 | `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection.  `GITLAB_TEST_TRACE` selects another job trace fixture. |
-| `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections and a pipeline without a jobs array. |
+| `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections, a pipeline without a jobs array and two jobs fixtures: one for the pipeline detail and one that the row expansion of the pipeline list reads. |
 | `*-tests.el` | ERT suites.  `package-build` excludes this suffix from the package and the lint gate skips it. |
 | `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary or the evil package. |
 | `flake.lock` | Pinned flake inputs. |
@@ -607,6 +607,46 @@ without evil.  The suite never opens a network connection.
   pipeline ID, so an update keeps point on the same row.
   `gitlab-change-functions` receives `gitlab-list--kind` and a nil ID
   for a list buffer, because one collection has no single ID.
+- A row expands into child rows through `gitlab-list--child-function`,
+  a function of the row ID that answers the entries of the child rows
+  or nil.  `gitlab-list--expanded` holds the row IDs that a buffer
+  shows expanded, and it is `permanent-local`, so an automatic refresh
+  never collapses a row.  `gitlab-list--weave` puts the child entries
+  behind their parent and `gitlab-list--stamp-child` marks every cell
+  of a child row with the property `gitlab-list-parent-id`, so
+  `gitlab-list--parent-id-at-point` reaches the parent from any cell of
+  the child row.
+- The list layer sorts the parent rows alone and weaves the child rows
+  after the sort, because `tabulated-list-print` reverses a descending
+  sort by swapping the arguments and that swap would turn a child in
+  front of its parent.  `gitlab-list--sorter` builds the predicate of
+  the sorted column and `gitlab-list--print` binds
+  `tabulated-list-sort-key` to nil around `tabulated-list-print`, so
+  the printer keeps the order that `gitlab-list--ordered-entries`
+  built.  `gitlab-list-sort` on `S` owns the sort key, its direction
+  and a prefix of -1 for the collection order.  A direct call of
+  `tabulated-list-sort` interleaves the child rows, so no code and no
+  key uses it.
+- `gitlab-list-toggle-expansion` on `TAB` toggles the row at point and
+  collapses the parent of a child row.  `gitlab-list-mouse-toggle` on
+  `double-mouse-1` does the same, and a mode that binds it also binds
+  `follow-link` to `gitlab-list--click-selects-row`, so one left click
+  selects a row instead of following the link of its ID cell.
+  `gitlab-list-expand-all` and `gitlab-list-collapse-all` serve the
+  whole table, and `gitlab-list--child-reset-function` lets a mode
+  retry a fetch when the user expands a row again.
+- A child row answers the row of its parent as the identity of its
+  line, so `gitlab--line-identity` keeps the place through the parent
+  and a render that replaces the child row never moves point to
+  `point-min`.  A bookmark record of a child row stores
+  `(job-row JOB PARENT)`; `gitlab-list--target-expands-p` expands the
+  parent during the weave, and `gitlab--apply-target` keeps the target
+  while the child rows still load and lands on the parent row
+  meanwhile.  `gitlab-list--children` skips the child rows, so a
+  sibling walk reads the collection alone.  `gitlab-list--row-id-function`
+  names the object ID of a composite row ID, `gitlab-list--row-data-function`
+  answers its decoded data, and `gitlab-list-copy-id` copies the object
+  ID through the first of them.
 - `gitlab-list-mode` appends a `url` provider to
   `thing-at-point-provider-alist`.  `gitlab-list--thing-at-point-url`
   returns the `web_url` field of `gitlab-list--row-at-point`, so
@@ -615,6 +655,34 @@ without evil.  The suite never opens a network connection.
   returns nil on a line without a row, and `thing-at-point` then falls
   back to its own scan.  `gitlab-list-open-web` and the provider share
   that function, so `w` and `thing-at-point` never disagree.
+- The pipeline list expands a row into the jobs of that pipeline.
+  `gitlab-pipeline--jobs` holds the answer of each expanded pipeline
+  in a plist of `:jobs`, `:loaded`, `:process`, `:error`, `:stale` and
+  `:tick`, and it is `permanent-local`, so a refresh never collapses a
+  row.  The row ID of a job is a cons of the pipeline ID and the job
+  ID, so a job never meets a pipeline of the same number.
+  `gitlab-pipeline--refresh-tick` counts the collection answers of the
+  buffer; `gitlab-pipeline--outdate-jobs` runs in the fetch callback
+  and marks the answer of a pipeline that still runs stale once per
+  answer, and the child function fetches again.  A final pipeline
+  keeps its answer, because only a user action changes its jobs.  The
+  callback reprints the buffer when the collection answer equals the
+  last one, because `gitlab--refresh-done` renders no unchanged
+  answer.  A first fetch shows `Loading jobs...`, a failed fetch names
+  the condition and waits for the next answer, a previous answer
+  stays on screen while a new fetch runs, and a pipeline without jobs
+  shows `No jobs.`.  The kill hook of the list buffer cancels every
+  fetch in flight.
+- A job row fills the five columns of the pipeline list: the job ID,
+  the status, the name, the stage and the finish time, or the running
+  time of a job that still runs.  The name takes the Ref column and
+  the stage the Source column, because the table has no column of its
+  own for the job.  `gitlab-pipeline--job-time-cell` reads
+  `finished_at` and falls back to `gitlab--elapsed-seconds` of
+  `started_at`.  `gitlab-pipeline--open-row` opens the job log with
+  the pipeline of the row, so the log walks up without a request.
+  `gitlab-pipeline--row-data` answers the job of a job row, so `w` and
+  `thing-at-point 'url` reach the job page.
 - The list columns live in `gitlab-merge-request-list-format` and
   `gitlab-pipeline-list-format`.  Numeric columns use
   `gitlab-list--number-sort`.  A `tabulated-list` SORT predicate
@@ -865,3 +933,7 @@ without evil.  The suite never opens a network connection.
 - Job rows in the imenu of a pipeline buffer.  The design is in
   git-bug issue `01e1ede`: keep the field lines and add one entry per
   job row.
+- Merge request rows that expand into their notes or their commits,
+  through `gitlab-list--child-function` of the list base mode.  The
+  machinery of the pipeline list already covers the sort, the point
+  record and the bookmark target.

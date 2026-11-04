@@ -729,6 +729,87 @@ that reaches it."
   (should (eq (lookup-key gitlab-list-mode-map [remap js-json-mode])
               'gitlab-export-json)))
 
+(ert-deftest gitlab-mode-list-expands-a-row ()
+  "A rendered list shows the child row of an expanded row.
+The child row answers its parent as the identity of its line, so a
+render that replaces it keeps the place through the parent."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 12 t) ("Title" 20 t)])
+     (setq-local tabulated-list-sort-key '("ID" . nil))
+     (setq-local gitlab--last-data '((id . 1)))
+     (setq-local gitlab-list--entries-function
+                 (lambda (_data)
+                   (list (list "10" (vector "10" "ten"))
+                         (list "20" (vector "20" "twenty")))))
+     (setq-local gitlab-list--child-function
+                 (lambda (id)
+                   (list (cons (concat id ".child")
+                               (vector "   child" id)))))
+     (should (eq t (gitlab-list--set-expanded "10" t)))
+     (gitlab-list--render nil nil)
+     (should (equal '("10" "10.child" "20")
+                    (mapcar #'car tabulated-list-entries)))
+     (should (string-match-p "child" (buffer-string)))
+     (should (gitlab--goto-property 'tabulated-list-id "10.child"))
+     (should (equal "10" (gitlab-list--parent-id-at-point)))
+     (should (equal '(row . "10") (gitlab--line-identity)))
+     (should (equal '("10" "20")
+                    (mapcar #'car (gitlab-list--children))))
+     ;; TAB on the child row collapses the row of the parent.
+     (gitlab-list-toggle-expansion)
+     (should (equal '("10" "20")
+                    (mapcar #'car tabulated-list-entries))))))
+
+(ert-deftest gitlab-mode-list-order-keeps-children ()
+  "The sort keeps a child row behind its parent in both directions.
+`tabulated-list-print' reverses the sort of a descending key by
+swapping the arguments, and that swap would turn a child in front
+of its parent.  The list layer therefore sorts the parent rows
+alone and adds the child rows after the sort."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 8 t)])
+     (setq-local gitlab-list--child-function
+                 (lambda (id)
+                   (list (cons (concat id ".child")
+                               (vector "  child")))))
+     (gitlab-list--set-expanded "10" t)
+     (gitlab-list--set-expanded "20" t)
+     (let ((entries '(("20" ["20"]) ("10" ["10"]))))
+       (setq tabulated-list-sort-key '("ID" . nil))
+       (should (equal '("10" "10.child" "20" "20.child")
+                      (mapcar #'car
+                              (gitlab-list--ordered-entries entries))))
+       (setq tabulated-list-sort-key '("ID" . t))
+       (should (equal '("20" "20.child" "10" "10.child")
+                      (mapcar #'car
+                              (gitlab-list--ordered-entries entries))))))))
+
+(ert-deftest gitlab-mode-list-sort-command ()
+  "`gitlab-list-sort' sets the key, flips it and returns the order."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 8 t) ("Title" 20 t)])
+     (setq-local tabulated-list-sort-key nil)
+     (setq-local gitlab--last-data '((id . 1)))
+     (setq-local gitlab-list--entries-function
+                 (lambda (_data)
+                   (list (list "2" (vector "2" "two"))
+                         (list "1" (vector "1" "one")))))
+     (gitlab-list-sort 0)
+     (should (equal '("ID" . nil) tabulated-list-sort-key))
+     (should (equal '("1" "2") (mapcar #'car tabulated-list-entries)))
+     (gitlab-list-sort 0)
+     (should (equal '("ID" . t) tabulated-list-sort-key))
+     (should (equal '("2" "1") (mapcar #'car tabulated-list-entries)))
+     (gitlab-list-sort -1)
+     (should-not tabulated-list-sort-key)
+     (should (equal '("2" "1") (mapcar #'car tabulated-list-entries))))))
+
 (provide 'gitlab-mode-tests)
 
 ;;; gitlab-mode-tests.el ends here

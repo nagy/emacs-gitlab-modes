@@ -43,6 +43,18 @@
 ;; The rows read oldest first: glab answers the jobs array newest
 ;; first, so the table sorts a copy of it by job ID.
 ;;
+;; The pipeline list expands one row into the jobs of that pipeline.
+;; The child rows use the five columns of the table: the job ID, the
+;; status, the name, the stage and the finish time, or the running
+;; time of a job that still runs.  A fetch of the jobs runs on the
+;; first expansion and its answer stays in the buffer, because an
+;; automatic refresh must never collapse a row under the reader.  A
+;; pipeline whose status still runs takes one answer per collection
+;; refresh, and a final pipeline keeps its answer.  The job row of the
+;; list carries `gitlab-job-id', so RET opens the job log with the
+;; pipeline of the row and a bookmark reopens the list with the row
+;; expanded.
+;;
 ;; The job log streams `glab ci trace JOB-ID' into a read-only buffer.
 ;; ANSI colors become faces.  Killing the buffer deletes the process.
 ;; A finished log stays readable; `g' starts the trace again.
@@ -88,6 +100,7 @@
 
 (require 'cl-lib)
 (require 'outline)
+(require 'seq)
 (require 'subr-x)
 (require 'gitlab-data)
 (require 'gitlab-mode)
@@ -129,6 +142,29 @@ A longer name is truncated by the table layout, not by the data."
 A list buffer fits every width to its rows, so these numbers apply
 only with `gitlab-list-fit-columns' nil.")
 
+(defvar-local gitlab-pipeline--jobs nil
+  "Hash table of the jobs of the expanded pipelines of a list buffer.
+A key is a pipeline ID of the table.  The value is a plist:
+`:jobs' holds the decoded jobs array, `:loaded' marks an answer
+that arrived, `:process' the fetch that still runs, `:error' the
+condition of a failed fetch, `:stale' the mark that a refreshed
+collection outdates the answer, and `:tick' the count of the
+collection answers that the answer belongs to.
+
+The table belongs to the buffer, so an automatic refresh never
+collapses an expanded row and an answer that cannot change stays.
+Killing the buffer drops the table.")
+
+(put 'gitlab-pipeline--jobs 'permanent-local t)
+
+(defvar-local gitlab-pipeline--refresh-tick 0
+  "Number of collection answers that the current list buffer saw.
+`gitlab-pipeline--reconcile-jobs' reads the count, so a running
+pipeline takes one jobs fetch per collection answer and not one per
+render.")
+
+(put 'gitlab-pipeline--refresh-tick 'permanent-local t)
+
 (defun gitlab-pipeline--rows (data)
   "Return an alist of pipeline ID to row for DATA."
   (mapcar (lambda (pipeline)
@@ -162,15 +198,49 @@ only with `gitlab-list-fit-columns' nil.")
 
 (defun gitlab-pipeline--fetch-list (success error)
   "Fetch the pipeline list for the current list buffer.
-Call SUCCESS with the decoded array, or ERROR with a condition."
-  (gitlab-pipeline-list-async success error gitlab-list--arguments))
+Call SUCCESS with the decoded array, or ERROR with a condition.
+The function counts the answer and outdates the jobs of a running
+pipeline once per answer."
+  (let ((buffer (current-buffer)))
+    (gitlab-pipeline-list-async
+     (lambda (data)
+       (when (buffer-live-p buffer)
+         (with-current-buffer buffer
+           (setq gitlab-pipeline--refresh-tick
+                 (1+ (or gitlab-pipeline--refresh-tick 0)))
+           (when (and (gitlab-pipeline--outdate-jobs data)
+                      (equal data gitlab--last-data))
+             ;; `gitlab--refresh-done' renders no unchanged answer,
+             ;; so the buffer prints its rows here and the child rows
+             ;; of a live pipeline fetch their jobs again.
+             (gitlab-pipeline--jobs-reprint))))
+       (funcall success data))
+     error
+     gitlab-list--arguments)))
+
+(defun gitlab-pipeline--open-row (id)
+  "Open the pipeline list row ID.
+A parent row opens its detail buffer.  A job row opens the log of
+the job, and it names the pipeline of the job, so the log can walk
+up without a request.  A note row reports a fetch, so it opens the
+pipeline that the fetch belongs to."
+  (cond
+   ((not (consp id)) (gitlab-display-pipeline id))
+   ((stringp (car id))
+    (gitlab-display-job-log (cdr id)
+                            (gitlab-pipeline--job-name (car id) (cdr id))
+                            (car id)))
+   (t (gitlab-display-pipeline (cdr id)))))
 
 (define-derived-mode gitlab-pipeline-list-mode gitlab-list-mode
   "GitLab Pipelines"
   "Display the CI pipelines of the current project.
 The table columns are ID, Status, Ref, Source and Updated.  RET
-opens the pipeline at point; c copies its ID and w opens its web
-page."
+opens the pipeline at point, a job row opens its log, c copies the
+ID and w opens the web page.  TAB expands a pipeline row into its
+jobs: the job ID, the status, the name, the stage and the finish
+time or the time that the job runs.  A double click toggles the row
+as well, and one left click keeps the selection."
   :group 'gitlab
   (setq-local tabulated-list-format gitlab-pipeline-list-format)
   (setq-local tabulated-list-sort-key '("Updated" . t))
@@ -178,7 +248,14 @@ page."
   (setq-local gitlab-list--fetch-function #'gitlab-pipeline--fetch-list)
   (setq-local gitlab-list--entries-function #'gitlab-pipeline--entries)
   (setq-local gitlab-list--rows-function #'gitlab-pipeline--rows)
-  (setq-local gitlab-list--open-function #'gitlab-display-pipeline))
+  (setq-local gitlab-list--open-function #'gitlab-pipeline--open-row)
+  (setq-local gitlab-list--child-function #'gitlab-pipeline--child-entries)
+  (setq-local gitlab-list--child-reset-function
+              #'gitlab-pipeline--forget-jobs)
+  (setq-local gitlab-list--row-id-function
+              #'gitlab-pipeline--row-id-string)
+  (setq-local gitlab-list--row-data-function #'gitlab-pipeline--row-data)
+  (add-hook 'kill-buffer-hook #'gitlab-pipeline--cancel-jobs nil t))
 
 ;;;###autoload
 (defun gitlab-list-pipelines (&optional arguments)
@@ -201,6 +278,257 @@ context prompts for the project, because neither a Git remote nor
        #'gitlab-pipeline-list-mode
        (lambda ()
          (setq-local gitlab-list--arguments arguments))))))
+
+(define-key gitlab-pipeline-list-mode-map [double-mouse-1]
+            #'gitlab-list-mouse-toggle)
+(define-key gitlab-pipeline-list-mode-map [follow-link]
+            #'gitlab-list--click-selects-row)
+
+;;; Expanded job rows
+
+(defun gitlab-pipeline--indent ()
+  "Return the indentation of a child row of the pipeline list."
+  (declare (pure t) (side-effect-free t))
+  (make-string (max gitlab-list-expand-indent 0) ?\s))
+
+(defun gitlab-pipeline--jobs-state (pipeline-id)
+  "Return the jobs state plist of PIPELINE-ID, or nil."
+  (and (hash-table-p gitlab-pipeline--jobs)
+       (gethash pipeline-id gitlab-pipeline--jobs)))
+
+(defun gitlab-pipeline--jobs-set (pipeline-id &rest properties)
+  "Set the jobs state of PIPELINE-ID from PROPERTIES.
+Return the new state."
+  (unless (hash-table-p gitlab-pipeline--jobs)
+    (setq gitlab-pipeline--jobs (make-hash-table :test #'equal)))
+  (let ((state (gethash pipeline-id gitlab-pipeline--jobs))
+        (rest properties))
+    (while rest
+      (setq state (plist-put state (car rest) (cadr rest))
+            rest (cddr rest)))
+    (puthash pipeline-id state gitlab-pipeline--jobs)
+    state))
+
+(defun gitlab-pipeline--forget-jobs (pipeline-id)
+  "Forget the jobs of PIPELINE-ID and cancel their fetch.
+`gitlab-list--child-reset-function' runs this function, so the
+next expansion of the row asks GitLab again."
+  (let ((state (gitlab-pipeline--jobs-state pipeline-id)))
+    (when-let* ((process (plist-get state :process)))
+      (when (processp process)
+        (delete-process process)))
+    (when (hash-table-p gitlab-pipeline--jobs)
+      (remhash pipeline-id gitlab-pipeline--jobs))))
+
+(defun gitlab-pipeline--jobs-fetch (pipeline-id)
+  "Fetch the jobs of PIPELINE-ID for the current list buffer.
+Return the process object.  A previous answer stays in place, so a
+reader sees the rows of a live pipeline while the new fetch runs.
+The state of the row counts the collection answer, so a refresh
+moves it on and a render of the same answer never fetches twice."
+  (let ((buffer (current-buffer))
+        process)
+    (gitlab-pipeline--jobs-set pipeline-id
+                               :process t
+                               :error nil
+                               :stale nil
+                               :tick gitlab-pipeline--refresh-tick)
+    (setq process
+          (gitlab-pipeline-jobs-async
+           pipeline-id
+           (lambda (jobs)
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (gitlab-pipeline--jobs-arrive pipeline-id jobs))))
+           (lambda (error)
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (gitlab-pipeline--jobs-fail pipeline-id error))))))
+    (gitlab-pipeline--jobs-set pipeline-id :process process)
+    process))
+
+(defun gitlab-pipeline--jobs-arrive (pipeline-id jobs)
+  "Store the answer of PIPELINE-ID, JOBS, and print the list again."
+  (when (gitlab-pipeline--jobs-state pipeline-id)
+    (gitlab-pipeline--jobs-set pipeline-id
+                               :process nil
+                               :error nil
+                               :stale nil
+                               :loaded t
+                               :jobs (if (listp jobs)
+                                         (gitlab-pipeline--sort-jobs jobs)
+                                       jobs))
+    (gitlab-pipeline--jobs-reprint)))
+
+(defun gitlab-pipeline--jobs-fail (pipeline-id error)
+  "Store the failed fetch of PIPELINE-ID in ERROR and print again."
+  (when (gitlab-pipeline--jobs-state pipeline-id)
+    (gitlab-pipeline--jobs-set pipeline-id :process nil :error error)
+    (gitlab-pipeline--jobs-reprint)))
+
+(defun gitlab-pipeline--jobs-reprint ()
+  "Print the rows of the current list buffer again.
+The render keeps point through the row identity, so a reader stays
+on the line that the answer changed."
+  (when (and (derived-mode-p 'gitlab-pipeline-list-mode)
+             gitlab--last-data)
+    (gitlab--render)))
+
+(defun gitlab-pipeline--cancel-jobs ()
+  "Cancel the jobs fetches of the current list buffer."
+  (when (hash-table-p gitlab-pipeline--jobs)
+    (maphash (lambda (_pipeline-id state)
+               (when-let* ((process (plist-get state :process)))
+                 (when (processp process)
+                   (delete-process process))))
+             gitlab-pipeline--jobs)))
+
+(defun gitlab-pipeline--outdate-jobs (data)
+  "Outdate the cached jobs that the collection DATA moves on.
+DATA is the pipeline list of the buffer.  The answer of a pipeline
+that still runs goes stale once per collection answer, so the next
+render fetches the jobs again and its child rows follow a live
+pipeline.  The answer of a final pipeline stays, because nothing
+changes it without a user action.  A pipeline that left the table
+loses its answer, so a buffer that another display reuses keeps no
+row of the old collection.  Return non-nil when an answer went
+stale."
+  (when (hash-table-p gitlab-pipeline--jobs)
+    (let ((tick (or gitlab-pipeline--refresh-tick 0))
+          (seen (make-hash-table :test #'equal))
+          (gone nil)
+          (stale nil))
+      (dolist (pipeline data)
+        (let ((id (gitlab-data-id-string (gitlab-data-field "id" pipeline))))
+          (puthash id t seen)
+          (let ((state (gitlab-pipeline--jobs-state id)))
+            (when (and state
+                       (< (or (plist-get state :tick) -1) tick)
+                       (gitlab--transitional-state-p
+                        (gitlab-data-field-string "status" pipeline)))
+              (setq stale t)
+              (gitlab-pipeline--jobs-set id :stale t)))))
+      (maphash (lambda (id _state)
+                 (unless (gethash id seen)
+                   (push id gone)))
+               gitlab-pipeline--jobs)
+      (dolist (id gone)
+        (gitlab-pipeline--forget-jobs id))
+      stale)))
+
+(defun gitlab-pipeline--note-entry (pipeline-id text face)
+  "Return a child row of PIPELINE-ID that reads TEXT with FACE.
+The row reports a fetch that still runs, a failed fetch or a
+pipeline without jobs, so it takes no command of its own."
+  (list (cons 'note pipeline-id)
+        (vector (gitlab-pipeline--indent)
+                ""
+                (propertize text 'face face)
+                ""
+                "")))
+
+(defun gitlab-pipeline--job-entries (pipeline-id jobs)
+  "Return the table rows of pipeline PIPELINE-ID, one per job of JOBS."
+  (mapcar (lambda (job) (gitlab-pipeline--job-entry pipeline-id job)) jobs))
+
+(defun gitlab-pipeline--job-entry (pipeline-id job)
+  "Return the table entry of pipeline PIPELINE-ID for JOB.
+The row ID is a cons of the pipeline ID and the job ID, so a job
+never meets a pipeline of the same number.  The five columns of
+the pipeline list read the job: the job ID, the status, the name,
+the stage and the finish time or the time that the job runs."
+  (let* ((job-id (gitlab-data-id-string (gitlab-data-field "id" job)))
+         (status (gitlab-data-field-string "status" job))
+         (name (gitlab-data-field-string "name" job)))
+    (list (cons pipeline-id job-id)
+          (vector
+           (gitlab--nav-string
+            (concat (gitlab-pipeline--indent)
+                    (propertize job-id 'face 'gitlab-id))
+            'gitlab-job-id job-id
+            (format "Job %s (%s)" name job-id))
+           (propertize status 'face (or (gitlab--status-face status)
+                                        'default))
+           name
+           (gitlab-data-field-string "stage" job)
+           (gitlab-pipeline--job-time-cell job)))))
+
+(defun gitlab-pipeline--job-time-cell (job)
+  "Return the Updated cell of JOB.
+A job that ended shows the time of its end.  A job that still runs
+shows the time that it runs, so a reader sees the age of a slow job
+in the column that holds the pipeline time."
+  (let ((finished (gitlab-data-field "finished_at" job))
+        (status (gitlab-data-field-string "status" job)))
+    (cond
+     ((and (stringp finished) (not (string-empty-p finished)))
+      (gitlab-list--date-cell finished))
+     ((gitlab--transitional-state-p status)
+      (if-let* ((seconds (gitlab--elapsed-seconds
+                          (gitlab-data-field "started_at" job))))
+          (propertize (format "running %s" (gitlab--format-duration seconds))
+                      'face 'gitlab-date)
+        "-"))
+     (t "-"))))
+
+(defun gitlab-pipeline--child-entries (pipeline-id)
+  "Return the child rows of pipeline PIPELINE-ID.
+A row without an answer starts the jobs fetch and shows the row
+that reports the fetch.  A failed fetch shows the condition and
+waits for the next collection answer, so a failure never repeats
+in a loop.  An answer that a refreshed collection outdates stays
+in place while the new fetch runs, so the rows of a live pipeline
+never vanish under the reader."
+  (let* ((state (gitlab-pipeline--jobs-state pipeline-id))
+         (loaded (plist-get state :loaded))
+         (error (plist-get state :error))
+         (jobs (plist-get state :jobs)))
+    (when (and (not (plist-get state :process))
+               (or (and (not loaded) (not error))
+                   (plist-get state :stale)))
+      (gitlab-pipeline--jobs-fetch pipeline-id))
+    (cond
+     (loaded
+      (if (null jobs)
+          (list (gitlab-pipeline--note-entry pipeline-id "No jobs."
+                                             'gitlab-date))
+        (gitlab-pipeline--job-entries pipeline-id jobs)))
+     (error
+      (list (gitlab-pipeline--note-entry
+             pipeline-id
+             (format "Jobs: %s" (gitlab--error-message error))
+             'gitlab-error)))
+     (t
+      (list (gitlab-pipeline--note-entry pipeline-id "Loading jobs..."
+                                         'gitlab-date))))))
+
+(defun gitlab-pipeline--row-id-string (id)
+  "Return the ID string of the list row ID.
+A job row names the job.  A note row names the pipeline, because it
+reports the fetch of that pipeline."
+  (declare (pure t) (side-effect-free t))
+  (if (consp id) (cdr id) id))
+
+(defun gitlab-pipeline--row-data (id)
+  "Return the decoded row data of the list row ID.
+A parent row comes from the collection, a job row from the jobs of
+its pipeline.  A note row holds no data."
+  (cond
+   ((not (consp id))
+    (alist-get id gitlab-list--rows nil nil #'equal))
+   ((stringp (car id))
+    (when-let* ((jobs (plist-get (gitlab-pipeline--jobs-state (car id))
+                                 :jobs)))
+      (seq-find (lambda (job)
+                  (equal (gitlab-data-id-string
+                          (gitlab-data-field "id" job))
+                         (cdr id)))
+                jobs)))))
+
+(defun gitlab-pipeline--job-name (pipeline-id job-id)
+  "Return the name of the job PIPELINE-ID holds under JOB-ID."
+  (when-let* ((row (gitlab-pipeline--row-data (cons pipeline-id job-id))))
+    (gitlab-data-field-string "name" row)))
 
 ;;; Pipeline detail
 

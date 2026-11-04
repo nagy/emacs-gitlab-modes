@@ -31,6 +31,10 @@ installed package works without =glab= on =PATH=.
 | =gitlab-next-sibling=                 | The next object of the parent view.                |
 | =gitlab-previous-sibling=             | The previous object of the parent view.            |
 | =gitlab-export-json=                  | The glab JSON answer of the buffer, in one buffer.  |
+| =gitlab-list-sort=                    | Sort a list by the column at point.                |
+| =gitlab-list-toggle-expansion=        | Expand a pipeline row into its jobs.               |
+| =gitlab-list-expand-all=              | Expand every row of a list.                        |
+| =gitlab-list-collapse-all=            | Collapse every row of a list.                      |
 
 The list commands prompt for the project when the current directory
 names none.  Each project and each instance gets its own buffer, so
@@ -217,6 +221,48 @@ set to nil keeps the widths of the table format of the collection.
 =thing-at-point 'url= on a row returns the upstream web URL of that
 merge request or pipeline, so =browse-url-at-point= and every caller
 that reads a URL work on the table.
+
+=gitlab-list-sort= on =S= sorts the table by the column at point and
+turns the direction on a second call.  A numeric prefix names the
+column, and a prefix of -1 returns the order of the collection.  The
+command replaces =tabulated-list-sort=, because it keeps the child rows
+of an expanded row together with that row.
+
+** Expanded pipeline rows
+
+The pipeline list expands one row into the jobs of that pipeline.
+=TAB= toggles the row at point, and a double click does the same.
+=TAB= on a job row collapses the pipeline that holds the job.
+=M-x gitlab-list-expand-all= and =M-x gitlab-list-collapse-all= serve
+the whole table.
+
+The job row uses the five columns of the table:
+
+| Column  | Pipeline row | Job row                          |
+|---------+--------------+----------------------------------|
+| ID      | Pipeline ID  | Job ID, indented                 |
+| Status  | Status       | Status                           |
+| Ref     | Ref          | Job name                         |
+| Source  | Trigger      | Stage                            |
+| Updated | Updated time | Finish time, or the running time |
+
+=RET= on a job row opens the job log, =c= copies the job ID, =w= opens
+the job page and a bookmark stores the job.  A bookmark jump opens the
+list with the pipeline expanded and point on the job row.  A sibling
+walk reads the pipeline rows alone.
+
+A fetch of the jobs runs on the first expansion and the answer stays in
+the buffer, so an automatic refresh never collapses a row.  A pipeline
+whose status still runs takes one fresh answer per collection refresh,
+because its jobs can change.  A pipeline with a final status keeps its
+answer, because only a user action moves it.  The rows of the old
+answer stay on screen while a new one loads, a row that still waits
+reads =Loading jobs...=, and a failed fetch names the condition.
+
+One left click on a pipeline row selects it and does not follow the
+link of the ID cell, so a double click can toggle the row.  The middle
+button opens the row, as before.  A single click keeps its meaning in
+the merge request list, because no row there expands.
 
 * Buffer names and buffer lists
 
