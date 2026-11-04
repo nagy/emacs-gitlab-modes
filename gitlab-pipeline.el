@@ -1669,6 +1669,7 @@ a region leaves out the timestamp prefix while it stays hidden, the
 text of a section header and the text of every end marker."
   :group 'gitlab
   (gitlab--use-project-directory)
+  (gitlab--init-text-links)
   (setq-local bookmark-make-record-function
               #'gitlab-job-log--bookmark-make-record)
   (setq-local gitlab--kind 'job)

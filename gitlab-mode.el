@@ -114,8 +114,10 @@
 (require 'autorevert)
 (require 'bookmark)
 (require 'browse-url)
+(require 'bug-reference)
 (require 'button)
 (require 'cl-lib)
+(require 'goto-addr)
 (require 'json)
 (require 'seq)
 (require 'subr-x)
@@ -270,6 +272,25 @@ its header when that is wider.  When the columns are wider than the
 window, the widest columns shrink to one common cap, so no column
 goes below its header.  A nil value keeps the widths of the table
 format of the collection."
+  :type 'boolean
+  :group 'gitlab)
+
+(defcustom gitlab-bug-reference t
+  "Whether a display buffer links the identifiers in its text.
+When non-nil, a commit subject, a note body and a job trace turn a
+reference such as !12, #34 or &56 into a link to the web page of
+the object, and a reference that starts with a project path links
+that project.  The sigils follow `gitlab-data-identifier-signs'.
+The link comes from `bug-reference-mode', so its own keys follow
+it."
+  :type 'boolean
+  :group 'gitlab)
+
+(defcustom gitlab-goto-address t
+  "Whether a display buffer links the URLs in its text.
+When non-nil, `goto-address-mode' turns a URL of a job trace or of
+a note body into a link, so the reader opens it with the keys of
+that mode."
   :type 'boolean
   :group 'gitlab)
 
@@ -1095,6 +1116,68 @@ no mouse face of its own."
   (gitlab--button-string (propertize text property value)
                          (or help (format "%s" value))))
 
+;;; Text links
+
+;; A display buffer links the object references of its text through
+;; `bug-reference-mode' and the URLs of its text through
+;; `goto-address-mode'.  Both modes fontify through jit-lock and mark
+;; their text with an overlay, so no renderer carries a link of its
+;; own and a copy of the text stays plain.
+
+(defun gitlab--bug-reference-regexp ()
+  "Return the regexp that matches a GitLab reference in text.
+Group 1 is the link region, as `bug-reference-bug-regexp'
+requires, and it covers group 2 to group 4.  Group 2 holds the
+optional project path, group 3 the sigil and group 4 the number.
+The sigils come from `gitlab-data-identifier-signs', and the path
+needs one slash, so a bare word before a sigil never reads as a
+project."
+  (declare (side-effect-free t))
+  (let ((signs (mapconcat (lambda (entry) (regexp-quote (cdr entry)))
+                          gitlab-data-identifier-signs
+                          "\\|"))
+        (path "[[:alnum:]_.-]+\\(?:/[[:alnum:]_.-]+\\)+"))
+    (concat "\\(?1:\\(?2:" path "\\)?\\(?3:" signs "\\)\\(?4:[0-9]+\\)\\)"
+            "\\b")))
+
+(defun gitlab--bug-reference-repository (project)
+  "Return PROJECT on the instance of the current buffer.
+A nil PROJECT answers the project context of the buffer.  A
+reference of another project keeps the instance of the buffer,
+because a project path alone names no instance."
+  (declare (side-effect-free t))
+  (let* ((context (or gitlab--context gitlab-repository))
+         (host (car (gitlab-cli-repository-split context))))
+    (cond
+     ((null project) context)
+     (host (concat project "@" host))
+     (t project))))
+
+(defun gitlab--bug-reference-url ()
+  "Return the web URL of the reference at point.
+`bug-reference-url-format' names this function, so the match data
+of `bug-reference-bug-regexp' carries the sigil, the number and
+the optional project."
+  (let* ((kind (car (rassoc (match-string-no-properties 3)
+                            gitlab-data-identifier-signs)))
+         (id (match-string-no-properties 4))
+         (project (match-string-no-properties 2)))
+    (when kind
+      (gitlab-web-url kind id (gitlab--bug-reference-repository project)))))
+
+(defun gitlab--init-text-links ()
+  "Link the references and the URLs of the current buffer.
+The helper sets the buffer-local `bug-reference-bug-regexp' and
+`bug-reference-url-format' before it enables the mode, because
+`bug-reference-mode' runs no auto setup of its own when both hold
+a value already."
+  (when gitlab-bug-reference
+    (setq-local bug-reference-bug-regexp (gitlab--bug-reference-regexp))
+    (setq-local bug-reference-url-format #'gitlab--bug-reference-url)
+    (bug-reference-mode 1))
+  (when gitlab-goto-address
+    (goto-address-mode 1)))
+
 (defun gitlab--format-object (object)
   "Return a readable one-line form of the decoded OBJECT."
   (declare (pure t) (side-effect-free t))
@@ -1601,6 +1684,7 @@ A derived mode sets `gitlab--fetch-function' and
 without blocking Emacs."
   :group 'gitlab
   (gitlab--init-display-buffer)
+  (gitlab--init-text-links)
   (setq-local imenu-create-index-function #'gitlab--imenu-index)
   (setq-local gitlab--render-function #'gitlab--render-default)
   (setq-local truncate-lines nil))

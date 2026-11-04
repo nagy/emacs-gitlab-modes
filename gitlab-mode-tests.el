@@ -480,6 +480,80 @@ A list buffer keeps the click for the selection of a row."
     (should (eq 'highlight (get-text-property 0 'mouse-face cell)))
     (should-not (get-text-property 0 'keymap cell))))
 
+(defun gitlab-mode-test--reference-url (text)
+  "Return the web URL of the first reference of TEXT."
+  (with-temp-buffer
+    (setq-local gitlab--context "group/project@gitlab.example.com")
+    (insert text)
+    (goto-char (point-min))
+    (should (re-search-forward (gitlab--bug-reference-regexp) nil t))
+    (gitlab--bug-reference-url)))
+
+(ert-deftest gitlab-mode-bug-reference-regexp ()
+  "The reference regexp marks the sigil, the number and the project."
+  (with-temp-buffer
+    (insert "Fix !12 and other/proj#34 and a/b/c!7 and plain")
+    (goto-char (point-min))
+    (let ((regexp (gitlab--bug-reference-regexp)))
+      (should (re-search-forward regexp nil t))
+      (should (equal "!12" (match-string-no-properties 0)))
+      (should-not (match-string-no-properties 2))
+      (should (equal "!" (match-string-no-properties 3)))
+      (should (equal "12" (match-string-no-properties 4)))
+      (should (re-search-forward regexp nil t))
+      (should (equal "other/proj#34" (match-string-no-properties 0)))
+      (should (equal "other/proj" (match-string-no-properties 2)))
+      (should (equal "#" (match-string-no-properties 3)))
+      (should (re-search-forward regexp nil t))
+      (should (equal "a/b/c!7" (match-string-no-properties 0)))
+      (should-not (re-search-forward regexp nil t)))))
+
+(ert-deftest gitlab-mode-bug-reference-url ()
+  "A reference becomes the web URL of its object on the buffer instance."
+  (should (equal
+           "https://gitlab.example.com/group/project/-/merge_requests/12"
+           (gitlab-mode-test--reference-url "Fix !12")))
+  (should (equal
+           "https://gitlab.example.com/other/proj/-/pipelines/34"
+           (gitlab-mode-test--reference-url "See other/proj#34")))
+  (should (equal
+           "https://gitlab.example.com/group/project/-/jobs/56"
+           (gitlab-mode-test--reference-url "Job &56"))))
+
+(ert-deftest gitlab-mode-detail-links-text ()
+  "A detail buffer links its text through two built-in modes."
+  (let ((gitlab-bug-reference t)
+        (gitlab-goto-address t))
+    (with-temp-buffer
+      (gitlab-detail-mode)
+      (should bug-reference-mode)
+      (should goto-address-mode)
+      (should (equal (gitlab--bug-reference-regexp)
+                     bug-reference-bug-regexp))
+      (should (eq #'gitlab--bug-reference-url bug-reference-url-format))))
+  (let ((gitlab-bug-reference nil)
+        (gitlab-goto-address nil))
+    (with-temp-buffer
+      (gitlab-detail-mode)
+      (should-not bug-reference-mode)
+      (should-not goto-address-mode))))
+
+(ert-deftest gitlab-mode-detail-reference-overlay ()
+  "The overlay of a reference carries its web URL."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (insert "Fix !12\n")
+     (gitlab-detail-mode)
+     (setq-local gitlab--context "group/project@gitlab.example.com")
+     (bug-reference-fontify (point-min) (point-max))
+     (let ((overlay (seq-find (lambda (overlay)
+                                (overlay-get overlay 'bug-reference-url))
+                              (overlays-in (point-min) (point-max)))))
+       (should overlay)
+       (should (equal
+                "https://gitlab.example.com/group/project/-/merge_requests/12"
+                (overlay-get overlay 'bug-reference-url)))))))
+
 (ert-deftest gitlab-mode-list-revert ()
   "`revert-buffer' fetches the collection again."
   (gitlab-test-with-environment

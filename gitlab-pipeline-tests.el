@@ -421,6 +421,19 @@ right, so a reader compares two durations by their last digit."
       (should (search-forward "3s" nil t))
       (should (= edge (current-column))))))
 
+(ert-deftest gitlab-pipeline-job-log-links-text ()
+  "A job log links the references and the URLs of its trace."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab job log links test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-job-log-mode)
+           (should bug-reference-mode)
+           (should goto-address-mode)
+           (should (equal (gitlab--bug-reference-regexp)
+                          bug-reference-bug-regexp)))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-detail-job-row-is-a-button ()
   "A job row is one text button of the type `gitlab-object'.
 The button carries the mouse face and the tooltip, and the row

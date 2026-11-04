@@ -74,6 +74,15 @@ marks a tag carries the =gitlab-tag= face, which inherits
 inherits =org-date=.  Magit and Org stay optional, because Emacs shows
 the face without its parent.
 
+A reference in the text of a detail buffer or of a job log becomes a
+link to the web page of the object.  The reference follows the
+identifier syntax of the package: =!12= names a merge request, =#34= a
+pipeline and =&56= a job, and a reference that starts with a project
+path, such as =group/project!12=, links that project.  A URL of a note
+or of a trace becomes a link too.  =RET= and =mouse-2= follow both.
+The option =gitlab-bug-reference= turns the references off, and
+=gitlab-goto-address= turns the URLs off.
+
 A pipeline buffer shows the pipeline fields at the top and the jobs
 table below.  The table lists the oldest job first, because glab
 answers the jobs array newest first.  =RET= on a job streams its log
