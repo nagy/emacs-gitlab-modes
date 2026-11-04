@@ -130,6 +130,76 @@
   (with-temp-buffer
     (should-error (gitlab-approve-merge-request) :type 'user-error)))
 
+(ert-deftest gitlab-merge-request-merge-data ()
+  "The merge entry point returns the text answer of glab."
+  (gitlab-test-with-environment
+   (let ((gitlab-repository "group/project"))
+     (should (string-match-p "Merged merge request !12"
+                             (gitlab-merge-request-merge "12"))))))
+
+(ert-deftest gitlab-merge-request-merge-command ()
+  "The merge command asks, sends the IID and reports the merge."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR merge test*"))
+         (iid nil)
+         (success nil)
+         (prompt nil)
+         (messages nil))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12")
+             (setq-local gitlab--context "group/project"))
+           (cl-letf (((symbol-function 'yes-or-no-p)
+                      (lambda (format-string &rest arguments)
+                        (setq prompt (apply #'format format-string arguments))
+                        t))
+                     ((symbol-function 'gitlab-merge-request-merge-async)
+                      (lambda (argument callback _error)
+                        (setq iid argument
+                              success callback))))
+             (with-current-buffer buffer
+               (call-interactively #'gitlab-merge-merge-request)))
+           (should (equal "Merge group/project!12? " prompt))
+           (should (equal "12" iid))
+           (should (functionp success))
+           (cl-letf (((symbol-function 'message)
+                      (lambda (format-string &rest arguments)
+                        (push (apply #'format format-string arguments)
+                              messages))))
+             (funcall success "✓ Merged merge request !12"))
+           (should (equal '("Merged group/project!12") messages)))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-merge-declined ()
+  "A declined confirmation sends no merge request."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR merge decline test*"))
+         (called nil))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12")
+             (setq-local gitlab--context "group/project"))
+           (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) nil))
+                     ((symbol-function 'gitlab-merge-request-merge-async)
+                      (lambda (&rest _) (setq called t))))
+             (with-current-buffer buffer
+               (call-interactively #'gitlab-merge-merge-request)))
+           (should-not called))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-merge-command-elsewhere ()
+  "The merge command needs a merge request buffer."
+  (with-temp-buffer
+    (should-error (gitlab-merge-merge-request) :type 'user-error)))
+
 (ert-deftest gitlab-merge-request-detail-render ()
   "The detail buffer shows fields and nested objects."
   (gitlab-test-with-environment
@@ -440,6 +510,8 @@ request of another project opens the list of that project."
                  (command-modes #'gitlab-merge-request-show-log)))
   (should (equal '(gitlab-merge-request-mode)
                  (command-modes #'gitlab-approve-merge-request)))
+  (should (equal '(gitlab-merge-request-mode)
+                 (command-modes #'gitlab-merge-merge-request)))
   (should-not (command-modes #'gitlab-list-merge-requests))
   (should-not (command-modes #'gitlab-display-merge-request)))
 

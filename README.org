@@ -59,7 +59,9 @@ pipeline becomes =#ID status= with a link to the pipeline buffer.
 =RET= opens the object at point.  =n= loads the notes below the fields.
 The command =gitlab-approve-merge-request= approves the merge request on
 behalf of the current user.  The request runs in the background, so the
-buffer never blocks.
+buffer never blocks.  The command =gitlab-merge-merge-request= merges
+it.  It asks for confirmation first, because a merge changes the
+target branch.
 A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 An author carries the =gitlab-author= face, which inherits the Magit
@@ -220,7 +222,10 @@ Both detail modes provide these keys:
 A merge request buffer also binds =n= for the notes, =d= for the local
 changes and =l= for the local commit log.  The command
 =gitlab-approve-merge-request= runs =glab mr approve= in the background
-and reports the approval in the echo area.  It holds no key.
+and reports the approval in the echo area.  The command
+=gitlab-merge-merge-request= asks for confirmation, runs =glab mr merge=
+in the background and reports the merge in the echo area.  Both hold
+no key.
 
 * List buffers
 

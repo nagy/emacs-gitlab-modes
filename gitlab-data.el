@@ -352,6 +352,30 @@ ERROR receives a condition.  Return the process object."
     (gitlab--cli-merge-request-approve-arguments iid)
     success error 'text)))
 
+(defun gitlab--cli-merge-request-merge-arguments (iid)
+  "Return the glab arguments that merge merge request IID.
+The arguments pass --yes, because the CLI must never prompt."
+  (gitlab-cli--repository-arguments
+   (list "mr" "merge" (gitlab-data-id-string iid) "--yes")))
+
+(defun gitlab-merge-request-merge (iid)
+  "Merge merge request IID on behalf of the current user.
+IID is the project-scoped number that the web interface writes
+as !123.  Return the text answer of glab, which names the merge
+request and its new state.  A failing request signals
+`gitlab-cli-error'."
+  (gitlab--with-backend
+   (gitlab-cli-request
+    (gitlab--cli-merge-request-merge-arguments iid) 'text)))
+
+(defun gitlab-merge-request-merge-async (iid success error)
+  "Merge merge request IID and deliver the text answer to SUCCESS.
+ERROR receives a condition.  Return the process object."
+  (gitlab--with-backend
+   (gitlab-cli-request-async
+    (gitlab--cli-merge-request-merge-arguments iid)
+    success error 'text)))
+
 (defun gitlab-merge-request-list-cached (&optional arguments)
   "Return the cached merge request list, fetching it when stale.
 ARGUMENTS holds extra glab flags.  Prompts use this; display

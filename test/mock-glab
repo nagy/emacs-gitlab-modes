@@ -17,6 +17,10 @@ case "$arguments" in
     read -r -a argv <<< "$arguments"
     printf '✓ Approved merge request !%s\n' "${argv[2]}"
     ;;
+  *"mr merge"*)
+    read -r -a argv <<< "$arguments"
+    printf '✓ Merged merge request !%s\n' "${argv[2]}"
+    ;;
   *"mr list"*) cat "$fixture_dir/mr-list.json" ;;
   *"mr view"*) cat "$fixture_dir/mr-view.json" ;;
   *"merge_requests/"*"/notes"*) cat "$fixture_dir/mr-notes.json" ;;

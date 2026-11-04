@@ -42,7 +42,8 @@
 ;; renders the notes below the fields.  A later refresh keeps them.
 ;;
 ;; The command `gitlab-approve-merge-request' approves the merge
-;; request on behalf of the user.
+;; request on behalf of the user, and the command
+;; `gitlab-merge-merge-request' merges it.
 ;;
 ;; The list columns are IID, Title, State, Author, Branches, Labels and
 ;; Updated.  The row identity is the IID, so an update keeps point on
@@ -322,6 +323,39 @@ state.  A failing request shows its condition in the header line."
          (with-current-buffer buffer
            (gitlab--set-error error)))))))
 
+(defun gitlab-merge-request--merge-done (buffer iid)
+  "Report in BUFFER that the user merged merge request IID."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (message "Merged %s"
+               (gitlab-data-identifier 'merge-request iid gitlab--context)))))
+
+;;;###autoload
+(defun gitlab-merge-merge-request ()
+  "Merge the current merge request.
+Ask for confirmation, because a merge changes the target branch,
+and run `glab mr merge' in the background, so the buffer never
+blocks.  The answer of the merge request holds no merge request
+field, so the buffer keeps its text and the next refresh shows the
+new state.  A failing request shows its condition in the header
+line."
+  (interactive nil gitlab-merge-request-mode)
+  (unless (derived-mode-p 'gitlab-merge-request-mode)
+    (user-error "This is not a merge request buffer"))
+  (let* ((buffer (current-buffer))
+         (iid gitlab--id)
+         (identifier (gitlab-data-identifier 'merge-request iid
+                                             gitlab--context)))
+    (when (yes-or-no-p (format "Merge %s? " identifier))
+      (gitlab-merge-request-merge-async
+       iid
+       (lambda (_text)
+         (gitlab-merge-request--merge-done buffer iid))
+       (lambda (error)
+         (when (buffer-live-p buffer)
+           (with-current-buffer buffer
+             (gitlab--set-error error))))))))
+
 (define-derived-mode gitlab-merge-request-mode gitlab-detail-mode
   "GitLab Merge Request"
   "Display one GitLab merge request.
@@ -332,8 +366,8 @@ d shows the local changes and l the local commit log, and an
 active region over commit lines limits both to those commits.
 `gitlab-merge-request-show-notes' loads the notes below the fields.
 `gitlab-approve-merge-request' approves the merge request on
-behalf of the user.  RET opens the pipeline, the commit or the web
-page at point."
+behalf of the user, and `gitlab-merge-merge-request' merges it.
+RET opens the pipeline, the commit or the web page at point."
   :group 'gitlab
   (setq-local gitlab--kind 'merge-request)
   (setq-local gitlab--label "GitLab merge request")

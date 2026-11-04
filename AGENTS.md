@@ -21,11 +21,11 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab-merge-request-approve` and its asynchronous form are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab-merge-request-approve` and its asynchronous form are the write entry points, and `gitlab-merge-request-merge` and its asynchronous form are the second pair.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
-| `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command, the approval command and the merge request list as the parent view of a detail buffer. |
+| `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
@@ -143,6 +143,14 @@ without evil.  The suite never opens a network connection.
   failure goes through `gitlab--set-error`, which the next render
   clears.  The command holds no key: the merge request keymap keeps no
   binding that would shadow an evil motion.
+- `gitlab-merge-request-merge` is the second write entry point.  It
+  runs `glab mr merge IID --yes` with PARSE `text` and returns that
+  text.  `--yes` is required, because `GLAB_NO_PROMPT=1` leaves the
+  submission prompt of glab without an answer, and the Emacs command
+  asks `yes-or-no-p` for the same decision before it sends the
+  request.  The merge command `gitlab-merge-merge-request` follows
+  the approve command in every other respect, and it holds no key.
+  A declined confirmation sends no request.
 - The data cache serves prompts only.  `gitlab-cache-ttl` controls it;
   `gitlab-cache-clear` and `gitlab-cache-invalidate` drop entries.  A
   display buffer fetches fresh data on every refresh.
