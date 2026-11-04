@@ -24,7 +24,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab-merge-request-approve` and its asynchronous form are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` remap of both base modes. |
-| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID. |
+| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command, the approval command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
@@ -322,6 +322,18 @@ without evil.  The suite never opens a network connection.
   the display.  Do not prompt when a context exists: the C-u prefix
   already carries `--all` for merge requests and the extra glab flags of
   a pipeline list.
+- A prompt binds `completion-extra-properties` to a `:category`, an
+  `:annotation-function` and a `:display-sort-function`, so marginalia,
+  embark, `completion-preview` and `completion-category-overrides`
+  reach one kind of object as one kind of object.  The candidate of a
+  merge request is `!IID`, of a pipeline `#ID` and of a job the plain
+  job ID, and the object behind a candidate travels as the value of
+  `gitlab-read--candidates`, so the annotation reads fields and not the
+  candidate text.  `gitlab-read--selected` maps the candidate back to
+  the ID string and falls back to the typed text without its sigil.
+  `gitlab-read--sort-by-number` orders the identifiers by number, and
+  the project prompt keeps the order of `gitlab-repositories` with
+  `#'identity`, because the current project comes first.
 - `gitlab-cli--repository-arguments` passes `PATH` to `--repo` for the
   default instance and `https://HOST/PATH` for another one, because glab
   selects an instance from a URL.  `gitlab-cli-project-endpoint`

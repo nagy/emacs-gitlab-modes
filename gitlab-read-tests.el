@@ -26,11 +26,76 @@
   (should (equal "301" (gitlab-read--strip "#301" '(?! ?#))))
   (should (equal "plain" (gitlab-read--strip "plain" '(?! ?#)))))
 
-(ert-deftest gitlab-read-answer ()
-  "A matching label wins, otherwise the typed ID is returned."
-  (should (equal "12" (gitlab-read--answer
-                       '(("!12  Fix" . "12")) "!12  Fix")))
-  (should (equal "99" (gitlab-read--answer nil "!99"))))
+(ert-deftest gitlab-read-selected ()
+  "A candidate wins, otherwise the typed ID is returned."
+  (should (equal "12" (gitlab-read--selected "!12" '(("!12" . "12"))
+                                              #'identity)))
+  (should (equal "99" (gitlab-read--selected "!99" nil #'identity)))
+  (should (equal "7" (gitlab-read--selected "&7" nil #'identity))))
+
+(ert-deftest gitlab-read-number ()
+  "The sort number of a candidate ignores its sigil."
+  (should (= 12 (gitlab-read--number "!12")))
+  (should (= 1001 (gitlab-read--number "#1001")))
+  (should (= 0 (gitlab-read--number "plain"))))
+
+(ert-deftest gitlab-read-sort-by-number ()
+  "Candidates sort by the number that each one names."
+  (should (equal '("#9" "#10" "!100")
+                 (gitlab-read--sort-by-number '("#10" "#9" "!100")))))
+
+(ert-deftest gitlab-read-annotation ()
+  "The annotation of a candidate names the object behind it."
+  (let* ((candidates '(("!12" . ((title . "Fix") (state . "opened")))))
+         (annotate
+          (gitlab-read--annotator
+           candidates
+           (lambda (object)
+             (format "%s  [%s]" (alist-get 'title object)
+                     (alist-get 'state object))))))
+    (should (equal "  Fix  [opened]" (funcall annotate "!12")))
+    (should-not (funcall annotate "!99"))))
+
+(ert-deftest gitlab-read-merge-request-metadata ()
+  "The merge request prompt declares its category and annotation."
+  (gitlab-test-with-environment
+   (let (collection category annotation)
+     (cl-letf (((symbol-function 'gitlab-merge-request-list-cached)
+                (lambda ()
+                  '(((iid . 7) (title . "Seven") (state . "opened"))
+                    ((iid . 10) (title . "Ten") (state . "closed")))))
+               ((symbol-function 'completing-read)
+                (lambda (_prompt completions &rest _arguments)
+                  (setq collection (append completions nil)
+                        category (plist-get completion-extra-properties
+                                            :category)
+                        annotation
+                        (funcall (plist-get completion-extra-properties
+                                            :annotation-function)
+                                 "!7"))
+                  "!7")))
+       (should (equal "7" (gitlab-read-merge-request-iid))))
+     (should (equal '("!7" "!10") collection))
+     (should (eq 'gitlab-merge-request category))
+     (should (equal "  Seven  [opened]" annotation)))))
+
+(ert-deftest gitlab-read-repository-current-mark ()
+  "The prompt of a project marks the project of the directory."
+  (gitlab-test-with-environment
+   (let (candidates annotation)
+     (cl-letf (((symbol-function 'gitlab-git-context)
+                (lambda () "group/project"))
+               ((symbol-function 'completing-read)
+                (lambda (_prompt completions &rest _arguments)
+                  (setq candidates (append completions nil)
+                        annotation
+                        (funcall (plist-get completion-extra-properties
+                                            :annotation-function)
+                                 "group/project"))
+                  "group/project")))
+       (should (equal "group/project" (gitlab-read-repository))))
+     (should (equal '("group/project") candidates))
+     (should (equal "  (current)" annotation)))))
 
 (ert-deftest gitlab-read-merge-request-iid ()
   "The prompt completes from the cached list, or accepts typed input."

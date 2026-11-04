@@ -473,7 +473,19 @@ A directory without a Git remote and without =gitlab-repository=
 prompts for the project before it displays a list, so the package
 works outside a checkout too.  The prompt completes from the projects
 this session displayed, which =gitlab-repositories= holds, and from
-the project of the current directory.
+the project of the current directory.  The current project carries a
+mark in the completions buffer.
+
+Every prompt declares its completion category, an annotation function
+and a display sort function, so a completion package that reads that
+metadata works without a setting.  A merge request candidate is
+=!IID=, a pipeline candidate is =#ID= and a job candidate is the plain
+job ID, and the completions buffer shows the title of the merge
+request, the status and ref of the pipeline or the name, the stage and
+the status of the job beside it.  Marginalia, Embark,
+=completion-preview= and =completion-category-overrides= therefore see
+one category per kind of object.  The identifier candidates sort by
+their number, so =#1000= follows =#999=.
 
 The context names the buffer, so two projects and two instances never
 share one buffer:
