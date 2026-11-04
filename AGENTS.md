@@ -21,7 +21,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab-merge-request-approve` and its asynchronous form are the write entry points, and `gitlab-merge-request-merge` and its asynchronous form are the second pair.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
@@ -133,21 +133,26 @@ without evil.  The suite never opens a network connection.
   and a local merge request ref.  Every line is one text button, so
   the mouse face covers the line without joining the line above and
   the line below, because the newline stays outside the button.
+- Every write goes through `gitlab--write` and `gitlab--write-async`
+  in the data layer, so one function holds the PARSE value `text` and
+  one function reports the condition.  A write answer holds prose and
+  not JSON.  A new write entry point passes its glab arguments to
+  those two functions and adds no request of its own.
 - `gitlab-merge-request-approve` is the first write entry point.  It
-  runs `glab mr approve` with PARSE `text`, because the answer holds
-  prose and not JSON, and it returns that text.  The synchronous form
-  serves tests, and `gitlab-approve-merge-request` runs the
-  asynchronous form so the buffer never blocks.  The approve answer
-  carries no merge request field, so the command reports the approval
-  in the echo area and leaves the render to the next refresh.  A
+  runs `glab mr approve` through `gitlab--write` and returns that
+  text.  The synchronous form serves tests, and
+  `gitlab-approve-merge-request` runs the asynchronous form so the
+  buffer never blocks.  The approve answer carries no merge request
+  field, so the command reports the approval in the echo area and
+  leaves the render to the next refresh.  A
   failure goes through `gitlab--set-error`, which the next render
   clears.  The command holds no key: the merge request keymap keeps no
   binding that would shadow an evil motion.
 - `gitlab-merge-request-merge` is the second write entry point.  It
-  runs `glab mr merge IID --yes` with PARSE `text` and returns that
-  text.  `--yes` is required, because `GLAB_NO_PROMPT=1` leaves the
-  submission prompt of glab without an answer, and the Emacs command
-  asks `yes-or-no-p` for the same decision before it sends the
+  runs `glab mr merge IID --yes` through `gitlab--write` and returns
+  that text.  `--yes` is required, because `GLAB_NO_PROMPT=1` leaves
+  the submission prompt of glab without an answer, and the Emacs
+  command asks `yes-or-no-p` for the same decision before it sends the
   request.  The merge command `gitlab-merge-merge-request` follows
   the approve command in every other respect, and it holds no key.
   A declined confirmation sends no request.

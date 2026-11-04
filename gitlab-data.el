@@ -257,6 +257,23 @@ variable is nil."
      (_ (signal 'gitlab-backend-error
                 (list (format "Unknown gitlab-backend: %S" gitlab-backend))))))
 
+;;; Writes
+
+(defun gitlab--write (arguments)
+  "Run the write request ARGUMENTS and return the text answer.
+ARGUMENTS holds the glab arguments of a command that changes an
+object, such as an approval or a merge.  Every write goes through
+this function and its asynchronous form, so one place holds the
+PARSE value and one place reports the condition."
+  (gitlab--with-backend
+   (gitlab-cli-request arguments 'text)))
+
+(defun gitlab--write-async (arguments success error)
+  "Run the write request ARGUMENTS and deliver the text to SUCCESS.
+ERROR receives a condition.  Return the process object."
+  (gitlab--with-backend
+   (gitlab-cli-request-async arguments success error 'text)))
+
 ;;; Merge requests
 
 (defun gitlab--cli-merge-request-list-arguments (arguments)
@@ -340,17 +357,13 @@ IID is the project-scoped number that the web interface writes
 as !123.  Return the text answer of glab, which names the merge
 request and its new approval state.  A failing request signals
 `gitlab-cli-error'."
-  (gitlab--with-backend
-   (gitlab-cli-request
-    (gitlab--cli-merge-request-approve-arguments iid) 'text)))
+  (gitlab--write (gitlab--cli-merge-request-approve-arguments iid)))
 
 (defun gitlab-merge-request-approve-async (iid success error)
   "Approve merge request IID and deliver the text answer to SUCCESS.
 ERROR receives a condition.  Return the process object."
-  (gitlab--with-backend
-   (gitlab-cli-request-async
-    (gitlab--cli-merge-request-approve-arguments iid)
-    success error 'text)))
+  (gitlab--write-async (gitlab--cli-merge-request-approve-arguments iid)
+                       success error))
 
 (defun gitlab--cli-merge-request-merge-arguments (iid)
   "Return the glab arguments that merge merge request IID.
@@ -364,17 +377,13 @@ IID is the project-scoped number that the web interface writes
 as !123.  Return the text answer of glab, which names the merge
 request and its new state.  A failing request signals
 `gitlab-cli-error'."
-  (gitlab--with-backend
-   (gitlab-cli-request
-    (gitlab--cli-merge-request-merge-arguments iid) 'text)))
+  (gitlab--write (gitlab--cli-merge-request-merge-arguments iid)))
 
 (defun gitlab-merge-request-merge-async (iid success error)
   "Merge merge request IID and deliver the text answer to SUCCESS.
 ERROR receives a condition.  Return the process object."
-  (gitlab--with-backend
-   (gitlab-cli-request-async
-    (gitlab--cli-merge-request-merge-arguments iid)
-    success error 'text)))
+  (gitlab--write-async (gitlab--cli-merge-request-merge-arguments iid)
+                       success error))
 
 (defun gitlab-merge-request-list-cached (&optional arguments)
   "Return the cached merge request list, fetching it when stale.
