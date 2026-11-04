@@ -565,6 +565,10 @@ section that a fold closed."
   (unless (or (gitlab-job-log--banner-line-p line)
               (and gitlab-job-log--banner (string-blank-p line)))
     (setq gitlab-job-log--banner nil)
+    ;; The fold of a section that ended the buffer hides the newline
+    ;; above this line, and Emacs would then draw this line on the row
+    ;; of the folded header.
+    (gitlab-job-log--keep-final-newline-visible)
     (let ((start (gitlab-cli--insert-chunk (concat line "\n"))))
       (gitlab-job-log--delete-trailing-carriage-returns start)
       ;; Inserted text inherits properties from the line above, which
@@ -654,6 +658,23 @@ bounds the search."
       (forward-char 1))
     (point)))
 
+(defun gitlab-job-log--keep-final-newline-visible ()
+  "Stop every fold of the current buffer from hiding the last newline.
+A subtree that ends the buffer reaches `point-max', so
+`outline-hide-subtree' hides the newline of its last line too.
+Emacs drops the line break of an invisible newline, so the next
+trace line would draw on the row of the folded header.  A close
+folds its section before the output of the next section arrives,
+so a live trace folds every section at the end of the buffer.  A
+fold of the text that already follows its section never hides a
+newline, and this helper gives both folds one shape."
+  (when (eq (char-before (point-max)) ?\n)
+    (dolist (overlay (overlays-in (point-min) (point-max)))
+      (when (and (eq (overlay-get overlay 'invisible) 'outline)
+                 (= (overlay-end overlay) (point-max)))
+        (move-overlay overlay (overlay-start overlay)
+                      (1- (point-max)))))))
+
 (defun gitlab-job-log--hide-section (position)
   "Hide the body of the section whose heading line starts at POSITION.
 Do nothing when the line at POSITION is no heading line."
@@ -661,7 +682,8 @@ Do nothing when the line at POSITION is no heading line."
     (goto-char position)
     (when (looking-at outline-regexp)
       (let ((inhibit-read-only t))
-        (outline-hide-subtree)))))
+        (outline-hide-subtree)
+        (gitlab-job-log--keep-final-newline-visible)))))
 
 (defun gitlab-job-log--reveal-open-section ()
   "Show the section that the trace writes into.
@@ -943,7 +965,8 @@ middle of it."
       (user-error "No GitLab section at point"))
     (save-excursion
       (goto-char heading)
-      (outline-toggle-children))))
+      (outline-toggle-children)
+      (gitlab-job-log--keep-final-newline-visible))))
 
 (defun gitlab-job-log--imenu-index ()
   "Return an imenu index of the sections of the current job log.

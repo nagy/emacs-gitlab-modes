@@ -937,6 +937,15 @@ ends at the carriage return and not at the message.")
     (goto-char (gitlab-pipeline-tests--line-start-of regexp))
     (outline-invisible-p (line-end-position))))
 
+(defun gitlab-pipeline-tests--own-row-p (regexp)
+  "Return non-nil when the line that matches REGEXP starts a screen row.
+A hidden newline makes Emacs draw the next line on the row before it."
+  (let ((position (gitlab-pipeline-tests--line-start-of regexp)))
+    (save-excursion
+      (goto-char position)
+      (vertical-motion 0)
+      (= position (point)))))
+
 (ert-deftest gitlab-pipeline-job-log-section-header ()
   "A section marker shows a header with the name and the duration."
   (let ((buffer (gitlab-pipeline-tests--job-log-buffer
@@ -1070,9 +1079,56 @@ ends at the carriage return and not at the message.")
                    "section_start:1761857977"))
           (should (gitlab-pipeline-tests--section-folded-p
                    "section_start:1761857987"))
-          ;; Two headers, two rows of text.
-          (should (= 2 (progn (goto-char (point-min))
-                              (vertical-motion (point-max))))))
+          ;; Two headers, one row each.
+          (should (gitlab-pipeline-tests--own-row-p
+                   "section_start:1761857977"))
+          (should (gitlab-pipeline-tests--own-row-p
+                   "section_start:1761857987")))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-fold-during-stream ()
+  "A fold of a close keeps the next header on a row of its own.
+The close folds its section while that section ends the buffer, so
+the fold must not hide the newline above the next trace line."
+  (let ((buffer (generate-new-buffer "*GitLab job log stream fold*")))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log-mode)
+          (setq-local gitlab-job-log--collapsed '("get_sources"))
+          (gitlab-job-log--write gitlab-pipeline-tests--section-trace)
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857977"))
+          (should (gitlab-pipeline-tests--own-row-p
+                   "section_start:1761857977"))
+          (should (gitlab-pipeline-tests--own-row-p
+                   "section_start:1761857987")))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-section-fold-before-new-output ()
+  "A fold of the last section keeps later output on its own row."
+  (let ((buffer (generate-new-buffer "*GitLab job log fold tail*")))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log-mode)
+          (gitlab-job-log--write
+           (concat "2026-10-30T20:59:37.000Z 00O "
+                   "section_start:1761857977:first\n"
+                   "2026-10-30T20:59:38.000Z 00O body\n"
+                   "2026-10-30T20:59:46.000Z 00O "
+                   "section_end:1761857986:first\n"))
+          (goto-char (gitlab-pipeline-tests--line-start-of
+                      "section_start:1761857977"))
+          (call-interactively #'gitlab-job-log-toggle-section)
+          (should (gitlab-pipeline-tests--section-folded-p
+                   "section_start:1761857977"))
+          (gitlab-job-log--write
+           (concat "2026-10-30T20:59:47.000Z 00O "
+                   "section_start:1761857987:second\n"
+                   "2026-10-30T20:59:48.000Z 00O body\n"))
+          (should (gitlab-pipeline-tests--own-row-p
+                   "section_start:1761857977"))
+          (should (gitlab-pipeline-tests--own-row-p
+                   "section_start:1761857987")))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-section-carriage-returns ()

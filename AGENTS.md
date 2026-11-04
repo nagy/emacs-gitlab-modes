@@ -522,6 +522,24 @@ without evil.  The suite never opens a network connection.
   from the inserted range first.
   `gitlab-job-log--reveal-open-section` opens the section that the
   new output enters, so a live trace never hides behind a fold.
+- A fold never hides the newline that ends the buffer.
+  `outline-hide-subtree` stops at `point-max` when the section ends
+  the buffer, so its overlay covers the newline of the last line
+  too, and Emacs then drops that line break and draws the next trace
+  line on the row of the folded header.  A close folds its section
+  before the output of the next section arrives, so every fold of a
+  live trace reaches the end of the buffer, and a `g r` with folded
+  sections stacks every header on one row.
+  `gitlab-job-log--keep-final-newline-visible` moves the end of such
+  an overlay back by one, so a fold of a section at the end of the
+  buffer has the same shape as a fold of a section with text behind
+  it.  `gitlab-job-log--hide-section`, `gitlab-job-log-toggle-section`
+  and `gitlab-job-log--insert-line` call it, because a close, a
+  reader and a new line each reach the end of the buffer.  The
+  overlay, not a text property, carries the fold: an Emacs 30 and
+  later `outline-flag-region` makes an overlay with `evaporate`, so
+  `remove-list-of-text-properties` in `gitlab-job-log--insert-line`
+  never drops a fold.
 - A restart erases the buffer, so `gitlab-job-log--start` calls
   `gitlab-job-log--collapsed-names` first and stores the folded names
   in `gitlab-job-log--collapsed`.  A section that the new trace closes
