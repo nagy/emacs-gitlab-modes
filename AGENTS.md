@@ -624,7 +624,8 @@ without evil.  The suite never opens a network connection.
   `tabulated-list-sort-key` to nil around `tabulated-list-print`, so
   the printer keeps the order that `gitlab-list--ordered-entries`
   built.  `gitlab-list-sort` on `S` owns the sort key, its direction
-  and a prefix of -1 for the collection order.  A direct call of
+  and a prefix of -1 for the collection order, and the evil layer
+  remaps `evil-change-whole-line` to it.  A direct call of
   `tabulated-list-sort` interleaves the child rows, so no code and no
   key uses it.
 - `gitlab-list-toggle-expansion` on `TAB` toggles the row at point and
@@ -810,7 +811,11 @@ without evil.  The suite never opens a network connection.
   in normal state.  `gitlab-job-log-toggle-section` takes the plain
   `TAB` key, because evil binds no fold command to it, and the evil
   fold keys `zc`, `zo` and `za` reach the same sections through
-  `evil-fold-list` and `outline-minor-mode`.  `gitlab-export-json`
+  `evil-fold-list` and `outline-minor-mode`.  `gitlab-list-toggle-expansion`
+  takes the same plain `TAB` key in a list buffer, and
+  `gitlab-list-sort` takes the `evil-change-whole-line` remap, so
+  `S` sorts the table through the command that keeps a child row
+  behind its parent.  `gitlab-export-json`
   takes the `evil-yank` remap, so `y` exports the JSON of a detail
   buffer or of a list buffer in normal state, and visual state keeps
   the ID copy.  `revert-buffer-quick` takes the `evil-replace` and

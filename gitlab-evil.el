@@ -54,9 +54,10 @@
 ;; C-x C-j opens the parent list; c copies the ID; w opens the web
 ;; page.
 ;;
-;; List buffers: RET opens the row; c or Y copies its ID; w opens its
-;; web page; S sorts the current column.  A visual line selection
-;; followed by y copies every selected row ID, one per line.
+;; List buffers: RET opens the row; TAB expands a row into its child
+;; rows; c or Y copies its ID; w opens its web page; S sorts the
+;; current column.  A visual line selection followed by y copies every
+;; selected row ID, one per line.
 ;;
 ;; Job log buffers: q quits; gr, r and R restart the trace; ~ toggles the
 ;; timestamps; C-x C-j opens the pipeline; c copies the job ID; G and
@@ -112,18 +113,20 @@ that evil already binds.")
 (defvar gitlab-evil-list-keys
   '(([remap evil-ret] . gitlab-list-open)
     ("<mouse-2>" . gitlab-list-mouse-open)
+    ("TAB" . gitlab-list-toggle-expansion)
     ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
     ([remap evil-replace] . revert-buffer-quick)
     ([remap evil-enter-replace-state] . revert-buffer-quick)
-    ([remap evil-change-whole-line] . tabulated-list-sort)
+    ([remap evil-change-whole-line] . gitlab-list-sort)
     ([remap evil-change] . gitlab-list-copy-id)
     ([remap evil-yank-line] . gitlab-list-copy-id)
     ([remap evil-yank] . gitlab-export-json)
     ([remap evil-forward-word-begin] . gitlab-list-open-web))
   "Keys that `gitlab-evil-mode' binds in list buffers.
 A key is a key string, or a `[remap COMMAND]' vector for a command
-that evil already binds.")
+that evil already binds.  Evil leaves `TAB' unbound in its normal
+state, so a plain key reaches the expansion of a row.")
 
 (defvar gitlab-evil-list-visual-keys
   '(([remap evil-yank] . gitlab-evil-list-copy-ids))

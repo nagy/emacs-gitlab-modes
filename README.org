@@ -526,7 +526,8 @@ A user can still turn the bindings on by hand:
 
 The mode binds commands in normal state and leaves the evil motions
 alone.  A visual selection of list rows followed by =y= copies their
-IDs.
+IDs.  In a list buffer =TAB= expands the row at point and =S= sorts the
+table.
 
 Each key that evil already binds goes through a key remap of the evil
 command, for example =[remap evil-ret]= for the row open command.  A
