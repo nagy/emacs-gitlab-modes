@@ -121,6 +121,29 @@
              (should (string-match-p "(system)" (buffer-string)))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-merge-request-notes-keep-point ()
+  "A re-render keeps point inside the notes and not at the end."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR notes point test*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12")
+             (gitlab--refresh))
+           (should (gitlab-merge-request-tests--wait-for
+                    buffer "Add the export dialog"))
+           (with-current-buffer buffer
+             (gitlab-merge-request-show-notes))
+           (should (gitlab-merge-request-tests--wait-for
+                    buffer "Looks good to me."))
+           (with-current-buffer buffer
+             (goto-char (point-min))
+             (should (search-forward "Looks good to me." nil t))
+             (gitlab--force-render)
+             (should (equal "Looks good to me." (gitlab--line-text)))))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-merge-request-entries-fields ()
   "A list row carries the IID, state and branch columns."
   (let* ((data '(((iid . 7)

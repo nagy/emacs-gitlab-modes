@@ -39,7 +39,7 @@
 ;; The job table is written by hand, not by `tabulated-list-mode',
 ;; because the pipeline fields occupy the top of the same buffer.
 ;; Every row carries `gitlab-job-id' and `gitlab-job-name', so RET at a
-;; row opens the job log and a refresh restores point to the same job.
+;; row opens the job log and a refresh keeps point on the same row.
 ;; The rows read oldest first: glab answers the jobs array newest
 ;; first, so the table sorts a copy of it by job ID.
 ;;
@@ -214,20 +214,16 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
   (delq 'jobs (mapcar #'car data)))
 
 (defun gitlab-pipeline--render (pipeline-id data)
-  "Render pipeline PIPELINE-ID with DATA in the current buffer."
-  (let ((job-id (get-text-property (point) 'gitlab-job-id))
-        (field (gitlab--field-at-point))
-        (status (gitlab-data-field-string "status" data)))
-    (gitlab--render-fields
-     (format "Pipeline #%s %s" pipeline-id status)
-     data
-     (gitlab-pipeline--fields data))
-    (let ((inhibit-read-only t))
-      (gitlab-pipeline--insert-jobs data))
-    (cond
-     (job-id (gitlab-pipeline--goto-job job-id))
-     (field (gitlab--goto-field field))
-     (t (goto-char (point-min))))))
+  "Render pipeline PIPELINE-ID with DATA in the current buffer.
+`gitlab--render' keeps point on the line that it was on before the
+render, so the renderer moves point without a care."
+  (gitlab--render-fields
+   (format "Pipeline #%s %s" pipeline-id
+           (gitlab-data-field-string "status" data))
+   data
+   (gitlab-pipeline--fields data))
+  (let ((inhibit-read-only t))
+    (gitlab-pipeline--insert-jobs data)))
 
 (defun gitlab-pipeline--sort-jobs (jobs)
   "Return JOBS in creation order.

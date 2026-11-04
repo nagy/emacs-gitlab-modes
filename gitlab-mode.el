@@ -40,9 +40,17 @@
 ;;
 ;; Unchanged data is not rendered again.  `equal' compares the two
 ;; decoded alists, so point, marks and the window start survive an
-;; automatic refresh that found no change.  A renderer that needs to
-;; keep its own place receives the old data indirectly through the
-;; buffer's own state.
+;; automatic refresh that found no change.
+;;
+;; A render erases the buffer, so `gitlab--render' records the line
+;; of point before the render and restores it after the render.  The
+;; record names the line and not its buffer position: the field name,
+;; the job ID, the commit SHA, the list row ID or, for a line without
+;; such an identity, the text of the line and its ordinal among the
+;; equal lines above it.  A blank line leans on the nearest line above
+;; that has an identity, and the column of point travels with the
+;; line.  So a refresh keeps the reader on the same value even when
+;; the lines above changed their length.
 ;;
 ;; Display buffers are views, not files: `default-directory' is the
 ;; project root of the buffer that opened the display, so project.el,
@@ -756,12 +764,179 @@ line or the mode line."
           (gitlab--refresh))))))
 
 (defun gitlab--render ()
-  "Render `gitlab--last-data' in the current buffer."
-  (let ((inhibit-read-only t))
-    (funcall (or gitlab--render-function #'gitlab--render-default)
-             gitlab--id gitlab--last-data))
-  (gitlab--apply-target)
-  (gitlab--update-list-buffers-directory))
+  "Render `gitlab--last-data' in the current buffer.
+Keep point on the line that it was on before the render, by the
+identity of that line, and keep its column.  Every other window
+that shows the buffer keeps the line of its own point too, because
+the render erases the text that a window point marker points into.
+A buffer with a position target moves point to that target
+instead."
+  (let ((record (gitlab--point-record))
+        (windows (gitlab--window-records)))
+    (let ((inhibit-read-only t))
+      (funcall (or gitlab--render-function #'gitlab--render-default)
+               gitlab--id gitlab--last-data))
+    (unless (gitlab--apply-target)
+      (gitlab--restore-point record))
+    (gitlab--restore-window-points windows)
+    (gitlab--update-list-buffers-directory)))
+
+;;; Point keeping
+
+(defun gitlab--line-text ()
+  "Return the text of the current line without properties or padding."
+  (string-trim-right
+   (buffer-substring-no-properties (line-beginning-position)
+                                   (line-end-position))))
+
+(defun gitlab--line-occurrence (text)
+  "Return the number of lines above point that hold TEXT.
+The count is the ordinal of the line of point among the equal
+lines of the buffer, so a renderer that keeps one of two equal
+lines keeps the right one."
+  (let ((origin (line-beginning-position)))
+    (save-excursion
+      (goto-char (point-min))
+      (let ((count 0))
+        (while (< (point) origin)
+          (when (equal (gitlab--line-text) text)
+            (setq count (1+ count)))
+          (forward-line 1))
+        count))))
+
+(defun gitlab--line-identity ()
+  "Return the identity of the line of point, or nil.
+The identity is a cons of a kind and a value: `job' and the job
+ID, `sha' and the commit SHA, `field' and the field name, `row'
+and the list row ID, or `text' and a cons of the text of the line
+and its ordinal among the equal lines above it.  A line of
+whitespace alone has no identity, because its text would match
+every blank line."
+  (let ((start (line-beginning-position)))
+    (or (when-let* ((id (get-text-property start 'gitlab-job-id)))
+          (cons 'job id))
+        (when-let* ((sha (get-text-property start 'gitlab-commit-sha)))
+          (cons 'sha sha))
+        (when-let* ((field (get-text-property start 'gitlab-field)))
+          (cons 'field field))
+        (when-let* ((id (tabulated-list-get-id)))
+          (cons 'row id))
+        (let ((text (gitlab--line-text)))
+          (unless (string-empty-p text)
+            (cons 'text (cons text (gitlab--line-occurrence text))))))))
+
+(defun gitlab--point-record (&optional position)
+  "Return a semantic record of the line at POSITION, or nil.
+POSITION defaults to point.  The record holds the identity of the
+line, the number of lines from the line that the identity names to
+the line of POSITION, and the column of POSITION.  A line of
+whitespace alone leans on the nearest line above that has an
+identity, so the record keeps the distance from that line.  Return
+nil when no line of the buffer has an identity, because then there
+is no place to keep."
+  (let ((offset 0)
+        column
+        identity)
+    (save-excursion
+      (goto-char (or position (point)))
+      (setq column (- (point) (line-beginning-position)))
+      (beginning-of-line)
+      (let ((done nil))
+        (while (not done)
+          (setq identity (gitlab--line-identity))
+          (cond (identity (setq done t))
+                ((bobp) (setq done t))
+                (t
+                 (setq offset (1+ offset))
+                 (forward-line -1))))))
+    (when identity
+      (list :identity identity :offset offset :column column))))
+
+(defun gitlab--goto-text (line)
+  "Move point to the line that LINE names.
+LINE is a cons of the text of a line and its ordinal among the
+equal lines above it.  Return non-nil when the function found
+such a line.  When the buffer holds fewer equal lines than the
+ordinal, the last one serves, because a new line can push an old
+one down, and the reader stays in the same part of the buffer."
+  (let ((text (car line))
+        (ordinal (cdr line))
+        (index 0)
+        (found nil)
+        (last nil))
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward (concat "^" (regexp-quote text) "[ \t]*$")
+                                nil t)
+        (setq last (line-beginning-position))
+        (unless (or found (< index ordinal))
+          (setq found last))
+        (setq index (1+ index))))
+    (when (or found last)
+      (goto-char (or found last))
+      t)))
+
+(defun gitlab--goto-identity (identity)
+  "Move point to the line that IDENTITY names.
+Return non-nil when the function found that line.  It leaves
+point at `point-min' when it found none."
+  (pcase identity
+    (`(job . ,id) (gitlab--goto-property 'gitlab-job-id id))
+    (`(sha . ,sha) (gitlab--goto-property 'gitlab-commit-sha sha))
+    (`(field . ,key) (gitlab--goto-property 'gitlab-field key))
+    (`(row . ,id) (gitlab-list--goto-id id))
+    (`(text . ,line) (gitlab--goto-text line))
+    (_ nil)))
+
+(defun gitlab--record-position (record)
+  "Return the buffer position that RECORD names, or nil.
+The position is the start of the line that the identity of RECORD
+names, moved down by the recorded number of lines and set to the
+recorded column.  A shorter line clips the column to its end."
+  (when record
+    (save-excursion
+      (goto-char (point-min))
+      (when (gitlab--goto-identity (plist-get record :identity))
+        (forward-line (plist-get record :offset))
+        (let ((column (plist-get record :column)))
+          (unless (zerop column)
+            (goto-char (min (+ (line-beginning-position) column)
+                            (line-end-position)))))
+        (point)))))
+
+(defun gitlab--restore-point (record)
+  "Move point to the position that RECORD describes.
+A nil RECORD moves point to the start of the buffer, because no
+line carried an identity before the render.  The column of point
+travels with the line, so a reader stays on the same column of the
+same value."
+  (goto-char (or (gitlab--record-position record) (point-min))))
+
+(defun gitlab--window-records ()
+  "Return the point record of every other window that shows the buffer.
+Every window but the selected one contributes one cons of the
+window and its record.  The selected window needs no entry,
+because its point is the point of the buffer.  A window whose line
+has no identity contributes a nil record."
+  (let ((buffer (current-buffer))
+        (selected (selected-window))
+        records)
+    (dolist (window (get-buffer-window-list buffer nil t))
+      (unless (eq window selected)
+        (push (cons window (gitlab--point-record (window-point window)))
+              records)))
+    records))
+
+(defun gitlab--restore-window-points (records)
+  "Move the point of every window of RECORDS to its recorded line.
+A window whose line is gone shows the start of the buffer, and a
+dead window stays alone."
+  (dolist (record records)
+    (let ((window (car record)))
+      (when (window-live-p window)
+        (set-window-point window
+                          (or (gitlab--record-position (cdr record))
+                              (point-min)))))))
 
 (defun gitlab--force-render ()
   "Render the last data again, even when it did not change.
@@ -1071,16 +1246,14 @@ Return the position before the first field."
 
 (defun gitlab--render-fields (title data &optional keys)
   "Render TITLE and the field table of DATA in the current buffer.
-KEYS selects and orders the fields.  Keep point on the field that
-point was on before the render."
-  (let ((field (gitlab--field-at-point)))
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (insert (propertize title 'face 'gitlab-title))
-      (insert "\n\n")
-      (gitlab--insert-fields data keys)
-      (goto-char (point-min))
-      (when field (gitlab--goto-field field)))))
+KEYS selects and orders the fields.  The function erases the
+buffer first, so `gitlab--render' records the line of point before
+the render and restores it after the render."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (insert (propertize title 'face 'gitlab-title))
+    (insert "\n\n")
+    (gitlab--insert-fields data keys)))
 
 (defun gitlab--render-default (_id data)
   "Render DATA with the generic field table of the current buffer."
@@ -1821,14 +1994,17 @@ filtered table comes back the same."
 A bookmark jump stores the field line, job row or list row of the
 saved view there, because the first render erases the buffer and
 moves point to its start.  A later refresh keeps point through the
-text property that the renderer reads."
+text property that the renderer reads.  Return non-nil when a
+target was applied, so `gitlab--render' leaves that position
+alone."
   (when gitlab--target
     (let ((target (prog1 gitlab--target
                     (setq gitlab--target nil))))
       (pcase target
         (`(field . ,name) (gitlab--goto-property 'gitlab-field name))
         (`(job . ,id) (gitlab--goto-property 'gitlab-job-id id))
-        (`(row . ,id) (gitlab-list--goto-id id))))))
+        (`(row . ,id) (gitlab-list--goto-id id)))
+      t)))
 
 (defun gitlab--bookmark-list-setup (arguments sort)
   "Return a setup function for a list buffer.

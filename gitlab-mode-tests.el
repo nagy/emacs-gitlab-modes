@@ -146,6 +146,129 @@
                                         (line-beginning-position)
                                         (line-end-position)))))))
 
+(ert-deftest gitlab-mode-point-record-text ()
+  "A plain line records its text and its ordinal among equal lines."
+  (with-temp-buffer
+    (insert "Header\nsame\nother\nsame\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (let ((record (gitlab--point-record)))
+      (should (equal '(text "same" . 1) (plist-get record :identity)))
+      (should (= 0 (plist-get record :offset)))
+      (should (= 0 (plist-get record :column))))))
+
+(ert-deftest gitlab-mode-point-record-blank-line ()
+  "A blank line leans on the nearest line above that has an identity."
+  (with-temp-buffer
+    (insert "Header\nNote\n\nFooter\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (let ((record (gitlab--point-record)))
+      (should (equal '(text "Note" . 0) (plist-get record :identity)))
+      (should (= 1 (plist-get record :offset))))))
+
+(ert-deftest gitlab-mode-point-record-property ()
+  "A line with a text property records that property."
+  (with-temp-buffer
+    (insert "Header\n"
+            (propertize "Status: success" 'gitlab-field 'status)
+            "\n")
+    (goto-char (point-max))
+    (forward-line -1)
+    (forward-char 10)
+    (let ((record (gitlab--point-record)))
+      (should (equal '(field . status) (plist-get record :identity)))
+      (should (= 10 (plist-get record :column))))))
+
+(ert-deftest gitlab-mode-point-restore-shifted ()
+  "A restore finds the same line after the lines above changed."
+  (with-temp-buffer
+    (insert "Header\nNote one\nNote two\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (forward-char 5)
+    (let ((record (gitlab--point-record)))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "A much longer header\nAnother line\n\n\nNote one\nNote two   \n"))
+      (gitlab--restore-point record)
+      (should (equal "Note two" (gitlab--line-text)))
+      (should (= 5 (- (point) (line-beginning-position)))))))
+
+(ert-deftest gitlab-mode-point-restore-clips-column ()
+  "A shorter line clips the column of point to its end."
+  (with-temp-buffer
+    (insert "Header\nNote      \n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (forward-char 8)
+    (let ((record (gitlab--point-record)))
+      (should (= 8 (plist-get record :column)))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "Header\nNote\n"))
+      (gitlab--restore-point record)
+      (should (equal "Note" (gitlab--line-text)))
+      (should (= (line-end-position) (point))))))
+
+(ert-deftest gitlab-mode-point-restore-without-record ()
+  "A nil record moves point to the start of the buffer."
+  (with-temp-buffer
+    (insert "Header\n\n")
+    (goto-char (point-max))
+    (gitlab--restore-point nil)
+    (should (= (point-min) (point)))))
+
+(ert-deftest gitlab-mode-render-keeps-point ()
+  "A render keeps the line and the column of point."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab--render-function
+                 (lambda (_id _data)
+                   (let ((inhibit-read-only t))
+                     (erase-buffer)
+                     (insert "Title\n\nStatus: failed\n\nJobs\n\njob row\n"))))
+     (gitlab--render)
+     (goto-char (point-min))
+     (search-forward "job row")
+     (backward-char 3)
+     (let ((column (- (point) (line-beginning-position))))
+       (gitlab--render)
+       (should (equal "job row" (gitlab--line-text)))
+       (should (= column (- (point) (line-beginning-position))))))))
+
+(ert-deftest gitlab-mode-render-keeps-other-window-point ()
+  "A render keeps the point of a window that shows the buffer."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab other window point test*"))
+         (configuration (current-window-configuration)))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-detail-mode)
+             (setq-local gitlab--render-function
+                         (lambda (_id _data)
+                           (let ((inhibit-read-only t))
+                             (erase-buffer)
+                             (insert "Title\n\nrow one\nrow two\nrow three\n"))))
+             (gitlab--render))
+           (switch-to-buffer buffer)
+           (let ((window (display-buffer buffer
+                                         '(display-buffer-below-selected))))
+             (set-window-point window
+                               (with-current-buffer buffer
+                                 (goto-char (point-min))
+                                 (search-forward "row two")
+                                 (point)))
+             (select-window (next-window window))
+             (with-current-buffer buffer
+               (gitlab--render))
+             (with-selected-window window
+               (should (equal "row two" (gitlab--line-text))))))
+       (set-window-configuration configuration)
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-mode-stale-check ()
   "The stale check honours the refresh interval and pending state."
   (let ((gitlab-refresh-visible-only nil)

@@ -154,6 +154,46 @@
              (should (eq 'status (gitlab--field-at-point)))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-detail-keeps-column ()
+  "A re-render keeps the column of point in a field line."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab pipeline column test*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-pipeline-mode)
+             (setq-local gitlab--id "1001")
+             (gitlab--refresh))
+           (should (gitlab-pipeline-tests--wait-for
+                    buffer "lint:linux"))
+           (with-current-buffer buffer
+             (gitlab--goto-field 'status)
+             (forward-char 12)
+             (gitlab--force-render)
+             (should (eq 'status (gitlab--field-at-point)))
+             (should (= 12 (- (point) (line-beginning-position))))))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-pipeline-detail-keeps-heading-point ()
+  "A re-render keeps point on a line without an identity property."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab pipeline heading point test*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-pipeline-mode)
+             (setq-local gitlab--id "1001")
+             (gitlab--refresh))
+           (should (gitlab-pipeline-tests--wait-for
+                    buffer "lint:linux"))
+           (with-current-buffer buffer
+             (goto-char (point-min))
+             (should (search-forward "Jobs" nil t))
+             (beginning-of-line)
+             (gitlab--force-render)
+             (should (equal "Jobs" (gitlab--line-text)))))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-open-job ()
   "RET on a job row opens the job log."
   (with-temp-buffer

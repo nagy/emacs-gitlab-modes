@@ -384,6 +384,16 @@ can arrive at any time.
 The fetch is asynchronous.  Unchanged data is not rendered again, so
 point and marks survive an automatic refresh that found no change.
 
+A render that does change the buffer keeps point on the same line and
+on the same column of that line.  The package names the line and not
+its buffer position: a field line by its field name, a job row by its
+job ID, a commit line by its SHA, a list row by its ID and any other
+line by its text.  A blank line keeps its distance from the nearest
+line above that has such a name.  So a refresh keeps the reader on the
+same value even when the lines above grew or shrank.  Another window
+that shows the same buffer keeps its own line too, so a buffer that
+sits in a visible window stays readable while you work elsewhere.
+
 * Projects and instances
 
 Every display buffer knows its project context: the project path and

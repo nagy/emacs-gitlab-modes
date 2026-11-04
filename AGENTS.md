@@ -23,7 +23,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` remap of both base modes. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-pipeline.el` | Pipeline list mode, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
@@ -333,6 +333,31 @@ without evil.  The suite never opens a network connection.
   a definition never moves the window configuration.  Both take the
   context of the caller, so a definition of another project opens the
   buffer of that project.
+- Every render keeps point by the identity of its line, never by a
+  buffer position.  `gitlab--render` records `gitlab--point-record`
+  before it calls the render function and `gitlab--restore-point`
+  after it, because a render function erases the buffer and may move
+  point anywhere.  The record holds the identity of the line, the
+  number of lines from the line that the identity names to the line
+  of point, and the column of point.  `gitlab--line-identity` answers
+  with the text property of the line (`job` and the job ID, `sha` and
+  the commit SHA, `field` and the field name, `row` and the list row
+  ID), else with the text of the line and its ordinal among the equal
+  lines above it.  A line of whitespace alone has no identity, so the
+  record leans on the nearest line above and keeps its distance from
+  that line.  `gitlab--restore-point` keeps the column, clips it to
+  the end of a shorter line and moves point to `point-min` when the
+  line is gone or when the record is nil, because the first render of
+  a fresh buffer has no place to keep.  A renderer therefore moves
+  point without a care: `gitlab--render-fields` keeps no field and
+  `gitlab-pipeline--render` keeps no job row.  The render also keeps
+  the point of every other window that shows the buffer, because
+  `erase-buffer` pulls the window point marker of such a window to
+  `point-min` and the window would then show the start of the buffer.
+  `gitlab--window-records` records the line of each such window and
+  `gitlab--restore-window-points` moves each one back, so a visible
+  buffer stays readable even when the user sits in another window
+  while `auto-revert-mode` refreshes it.
 - The renderers attach text properties.  `gitlab-field` names a field
   line.  `gitlab-pipeline-id`, `gitlab-merge-request-iid`,
   `gitlab-job-id` and `gitlab-url` are navigation targets.
@@ -348,8 +373,7 @@ without evil.  The suite never opens a network connection.
 - The pipeline detail uses a hand-written jobs table, not
   `tabulated-list-mode`, because the pipeline fields occupy the same
   buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`.
-  `gitlab-pipeline--render` restores point to the same job row or to
-  the same field line.  The table lists the oldest job first, because
+  The table lists the oldest job first, because
   glab answers the jobs array newest first.  `gitlab-pipeline--sort-jobs`
   copies the array and sorts it by numeric job ID, so the table, the
   sibling commands and the imenu agree on one chronological order.
@@ -773,7 +797,10 @@ without evil.  The suite never opens a network connection.
   `gitlab--init-display-buffer` copies it; the handler must not
   `setq-local` in the caller.  `gitlab--apply-target` runs at the end
   of `gitlab--render` and clears the target, so a later auto refresh
-  keeps point through the text property instead of jumping back.
+  keeps point through the text property instead of jumping back.  It
+  answers non-nil when it moved point, and `gitlab--render` then skips
+  the point record, because the jump wins over the line of the old
+  point.
   `gitlab-bookmark-jump` restores the project and the directory by
   binding `gitlab-repository` and `gitlab-cli-directory`, then
   dispatches on the kind and sets `bookmark-handler-type` for the type
