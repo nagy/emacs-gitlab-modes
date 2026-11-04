@@ -384,8 +384,9 @@ The buffer is a snapshot: a later refresh of the source buffer does not
 change it.  =revert-buffer= in the export buffer reads the source
 buffer again.
 
-Both display base modes remap =js-json-mode= to the export command, so
-a key or a menu that runs the JSON major mode exports the view instead.
+Both display base modes remap =js-json-mode= and =json-ts-mode= to the
+export command, so a key or a menu that runs either JSON major mode
+exports the view instead.
 The display layer installs that remap, so it works for a package that
 loads through autoloads.  The export command carries an autoload
 cookie, so the first such key loads the export layer.

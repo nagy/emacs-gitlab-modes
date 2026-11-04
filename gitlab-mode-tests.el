@@ -554,6 +554,16 @@ A list buffer keeps the click for the selection of a row."
                 "https://gitlab.example.com/group/project/-/merge_requests/12"
                 (overlay-get overlay 'bug-reference-url)))))))
 
+(ert-deftest gitlab-mode-json-remap ()
+  "Both JSON major modes remap the export command of each base mode.
+Emacs 30 ships `json-ts-mode' beside `js-json-mode', so a buffer that
+visits JSON with tree-sitter keeps the export key."
+  (should (fboundp 'json-ts-mode))
+  (dolist (map (list gitlab-detail-mode-map gitlab-list-mode-map))
+    (dolist (mode '(js-json-mode json-ts-mode))
+      (should (eq 'gitlab-export-json
+                  (lookup-key map (vector 'remap mode)))))))
+
 (ert-deftest gitlab-mode-list-revert ()
   "`revert-buffer' fetches the collection again."
   (gitlab-test-with-environment

@@ -1707,8 +1707,10 @@ without blocking Emacs."
 ;; not the entry library, so a remap that `gitlab-export' installs at
 ;; its own load never appears in a package with an autoload file.  The
 ;; target is autoloaded, so the first key that reaches it loads the
-;; export layer.
+;; export layer.  `js-json-mode' serves a buffer without
+;; tree-sitter, and `json-ts-mode' serves one with it.
 (define-key gitlab-detail-mode-map [remap js-json-mode] #'gitlab-export-json)
+(define-key gitlab-detail-mode-map [remap json-ts-mode] #'gitlab-export-json)
 
 ;;; List mode
 
@@ -2357,6 +2359,7 @@ separates a row from the rows that it holds."
 (define-key gitlab-list-mode-map (kbd "c") #'gitlab-list-copy-id)
 (define-key gitlab-list-mode-map (kbd "w") #'gitlab-list-open-web)
 (define-key gitlab-list-mode-map [remap js-json-mode] #'gitlab-export-json)
+(define-key gitlab-list-mode-map [remap json-ts-mode] #'gitlab-export-json)
 
 ;;; Bookmarks
 
