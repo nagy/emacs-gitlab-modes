@@ -393,6 +393,34 @@ runs of the neighbour rows into one block."
                      (setq position (1+ position))))))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-list-numeric-column-right-aligns ()
+  "The identifier column of the pipeline list aligns to the right."
+  (should (eq t (plist-get (nthcdr 3 (aref gitlab-pipeline-list-format 0))
+                           :right-align)))
+  (should (eq 'gitlab-list--number-sort
+              (nth 2 (aref gitlab-pipeline-list-format 0)))))
+
+(ert-deftest gitlab-pipeline-detail-table-right-aligns-numbers ()
+  "The duration column of the jobs table ends on one edge.
+The header and every value take the same width and align to the
+right, so a reader compares two durations by their last digit."
+  (with-temp-buffer
+    (gitlab-pipeline--insert-jobs
+     (list (cons 'jobs
+                 (list '((id . 5001) (status . "success") (stage . "test")
+                         (name . "unit-tests") (duration . 100))
+                       '((id . 5002) (status . "failed") (stage . "build")
+                         (name . "package") (duration . 3))))))
+    (goto-char (point-min))
+    (should (search-forward "Duration" nil t))
+    (let ((edge (current-column)))
+      (goto-char (point-min))
+      (should (search-forward "1m 40s" nil t))
+      (should (= edge (current-column)))
+      (goto-char (point-min))
+      (should (search-forward "3s" nil t))
+      (should (= edge (current-column))))))
+
 (ert-deftest gitlab-pipeline-detail-job-row-is-a-button ()
   "A job row is one text button of the type `gitlab-object'.
 The button carries the mouse face and the tooltip, and the row

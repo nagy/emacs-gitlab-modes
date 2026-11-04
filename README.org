@@ -216,7 +216,10 @@ sort indicator of =tabulated-list-mode=.  A date column carries the
 =gitlab-date= face, the identifier column carries =gitlab-id=, the
 Author column carries =gitlab-author= and
 =gitlab-id=, and a branch column carries =gitlab-branch= or, for a tag,
-=gitlab-tag=.
+=gitlab-tag=.  A numeric column, the merge request IID and the pipeline
+ID, aligns its cells to the right, so a reader compares the last digit.
+The same holds for the duration column and the identifier column of
+the jobs table of a pipeline buffer.
 
 A list buffer fits the width of every column to its rows.  A column
 takes the width of its longest cell, or the width of its header when

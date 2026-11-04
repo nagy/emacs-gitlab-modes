@@ -94,7 +94,7 @@ that invocation only."
 ;;; List
 
 (defvar gitlab-merge-request-list-format
-  [("IID" 7 gitlab-list--number-sort)
+  [("IID" 7 gitlab-list--number-sort :right-align t)
    ("Title" 42 t)
    ("State" 10 t)
    ("Author" 20 t)
@@ -103,7 +103,8 @@ that invocation only."
    ("Updated" 20 t)]
   "Table format of the merge request list.
 A list buffer fits every width to its rows, so these numbers apply
-only with `gitlab-list-fit-columns' nil.")
+only with `gitlab-list-fit-columns' nil.  A numeric column aligns
+its cells to the right, as a printed table does.")
 
 (defun gitlab-merge-request--rows (data)
   "Return an alist of merge request ID to row for DATA."

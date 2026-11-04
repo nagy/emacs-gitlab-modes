@@ -399,7 +399,9 @@ without evil.  The suite never opens a network connection.
   buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`,
   and it is one text button that names the job in its tooltip.  The
   mouse face therefore covers the row without joining the rows above
-  and below.
+  and below.  The duration column keeps
+  `gitlab-pipeline-job-duration-width` and aligns its values to the
+  right, like the identifier column.
   The table lists the oldest job first, because
   glab answers the jobs array newest first.  `gitlab-pipeline--sort-jobs`
   copies the array and sorts it by numeric job ID, so the table, the
@@ -697,7 +699,9 @@ without evil.  The suite never opens a network connection.
   `thing-at-point 'url` reach the job page.
 - The list columns live in `gitlab-merge-request-list-format` and
   `gitlab-pipeline-list-format`.  Numeric columns use
-  `gitlab-list--number-sort`.  A `tabulated-list` SORT predicate
+  `gitlab-list--number-sort` and take `:right-align t` in the column
+  plist, because a printed table aligns a number to the right and a
+  reader compares the last digit.  A `tabulated-list` SORT predicate
   receives whole `tabulated-list-entries` elements, not the cell
   strings, so the helper reads the sorted column from the entry and
   strips the `!` of a merge request IID.  A date column goes through

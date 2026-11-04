@@ -130,17 +130,23 @@ A longer name is truncated by the table layout, not by the data."
   :type 'natnum
   :group 'gitlab)
 
+(defconst gitlab-pipeline-job-duration-width 12
+  "Width of the duration column in the pipeline detail buffer.
+A numeric column aligns its values to the right, so a reader
+compares two durations by their last digit.")
+
 ;;; Pipeline list
 
 (defvar gitlab-pipeline-list-format
-  [("ID" 14 gitlab-list--number-sort)
+  [("ID" 14 gitlab-list--number-sort :right-align t)
    ("Status" 12 t)
    ("Ref" 34 t)
    ("Source" 20 t)
    ("Updated" 20 t)]
   "Table format of the pipeline list.
 A list buffer fits every width to its rows, so these numbers apply
-only with `gitlab-list-fit-columns' nil.")
+only with `gitlab-list-fit-columns' nil.  A numeric column aligns
+its cells to the right, as a printed table does.")
 
 (defvar-local gitlab-pipeline--jobs nil
   "Hash table of the jobs of the expanded pipelines of a list buffer.
@@ -570,7 +576,8 @@ on a copy, because a caller may still hold the answered array."
 (defun gitlab-pipeline--insert-jobs (data)
   "Insert the jobs table of pipeline DATA at the end of the buffer.
 The oldest job comes first, because GitLab answers the jobs array
-newest first."
+newest first.  The duration column and the identifier column align
+their values to the right, as a printed table does."
   (goto-char (point-max))
   (insert "\n" (propertize "Jobs" 'face 'gitlab-title) "\n\n")
   (let ((jobs (gitlab-pipeline--sort-jobs
@@ -578,8 +585,9 @@ newest first."
     (if (null jobs)
         (insert "No jobs.\n")
       (let* ((name-width (max 12 gitlab-pipeline-job-name-width))
-             (header (format (format "%%-12s %%-12s %%-%ds %%-12s %%14s\n"
-                                     name-width)
+             (header (format (format "%%-12s %%-12s %%-%ds %%%ds %%14s\n"
+                                     name-width
+                                     gitlab-pipeline-job-duration-width)
                              "Status" "Stage" "Name"
                              "Duration" "ID")))
         (insert (propertize header 'face 'gitlab-table-header))
@@ -603,7 +611,9 @@ the whole row, so RET offers the job from any cell too."
          (status-cell (propertize (format "%-12s" status)
                                   'face (or (gitlab--status-face status)
                                             'default))))
-    (insert (format (format "%%s %%-12s %%-%ds %%-12s %%14s" name-width)
+    (insert (format (format "%%s %%-12s %%-%ds %%%ds %%14s"
+                            name-width
+                            gitlab-pipeline-job-duration-width)
                     status-cell stage name duration id))
     (add-text-properties start (point)
                          (list 'gitlab-job-id id

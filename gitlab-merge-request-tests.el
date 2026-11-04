@@ -58,6 +58,13 @@
            (should (string-match-p "closed" (buffer-string))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-merge-request-list-numeric-column-right-aligns ()
+  "The IID column aligns its cells to the right."
+  (should (eq t (plist-get (nthcdr 3 (aref gitlab-merge-request-list-format 0))
+                           :right-align)))
+  (should (eq 'gitlab-list--number-sort
+              (nth 2 (aref gitlab-merge-request-list-format 0)))))
+
 (ert-deftest gitlab-merge-request-list-thing-at-point-url ()
   "The url thing at point is the web URL of the row."
   (gitlab-test-with-environment

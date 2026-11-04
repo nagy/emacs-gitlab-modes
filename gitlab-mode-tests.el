@@ -588,6 +588,24 @@ A list buffer keeps the click for the selection of a row."
        (gitlab-list--render nil nil)
        (should (equal '(7 42) (gitlab-mode-test--column-widths)))))))
 
+(ert-deftest gitlab-mode-list-fit-keeps-column-properties ()
+  "A fitted column keeps its own properties.
+The fitting replaces the width alone, so a right-aligned numeric
+column stays right-aligned."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format
+                 [("ID" 7 t :right-align t) ("Title" 42 t)])
+     (setq-local tabulated-list-sort-key nil)
+     (setq-local tabulated-list-entries '(("1" ["!1" "short"])))
+     (cl-letf (((symbol-function 'gitlab-list--available-width)
+                (lambda (&optional _window) 200)))
+       (gitlab-list--render nil nil))
+     (should (eq t (plist-get (nthcdr 3 (aref tabulated-list-format 0))
+                              :right-align)))
+     (should (equal '(3 6) (gitlab-mode-test--column-widths))))))
+
 (ert-deftest gitlab-mode-list-refit-resize ()
   "A narrower window refits the columns and keeps the rows."
   (gitlab-test-with-environment
