@@ -202,9 +202,10 @@ Every field that names one object or one commit belongs here, so
   :group 'gitlab)
 
 (defcustom gitlab-author-fields
-  '("author")
+  '("author" "assignee" "assignees" "reviewers" "user")
   "Field names that take `gitlab-author'.
-A field that names the user who wrote an object belongs here."
+A field that names a user belongs here.  A field that holds an
+array of users takes the same faces on every entry."
   :type '(repeat string)
   :group 'gitlab)
 
@@ -868,6 +869,19 @@ nil."
     (propertize value 'face 'gitlab-author))
    (t (gitlab--format-value value))))
 
+(defun gitlab--format-author-list (value)
+  "Return the users of VALUE as display text with their faces.
+VALUE is a decoded user object, an array of user objects, a plain
+name or nil.  Every name takes `gitlab-author' and every account
+name takes `gitlab-id', so a detail field looks like a list
+column."
+  (declare (pure t) (side-effect-free t))
+  (if (and (listp value)
+           value
+           (not (gitlab-data-alist-p value)))
+      (mapconcat #'gitlab--format-author value ", ")
+    (gitlab--format-author value)))
+
 (defun gitlab--format-branch (value &optional tag)
   "Return branch or ref VALUE as display text with `gitlab-branch'.
 TAG is the decoded `tag' flag of the object that holds VALUE, so a
@@ -984,6 +998,8 @@ DATA is the object that holds KEY, when the caller has it."
   (declare (side-effect-free t))
   (let ((text
          (cond
+          ((gitlab--author-field-p key)
+           (gitlab--format-author-list value))
           ((eq key 'web_url)
            (if (stringp value)
                (gitlab--nav-string value 'gitlab-url value "Open in the browser")
@@ -1004,7 +1020,8 @@ DATA is the object that holds KEY, when the caller has it."
           ((memq key '(duration queued_duration))
            (gitlab--format-duration value))
           (t (gitlab--format-value value)))))
-    (if-let* ((face (gitlab--field-value-face key value data)))
+    (if-let* ((face (and (not (gitlab--author-field-p key))
+                         (gitlab--field-value-face key value data))))
         (propertize text 'face face)
       text)))
 
@@ -1698,9 +1715,10 @@ a merge request IID carries a leading !, so keep the digits only."
     (< (funcall number a) (funcall number b))))
 
 (defun gitlab-list--id-cell (id property)
-  "Return ID as a propertized table cell with PROPERTY set."
+  "Return ID as a table cell with PROPERTY set and `gitlab-id'."
   (declare (pure t) (side-effect-free t))
-  (gitlab--nav-string id property id "Open"))
+  (gitlab--nav-string (propertize id 'face 'gitlab-id)
+                      property id "Open"))
 
 ;; The commands are defined above the keymap bindings, so the
 ;; byte-compiler knows every key target.

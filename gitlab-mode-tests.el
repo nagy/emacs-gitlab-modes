@@ -99,6 +99,36 @@
     (should-not (get-text-property
                  0 'face (gitlab--format-field-value 'tag t data)))))
 
+(ert-deftest gitlab-mode-author-list-face ()
+  "A field that holds users takes the faces of every user."
+  (let ((reviewers
+           (gitlab--format-field-value
+            'reviewers
+            '(((name . "Bob") (username . "bob"))
+              ((name . "Carol") (username . "carol"))))))
+    (should (equal "Bob (@bob), Carol (@carol)" reviewers))
+    (should (eq 'gitlab-author (get-text-property 0 'face reviewers)))
+    (should (eq 'gitlab-id (get-text-property 5 'face reviewers))))
+  (dolist (key '(author assignee assignees reviewers user))
+    (should (eq 'gitlab-author
+                (get-text-property
+                 0 'face (gitlab--format-field-value
+                          key '((name . "Alice") (username . "alice"))))))
+        (should (eq 'gitlab-id
+                    (get-text-property
+                     7 'face (gitlab--format-field-value
+                              key '((name . "Alice")
+                                    (username . "alice")))))))
+  (should (equal "-"
+                 (gitlab--format-field-value 'assignees nil))))
+
+(ert-deftest gitlab-mode-list-id-cell-face ()
+  "A list identifier cell carries `gitlab-id' and its property."
+  (let ((cell (gitlab-list--id-cell "!12" 'gitlab-merge-request-iid)))
+    (should (equal "!12" cell))
+    (should (eq 'gitlab-id (get-text-property 0 'face cell)))
+    (should (equal "!12" (get-text-property 0 'gitlab-merge-request-iid cell)))))
+
 (ert-deftest gitlab-mode-render-fields ()
   "A field table has labels, values and a field property."
   (gitlab-test-with-environment

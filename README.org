@@ -57,6 +57,9 @@ A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 An author carries the =gitlab-author= face, which inherits the Magit
 =magit-log-author= face, and its account name carries =gitlab-id=.
+An assignee, an assignee list, a reviewer list and the user of a
+pipeline carry the same two faces, so a name looks the same in a
+detail buffer and in a list column.
 A branch carries the =gitlab-branch= face, which inherits
 =magit-branch-remote=, and a ref that the =tag= flag of a pipeline
 marks a tag carries the =gitlab-tag= face, which inherits
@@ -194,7 +197,8 @@ column resizing and point keeping by row identity come from the parent.
 =RET= opens the row, =c= copies its ID and =w= opens its web page.
 A header line shows the column names, and the sort column carries the
 sort indicator of =tabulated-list-mode=.  A date column carries the
-=gitlab-date= face, the Author column carries =gitlab-author= and
+=gitlab-date= face, the identifier column carries =gitlab-id=, the
+Author column carries =gitlab-author= and
 =gitlab-id=, and a branch column carries =gitlab-branch= or, for a tag,
 =gitlab-tag=.
 

@@ -563,7 +563,9 @@ without evil.  The suite never opens a network connection.
   receives whole `tabulated-list-entries` elements, not the cell
   strings, so the helper reads the sorted column from the entry and
   strips the `!` of a merge request IID.  A date column goes through
-  `gitlab-list--date-cell`, so the cell carries `gitlab-date`.
+  `gitlab-list--date-cell`, so the cell carries `gitlab-date`.  The
+  identifier column goes through `gitlab-list--id-cell`, so the cell
+  carries `gitlab-id` and its navigation property.
 - A list buffer fits the width of every column to its rows when
   `gitlab-list-fit-columns` is non-nil, the default.
   `gitlab-list--column-minimum` keeps a column at the width of its
@@ -632,7 +634,11 @@ without evil.  The suite never opens a network connection.
   `gitlab-date-fields`; a new identifier field goes into
   `gitlab-id-fields`, so `id`, `iid`, `project_id`, `sha` and
   `before_sha` share `gitlab-id`.  A new author field goes into
-  `gitlab-author-fields`, and a new branch or ref field goes into
+  `gitlab-author-fields`, so `author`, `assignee`, `assignees`,
+  `reviewers` and the `user` of a pipeline carry the author faces.
+  A field that holds an array of users goes through
+  `gitlab--format-author-list`, which maps `gitlab--format-author`
+  over the array.  A new branch or ref field goes into
   `gitlab-branch-fields`.
 - A ref that the `tag` flag of the object marks a tag takes
   `gitlab-tag` instead of `gitlab-branch`.  A name goes into
@@ -651,7 +657,10 @@ without evil.  The suite never opens a network connection.
   The merge request list uses both in its Author and Branches
   columns, the commit list and the notes header use the first, and
   the pipeline list uses the second in its Ref column.  The commit
-  list gives the short SHA `gitlab-id`.
+  list gives the short SHA `gitlab-id`.  `gitlab--format-field-value`
+  prints an author field through `gitlab--format-author-list` and
+  applies no whole-text face there, because that would overwrite the
+  two faces of each name.
 - Interactive entry points carry `;;;###autoload` cookies.  The
   optional layers keep their own files and are not required by
   `gitlab-modes.el`.
