@@ -95,11 +95,12 @@
                              (gitlab-merge-request-approve "12"))))))
 
 (ert-deftest gitlab-merge-request-approve-command ()
-  "The approve command sends the IID and reports the approval."
+  "The approve command sends the IID, reports and refreshes."
   (gitlab-test-with-environment
    (let ((buffer (generate-new-buffer "*GitLab MR approve test*"))
          (iid nil)
          (success nil)
+         (refreshed nil)
          (messages nil))
      (unwind-protect
          (progn
@@ -118,9 +119,12 @@
            (cl-letf (((symbol-function 'message)
                       (lambda (format-string &rest arguments)
                         (push (apply #'format format-string arguments)
-                              messages))))
+                              messages)))
+                     ((symbol-function 'gitlab--refresh-after-write)
+                      (lambda (argument) (setq refreshed argument))))
              (funcall success "✓ Approved merge request !12"))
-           (should (equal '("Approved group/project!12") messages)))
+           (should (equal '("Approved group/project!12") messages))
+           (should (eq buffer refreshed)))
        (with-current-buffer buffer
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))
@@ -138,12 +142,13 @@
                              (gitlab-merge-request-merge "12"))))))
 
 (ert-deftest gitlab-merge-request-merge-command ()
-  "The merge command asks, sends the IID and reports the merge."
+  "The merge command asks, sends the IID, reports and refreshes."
   (gitlab-test-with-environment
    (let ((buffer (generate-new-buffer "*GitLab MR merge test*"))
          (iid nil)
          (success nil)
          (prompt nil)
+         (refreshed nil)
          (messages nil))
      (unwind-protect
          (progn
@@ -167,9 +172,12 @@
            (cl-letf (((symbol-function 'message)
                       (lambda (format-string &rest arguments)
                         (push (apply #'format format-string arguments)
-                              messages))))
+                              messages)))
+                     ((symbol-function 'gitlab--refresh-after-write)
+                      (lambda (argument) (setq refreshed argument))))
              (funcall success "✓ Merged merge request !12"))
-           (should (equal '("Merged group/project!12") messages)))
+           (should (equal '("Merged group/project!12") messages))
+           (should (eq buffer refreshed)))
        (with-current-buffer buffer
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))

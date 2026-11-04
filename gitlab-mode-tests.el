@@ -347,6 +347,38 @@
      (should (string-match-p "Good" (buffer-string)))
      (should (string-match-p "boom" (or header-line-format ""))))))
 
+(ert-deftest gitlab-mode-refresh-after-write ()
+  "A write drops the cache of its kind and fetches the buffer again."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab--id "12")
+     (setq-local gitlab--kind 'merge-request)
+     (let ((invalidated nil)
+           (reverted nil))
+       (cl-letf (((symbol-function 'gitlab-cache-invalidate)
+                  (lambda (&optional kind) (setq invalidated kind)))
+                 ((symbol-function 'gitlab--revert-buffer)
+                  (lambda (&rest _arguments) (setq reverted t))))
+         (gitlab--refresh-after-write (current-buffer)))
+       (should (eq 'merge-request invalidated))
+       (should reverted)))))
+
+(ert-deftest gitlab-mode-refresh-after-write-dead-buffer ()
+  "A write that outlives its buffer drops every cached list."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab write test*"))
+         (invalidated 'unset)
+         (reverted nil))
+     (kill-buffer buffer)
+     (cl-letf (((symbol-function 'gitlab-cache-invalidate)
+                (lambda (&optional kind) (setq invalidated kind)))
+               ((symbol-function 'gitlab--revert-buffer)
+                (lambda (&rest _arguments) (setq reverted t))))
+       (gitlab--refresh-after-write buffer))
+     (should-not invalidated)
+     (should-not reverted))))
+
 (ert-deftest gitlab-mode-list-refresh ()
   "A synchronous list fetch fills `tabulated-list-entries'."
   (gitlab-test-with-environment

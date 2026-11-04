@@ -846,6 +846,18 @@ line or the mode line."
           (setq gitlab--refresh-requested nil)
           (gitlab--refresh))))))
 
+(defun gitlab--refresh-after-write (buffer)
+  "Refresh BUFFER after a write that changed the object it shows.
+Drop the cached list answer of the buffer kind, because a later
+prompt must not offer the state before the write, and fetch a live
+buffer again.  BUFFER may be dead, because a write outlives the
+buffer that sent it, and a dead buffer drops every cached list."
+  (if (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (gitlab-cache-invalidate (or gitlab--kind gitlab-list--kind))
+        (gitlab--revert-buffer))
+    (gitlab-cache-invalidate)))
+
 (defun gitlab--render ()
   "Render `gitlab--last-data' in the current buffer.
 Keep point on the line that it was on before the render, by the

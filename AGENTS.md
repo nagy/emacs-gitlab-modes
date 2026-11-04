@@ -144,7 +144,8 @@ without evil.  The suite never opens a network connection.
   `gitlab-approve-merge-request` runs the asynchronous form so the
   buffer never blocks.  The approve answer carries no merge request
   field, so the command reports the approval in the echo area and
-  leaves the render to the next refresh.  A
+  calls `gitlab--refresh-after-write`, which fetches the merge
+  request again.  A
   failure goes through `gitlab--set-error`, which the next render
   clears.  The command holds no key: the merge request keymap keeps no
   binding that would shadow an evil motion.
@@ -156,6 +157,14 @@ without evil.  The suite never opens a network connection.
   request.  The merge command `gitlab-merge-merge-request` follows
   the approve command in every other respect, and it holds no key.
   A declined confirmation sends no request.
+- `gitlab--refresh-after-write` in the display layer follows a write
+  whose answer changes the object.  It drops the cached list answer
+  of the buffer kind through `gitlab-cache-invalidate`, so a later
+  prompt never offers the state before the write, and it runs
+  `gitlab--revert-buffer`, so the buffer shows the new state.  A
+  buffer that the write outlived drops every cached list instead,
+  because it carries no kind to name.  A list buffer refetches its
+  collection, because a merged row leaves the list.
 - The data cache serves prompts only.  `gitlab-cache-ttl` controls it;
   `gitlab-cache-clear` and `gitlab-cache-invalidate` drop entries.  A
   display buffer fetches fresh data on every refresh.

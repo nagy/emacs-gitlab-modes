@@ -296,19 +296,22 @@ stored notes without another request."
            (gitlab--set-error error)))))))
 
 (defun gitlab-merge-request--approve-done (buffer iid)
-  "Report in BUFFER that the user approved merge request IID."
+  "Report in BUFFER that the user approved merge request IID.
+Fetch BUFFER again, so the new approval state shows."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (message "Approved %s"
-               (gitlab-data-identifier 'merge-request iid gitlab--context)))))
+               (gitlab-data-identifier 'merge-request iid gitlab--context))))
+  (gitlab--refresh-after-write buffer))
 
 ;;;###autoload
 (defun gitlab-approve-merge-request ()
   "Approve the current merge request on behalf of the current user.
 The request runs in the background, so the buffer never blocks.
 The answer of the approve request holds no merge request field,
-so the buffer keeps its text and the next refresh shows the new
-state.  A failing request shows its condition in the header line."
+so the command fetches the merge request again and the buffer
+shows the new approval state.  A failing request shows its
+condition in the header line."
   (interactive nil gitlab-merge-request-mode)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
@@ -324,11 +327,13 @@ state.  A failing request shows its condition in the header line."
            (gitlab--set-error error)))))))
 
 (defun gitlab-merge-request--merge-done (buffer iid)
-  "Report in BUFFER that the user merged merge request IID."
+  "Report in BUFFER that the user merged merge request IID.
+Fetch BUFFER again, so the new state shows."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (message "Merged %s"
-               (gitlab-data-identifier 'merge-request iid gitlab--context)))))
+               (gitlab-data-identifier 'merge-request iid gitlab--context))))
+  (gitlab--refresh-after-write buffer))
 
 ;;;###autoload
 (defun gitlab-merge-merge-request ()
@@ -336,9 +341,9 @@ state.  A failing request shows its condition in the header line."
 Ask for confirmation, because a merge changes the target branch,
 and run `glab mr merge' in the background, so the buffer never
 blocks.  The answer of the merge request holds no merge request
-field, so the buffer keeps its text and the next refresh shows the
-new state.  A failing request shows its condition in the header
-line."
+field, so the command fetches the merge request again and the
+buffer shows the new state.  A failing request shows its condition
+in the header line."
   (interactive nil gitlab-merge-request-mode)
   (unless (derived-mode-p 'gitlab-merge-request-mode)
     (user-error "This is not a merge request buffer"))
