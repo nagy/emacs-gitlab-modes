@@ -70,8 +70,9 @@ detail buffer and in a list column.
 A branch carries the =gitlab-branch= face, which inherits
 =magit-branch-remote=, and a ref that the =tag= flag of a pipeline
 marks a tag carries the =gitlab-tag= face, which inherits
-=magit-tag=.  Magit stays optional, because Emacs shows the face
-without its parent.
+=magit-tag=.  A timestamp carries the =gitlab-date= face, which
+inherits =org-date=.  Magit and Org stay optional, because Emacs shows
+the face without its parent.
 
 A pipeline buffer shows the pipeline fields at the top and the jobs
 table below.  The table lists the oldest job first, because glab

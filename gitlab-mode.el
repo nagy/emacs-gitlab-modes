@@ -287,8 +287,11 @@ format of the collection."
   :group 'gitlab)
 
 (defface gitlab-date
-  '((t :inherit shadow))
-  "Face of a timestamp field."
+  '((t :inherit org-date))
+  "Face of a timestamp field.
+The face inherits `org-date', so a timestamp looks the same as in an
+Org buffer.  Org stays optional, because Emacs ignores an undefined
+parent face."
   :group 'gitlab)
 
 (defface gitlab-author

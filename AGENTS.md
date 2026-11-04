@@ -752,7 +752,8 @@ without evil.  The suite never opens a network connection.
   Status faces come from `gitlab-status-faces`; do not apply a
   font-lock face in a renderer.  `gitlab-author` inherits
   `magit-log-author`, `gitlab-branch` inherits `magit-branch-remote`
-  and `gitlab-tag` inherits `magit-tag`.  Magit stays optional:
+  and `gitlab-tag` inherits `magit-tag`.  `gitlab-date` inherits
+  `org-date`.  Magit and Org stay optional:
   Emacs ignores an undefined parent face, so no name goes into
   `Package-Requires` nor into a `require`.
 - Colors, dates, identifiers, authors, branches and status values go
