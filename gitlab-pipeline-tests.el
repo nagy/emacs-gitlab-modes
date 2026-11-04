@@ -117,6 +117,45 @@
                             (gitlab-pipeline-job-id-at-point)))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-detail-mouse-face-covers-one-job ()
+  "Every mouse face run of the jobs table names one job.
+Emacs lights each contiguous character that carries the same
+`mouse-face' value, so a run that covers a whole row joins the
+runs of the neighbour rows into one block."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab pipeline mouse test*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-pipeline-mode)
+             (setq-local gitlab--id "1001")
+             (gitlab--refresh))
+           (should (gitlab-pipeline-tests--wait-for
+                    buffer "lint:linux"))
+           (with-current-buffer buffer
+             (let ((position (point-min))
+                   runs)
+               (while (< position (point-max))
+                 (let ((end (or (next-single-property-change
+                                 position 'mouse-face)
+                                (point-max))))
+                   (when (get-text-property position 'mouse-face)
+                     (push (cons position end) runs))
+                   (setq position end)))
+               (setq runs (cl-remove-if-not
+                           (lambda (run)
+                             (get-text-property (car run) 'gitlab-job-id))
+                           (nreverse runs)))
+               (should (= 3 (length runs)))
+               (dolist (run runs)
+                 (let ((id (get-text-property (car run) 'gitlab-job-id))
+                       (position (car run)))
+                   (while (< position (cdr run))
+                     (should (equal id (get-text-property
+                                        position 'gitlab-job-id)))
+                     (setq position (1+ position))))))))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-detail-keeps-job-point ()
   "A re-render keeps point on the same job row."
   (gitlab-test-with-environment

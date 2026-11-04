@@ -259,24 +259,30 @@ newest first."
           (gitlab-pipeline--insert-job job name-width))))))
 
 (defun gitlab-pipeline--insert-job (job name-width)
-  "Insert one JOB row with NAME-WIDTH for the name column."
+  "Insert one JOB row with NAME-WIDTH for the name column.
+Only the name cell carries the mouse face.  Emacs highlights every
+contiguous character that holds the same `mouse-face' value, so a
+mouse face on a whole row would light the rest of the table too.
+The navigation properties stay on the whole row, so RET and a click
+offer the job from any cell."
   (let* ((id (gitlab-data-id-string (gitlab-data-field "id" job)))
          (status (gitlab-data-field-string "status" job))
          (stage (gitlab-data-field-string "stage" job))
          (name (gitlab-data-field-string "name" job))
          (duration (gitlab--format-duration
                     (gitlab-data-field "duration" job)))
+         (help (format "Job %s (%s)" name id))
          (status-cell (propertize (format "%-12s" status)
                                   'face (or (gitlab--status-face status)
                                             'default)))
-         (line (format (format "%%s %%-12s %%-%ds %%-12s %%14s\n"
-                               name-width)
-                       status-cell stage name duration id)))
-    (insert (propertize line
+         (name-cell (propertize (format (format "%%-%ds" name-width) name)
+                                'mouse-face 'highlight
+                                'help-echo help)))
+    (insert (propertize (format "%s %-12s %s %-12s %14s\n"
+                                status-cell stage name-cell duration id)
                         'gitlab-job-id id
                         'gitlab-job-name name
-                        'mouse-face 'highlight
-                        'help-echo (format "Job %s (%s)" name id)))))
+                        'help-echo help))))
 
 (defun gitlab-pipeline--children ()
   "Return the job rows of the current pipeline buffer in display order.

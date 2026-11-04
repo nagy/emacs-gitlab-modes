@@ -373,6 +373,9 @@ without evil.  The suite never opens a network connection.
 - The pipeline detail uses a hand-written jobs table, not
   `tabulated-list-mode`, because the pipeline fields occupy the same
   buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`.
+  Only the name cell carries `mouse-face`, because Emacs lights every
+  contiguous character that holds the same `mouse-face` value, and a
+  mouse face on each whole row would light the entire table.
   The table lists the oldest job first, because
   glab answers the jobs array newest first.  `gitlab-pipeline--sort-jobs`
   copies the array and sorts it by numeric job ID, so the table, the
