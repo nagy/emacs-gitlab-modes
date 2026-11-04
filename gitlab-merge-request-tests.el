@@ -16,6 +16,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'gitlab-test-helpers)
 (require 'gitlab-merge-request)
 
@@ -193,6 +194,50 @@
      (re-search-forward "Bob")
      (should (eq 'gitlab-author (get-text-property (match-beginning 0) 'face)))
      (should (string-match-p "2026-10-31 20:57:30" (buffer-string))))))
+
+(ert-deftest gitlab-merge-request-commit-mouse-face-covers-one-row ()
+  "Every mouse face run of the commit list names one commit.
+Emacs lights each contiguous character that carries the same
+`mouse-face' value, so a run that covers a whole row joins the
+runs of the neighbour rows into one block."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (setq-local gitlab--id "12")
+     (cl-letf (((symbol-function 'gitlab-git-merge-request-commits)
+                (lambda (&rest _)
+                  (list :commits
+                        (list '((sha . "abc123def")
+                                (short . "abc123d")
+                                (subject . "Fix")
+                                (author . "Bob")
+                                (date . "2026-10-31T20:57:30Z"))
+                              '((sha . "def456abc")
+                                (short . "def456a")
+                                (subject . "Add")
+                                (author . "Ann")
+                                (date . "2026-10-31T21:57:30Z")))
+                        :total 2))))
+       (gitlab-merge-request--insert-commits nil))
+     (let ((position (point-min))
+           runs)
+       (while (< position (point-max))
+         (let ((end (or (next-single-property-change position 'mouse-face)
+                        (point-max))))
+           (when (get-text-property position 'mouse-face)
+             (push (cons position end) runs))
+           (setq position end)))
+       (setq runs (cl-remove-if-not
+                   (lambda (run)
+                     (get-text-property (car run) 'gitlab-commit-sha))
+                   (nreverse runs)))
+       (should (= 2 (length runs)))
+       (dolist (run runs)
+         (let ((sha (get-text-property (car run) 'gitlab-commit-sha))
+               (position (car run)))
+           (while (< position (cdr run))
+             (should (equal sha (get-text-property position
+                                                   'gitlab-commit-sha)))
+             (setq position (1+ position)))))))))
 
 (ert-deftest gitlab-merge-request-notes-author-face ()
   "The notes header marks the author and the account name."

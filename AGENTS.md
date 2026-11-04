@@ -130,7 +130,10 @@ without evil.  The suite never opens a network connection.
   table with `gitlab-commit-sha` on every line.  `gitlab-open-at-point`
   reads that property first.  A commit limit shows "N more commits."
   The section appears only with `gitlab-merge-request-show-commits`
-  and a local merge request ref.
+  and a local merge request ref.  Only the short SHA cell carries
+  `mouse-face`, because Emacs lights every contiguous character that
+  holds the same `mouse-face` value, and a mouse face on each whole
+  row would light the entire commit list.
 - The data cache serves prompts only.  `gitlab-cache-ttl` controls it;
   `gitlab-cache-clear` and `gitlab-cache-invalidate` drop entries.  A
   display buffer fetches fresh data on every refresh.

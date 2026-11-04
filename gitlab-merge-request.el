@@ -202,6 +202,9 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
 (defun gitlab-merge-request--insert-commits (data)
   "Insert the local commits of DATA below the merge request fields.
 Every line carries `gitlab-commit-sha', so RET opens the commit.
+Only the short SHA cell carries the mouse face, because Emacs lights
+every contiguous character that holds the same `mouse-face' value,
+and a mouse face on each whole row would light the entire list.
 The function inserts nothing without a local merge request ref, and
 nothing for a buffer whose project is not the local checkout,
 because a ref of another project would be wrong."
@@ -223,12 +226,13 @@ because a ref of another project would be wrong."
              (propertize
               (format "%s %s  (%s, %s)\n"
                       (propertize (alist-get 'short commit)
-                                  'face 'gitlab-id)
+                                  'face 'gitlab-id
+                                  'mouse-face 'highlight
+                                  'help-echo "Open the commit")
                       (alist-get 'subject commit)
                       (gitlab--format-author (alist-get 'author commit))
                       (gitlab--format-date (alist-get 'date commit)))
               'gitlab-commit-sha (alist-get 'sha commit)
-              'mouse-face 'highlight
               'help-echo "Open the commit"))))
         (when (< (length commits) total)
           (insert (format "\n%d more commits.\n"
