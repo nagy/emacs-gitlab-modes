@@ -579,7 +579,9 @@ The oldest job comes first, because GitLab answers the jobs array
 newest first.  The duration column and the identifier column align
 their values to the right, as a printed table does."
   (goto-char (point-max))
-  (insert "\n" (propertize "Jobs" 'face 'gitlab-title) "\n\n")
+  (insert "\n")
+  (gitlab--insert-section-title "Jobs")
+  (insert "\n")
   (let ((jobs (gitlab-pipeline--sort-jobs
                (gitlab-data-field "jobs" data))))
     (if (null jobs)

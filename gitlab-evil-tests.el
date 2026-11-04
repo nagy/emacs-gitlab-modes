@@ -109,7 +109,9 @@
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "R")
                #'revert-buffer-quick))
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "y")
-               #'gitlab-export-json))))
+               #'gitlab-export-json))
+   (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "TAB")
+               #'gitlab-detail-toggle-section))))
 
 (ert-deftest gitlab-evil-job-log-keys-remap ()
   "The job log bindings reach the GitLab commands through a remap."

@@ -434,6 +434,22 @@ right, so a reader compares two durations by their last digit."
                           bug-reference-bug-regexp)))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-detail-jobs-section ()
+  "The jobs table starts a foldable section of the detail buffer."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (let ((inhibit-read-only t))
+       (gitlab-pipeline--insert-jobs
+        (list (cons 'jobs
+                    (list '((id . 5001) (status . "success") (stage . "test")
+                            (name . "unit-tests") (duration . 100)))))))
+     (goto-char (point-min))
+     (should (search-forward "Jobs" nil t))
+     (should (equal "Jobs"
+                    (get-text-property (line-beginning-position)
+                                       'gitlab-section))))))
+
 (ert-deftest gitlab-pipeline-detail-job-row-is-a-button ()
   "A job row is one text button of the type `gitlab-object'.
 The button carries the mouse face and the tooltip, and the row

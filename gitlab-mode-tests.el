@@ -18,6 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
+(require 'outline)
 (require 'subr-x)
 (require 'gitlab-test-helpers)
 (require 'gitlab-mode)
@@ -564,6 +565,93 @@ visits JSON with tree-sitter keeps the export key."
       (should (eq 'gitlab-export-json
                   (lookup-key map (vector 'remap mode)))))))
 
+(defun gitlab-mode-test--render-sections (_id _data)
+  "Render two sections into the current buffer."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (gitlab--insert-section-title "First")
+    (insert "\nfirst body\n")
+    (gitlab--insert-section-title "Second")
+    (insert "\nsecond body\n")))
+
+(defun gitlab-mode-test--invisible-p (heading)
+  "Return non-nil when the body of the section of HEADING is folded."
+  (save-excursion
+    (goto-char heading)
+    (outline-invisible-p (line-end-position))))
+
+(ert-deftest gitlab-mode-detail-sections ()
+  "A detail buffer folds its sections through `outline-minor-mode'.
+A title line carries `gitlab-section', so no heading needs a special
+character, and every section sits at the same level."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (should outline-minor-mode)
+     (should (eq outline-search-function #'gitlab--outline-search))
+     (gitlab--render-fields "Merge request !12" '((iid . 12) (title . "Fix")))
+     (should (equal '(1) (gitlab--section-headings)))
+     (should (equal "Merge request !12"
+                    (get-text-property (point-min) 'gitlab-section)))
+     (should (eq 'gitlab-title (get-text-property (point-min) 'face)))
+     (goto-char (point-min))
+     (should (outline-on-heading-p))
+     ;; The outline machinery calls the variable, not the function of
+     ;; the same name.
+     (should (= 1 (funcall outline-level))))))
+
+(ert-deftest gitlab-mode-detail-fold-section ()
+  "TAB folds the section around point and TAB folds it open again."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (gitlab-mode-test--render-sections nil nil)
+     (let ((first (nth 0 (gitlab--section-headings)))
+           (second (nth 1 (gitlab--section-headings))))
+       (goto-char second)
+       (forward-line 1)
+       (gitlab-detail-toggle-section)
+       (should (equal '("Second") (gitlab--collapsed-sections)))
+       (should (gitlab-mode-test--invisible-p second))
+       (should-not (gitlab-mode-test--invisible-p first))
+       (gitlab-detail-toggle-section)
+       (should-not (gitlab--collapsed-sections))))))
+
+(ert-deftest gitlab-mode-detail-fold-survives-render ()
+  "A render keeps the folded sections of a detail buffer."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab--render-function #'gitlab-mode-test--render-sections
+                 gitlab--rendered t)
+     (gitlab--render)
+     (goto-char (point-min))
+     (gitlab-detail-toggle-section)
+     (should (equal '("First") (gitlab--collapsed-sections)))
+     (gitlab--render)
+     (should (equal '("First") (gitlab--collapsed-sections)))
+     (should (gitlab-mode-test--invisible-p (point-min))))))
+
+(ert-deftest gitlab-mode-detail-toggle-section-without-section ()
+  "A buffer without a section at point signals a `user-error'."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (let ((inhibit-read-only t))
+       (insert "plain text\n"))
+     (goto-char (point-min))
+     (should-error (gitlab-detail-toggle-section) :type 'user-error))))
+
+(ert-deftest gitlab-mode-imenu-index-with-sections ()
+  "The imenu index names the sections and the field lines."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (gitlab--render-fields "Merge request !12" '((iid . 12) (title . "Fix")))
+     (let ((index (gitlab--imenu-index)))
+       (should (equal "Merge request !12" (car (car index))))
+       (should (member "Title" (mapcar #'car index)))))))
+
 (ert-deftest gitlab-mode-list-revert ()
   "`revert-buffer' fetches the collection again."
   (gitlab-test-with-environment
@@ -844,6 +932,8 @@ The fake header line and the empty rows contribute nothing."
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-copy-id)))
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-open-web)))
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-pop)))
+  (should (equal '(gitlab-detail-mode)
+                 (command-modes #'gitlab-detail-toggle-section)))
   (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
                  (command-modes #'gitlab-go-to-parent)))
   (should (equal '(gitlab-detail-mode gitlab-job-log-mode)

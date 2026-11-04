@@ -119,6 +119,7 @@
 (require 'cl-lib)
 (require 'goto-addr)
 (require 'json)
+(require 'outline)
 (require 'seq)
 (require 'subr-x)
 (require 'tabulated-list)
@@ -854,10 +855,12 @@ the render erases the text that a window point marker points into.
 A buffer with a position target moves point to that target
 instead."
   (let ((record (gitlab--point-record))
-        (windows (gitlab--window-records)))
+        (windows (gitlab--window-records))
+        (collapsed (gitlab--collapsed-sections)))
     (let ((inhibit-read-only t))
       (funcall (or gitlab--render-function #'gitlab--render-default)
                gitlab--id gitlab--last-data))
+    (gitlab--restore-sections collapsed)
     (unless (gitlab--apply-target)
       (gitlab--restore-point record))
     (gitlab--restore-window-points windows)
@@ -1446,6 +1449,99 @@ can name a field line or a job row instead of a buffer position."
       (goto-char (point-min)))
     found))
 
+;;; Sections
+
+;; A detail buffer folds its sections through `outline-minor-mode'.  A
+;; heading is a title line that carries the text property
+;; `gitlab-section' with the name of the section, and
+;; `outline-search-function' finds it, so no heading needs a special
+;; character in the text.  Every section is a top level section, so
+;; `outline-level' answers one for each of them.
+
+(defun gitlab--insert-section-title (title)
+  "Insert TITLE as the heading line of a foldable section.
+The line keeps `gitlab-title' and carries `gitlab-section' with
+TITLE, so the outline search of the detail mode finds it and a
+render restores a fold by name."
+  (insert (propertize title
+                      'face 'gitlab-title
+                      'gitlab-section title)
+          "\n"))
+
+(defun gitlab--outline-search (&optional bound move backward looking-at)
+  "Search for the next text property `gitlab-section'.
+BOUND, MOVE, BACKWARD and LOOKING-AT have the meaning that
+`outline-search-function' documents."
+  (outline-search-text-property 'gitlab-section nil bound move backward
+                                looking-at))
+
+(defun gitlab--section-headings ()
+  "Return the start of every section heading of the current buffer.
+The positions come in buffer order."
+  (let (headings
+        (position (point-min)))
+    (save-excursion
+      (while (< position (point-max))
+        (when (get-text-property position 'gitlab-section)
+          (push position headings))
+        (setq position (or (next-single-property-change
+                            position 'gitlab-section nil (point-max))
+                           (point-max)))))
+    (nreverse headings)))
+
+(defun gitlab--collapsed-sections ()
+  "Return the names of the folded sections of the current buffer.
+`gitlab--render' reads this before it erases the buffer, so a
+refresh keeps the fold of a reader."
+  (when (bound-and-true-p outline-minor-mode)
+    (let (names)
+      (dolist (heading (gitlab--section-headings))
+        (save-excursion
+          (goto-char heading)
+          (when (outline-invisible-p (line-end-position))
+            (push (get-text-property heading 'gitlab-section) names))))
+      names)))
+
+(defun gitlab--hide-section (name)
+  "Fold the section NAME of the current buffer when it is present."
+  (when-let* ((heading (seq-find
+                        (lambda (position)
+                          (equal (get-text-property position 'gitlab-section)
+                                 name))
+                        (gitlab--section-headings)))
+              (inhibit-read-only t))
+    (save-excursion
+      (goto-char heading)
+      (outline-hide-subtree))))
+
+(defun gitlab--restore-sections (names)
+  "Fold the sections of NAMES in the current buffer."
+  (dolist (name names)
+    (gitlab--hide-section name)))
+
+(defun gitlab--enclosing-section ()
+  "Return the start of the heading line of the section around point.
+Return nil when point sits above the first section."
+  (save-excursion
+    (beginning-of-line)
+    (if (get-text-property (point) 'gitlab-section)
+        (point)
+      (when (outline-previous-heading)
+        (point)))))
+
+(defun gitlab-detail-toggle-section ()
+  "Fold or unfold the GitLab section around point.
+The command works on every line of a section, not only on the line
+that shows its heading, so a reader folds a long field table from
+the middle of it."
+  (interactive nil gitlab-detail-mode)
+  (let ((heading (gitlab--enclosing-section)))
+    (unless heading
+      (user-error "No GitLab section at point"))
+    (save-excursion
+      (goto-char heading)
+      (outline-toggle-children))))
+
 (defun gitlab--insert-fields (data &optional keys)
   "Insert the field table of DATA into the current buffer.
 KEYS selects and orders the fields; nil uses the JSON order.
@@ -1471,8 +1567,8 @@ buffer first, so `gitlab--render' records the line of point before
 the render and restores it after the render."
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (insert (propertize title 'face 'gitlab-title))
-    (insert "\n\n")
+    (gitlab--insert-section-title title)
+    (insert "\n")
     (gitlab--insert-fields data keys)))
 
 (defun gitlab--render-default (_id data)
@@ -1484,13 +1580,20 @@ the render and restores it after the render."
 ;;; Imenu
 
 (defun gitlab--imenu-index ()
-  "Return an imenu index of the field lines of the current buffer."
+  "Return an imenu index of the sections and the field lines."
   (let (index)
     (save-excursion
       (goto-char (point-min))
       (while (not (eobp))
-        (when-let* ((field (get-text-property (point) 'gitlab-field)))
-          (push (cons (gitlab--field-label field) (point)) index))
+        (cond
+         ((get-text-property (point) 'gitlab-section)
+          (push (cons (get-text-property (point) 'gitlab-section) (point))
+                index))
+         ((get-text-property (point) 'gitlab-field)
+          (push (cons (gitlab--field-label (get-text-property (point)
+                                                              'gitlab-field))
+                      (point))
+                index)))
         (forward-line 1)))
     (nreverse index)))
 
@@ -1687,8 +1790,17 @@ without blocking Emacs."
   (gitlab--init-text-links)
   (setq-local imenu-create-index-function #'gitlab--imenu-index)
   (setq-local gitlab--render-function #'gitlab--render-default)
+  ;; A title line carries `gitlab-section', so the outline search finds
+  ;; it and no heading needs a special character.  Every section is a
+  ;; top level section, so the level answers one.  The faces of the
+  ;; renderer stay, because the title already carries `gitlab-title'.
+  (setq-local outline-search-function #'gitlab--outline-search)
+  (setq-local outline-level (lambda () 1))
+  (setq-local outline-minor-mode-highlight nil)
+  (outline-minor-mode 1)
   (setq-local truncate-lines nil))
 
+(define-key gitlab-detail-mode-map (kbd "TAB") #'gitlab-detail-toggle-section)
 (define-key gitlab-detail-mode-map (kbd "RET") #'gitlab-open-at-point)
 (define-key gitlab-detail-mode-map [mouse-2] #'gitlab-mouse-open-at-point)
 (define-key gitlab-detail-mode-map (kbd "C-c C-n") #'gitlab-next-sibling)

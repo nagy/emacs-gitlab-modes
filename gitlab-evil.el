@@ -96,6 +96,10 @@ the bindings off until a user calls `gitlab-evil-mode'."
 (defvar gitlab-evil-detail-keys
   '(([remap evil-ret] . gitlab-open-at-point)
     ("<mouse-2>" . gitlab-mouse-open-at-point)
+    ;; TAB is C-i, the jump of the evil jump list, in the normal state.
+    ;; A detail buffer folds a section instead, and `p' returns to the
+    ;; buffer that opened it.
+    ("TAB" . gitlab-detail-toggle-section)
     ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
     ([remap evil-replace] . revert-buffer-quick)

@@ -195,6 +195,13 @@ point, and a left click follows a link in a detail buffer.  A left
 click on a list row keeps the row selection, so a double click still
 toggles a row and the middle button still opens it.
 
+A detail buffer folds its sections.  The top title, the commit list,
+the notes and the jobs table are sections, so =TAB= folds the one
+around point and the =C-c @= prefix of =outline-minor-mode= serves the
+rest.  With evil, =TAB= folds as well, and =zc=, =zo= and =za= reach the
+sections through =evil-fold-list=.  An automatic refresh keeps a fold
+closed.
+
 Both detail modes provide these keys:
 
 | Key       | Command                  |

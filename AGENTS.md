@@ -23,7 +23,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab-merge-request-approve` and its asynchronous form are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command, the approval command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
@@ -387,6 +387,22 @@ without evil.  The suite never opens a network connection.
   `gitlab-job-id`, `gitlab-commit-sha` and `gitlab-url` are navigation
   targets.  `gitlab-open-at-point` reads them.  A new object type adds
   one property and one branch there.
+- A detail buffer folds its sections through `outline-minor-mode`.  A
+  renderer starts a section with `gitlab--insert-section-title`, which
+  inserts the title line with the face `gitlab-title` and the text
+  property `gitlab-section`, whose value is the name of the section.
+  `gitlab--outline-search` wraps `outline-search-text-property`, so no
+  heading needs a special character in the text, and `outline-level`
+  answers one for every buffer, because the sections are flat.  Set
+  `outline-minor-mode-highlight` to nil, because the title carries its
+  own face.  A new renderer that starts a section calls the helper and
+  adds no `gitlab-title` of its own.  `gitlab-detail-toggle-section` on
+  `TAB` folds the section around point, and the evil layer binds the
+  same key, which yields the `evil-jump-forward` of `C-i` in a detail
+  buffer alone.  `gitlab--collapsed-sections` reads the folded names
+  before `gitlab--render` erases the buffer and `gitlab--restore-sections`
+  folds them again, so an automatic refresh never opens a fold under
+  the reader.  The imenu index names the sections as well.
 - A link and a row are text buttons of the type `gitlab-object`, and
   `button.el` carries the mouse face, the tooltip and the action.
   `gitlab--button-string` makes one from a string,

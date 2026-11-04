@@ -289,6 +289,43 @@ runs of the neighbour rows into one block."
                                                    'gitlab-commit-sha)))
              (setq position (1+ position)))))))))
 
+(ert-deftest gitlab-merge-request-commits-section ()
+  "The commit list starts a foldable section of the detail buffer."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab--id "12")
+     (cl-letf (((symbol-function 'gitlab-git-merge-request-commits)
+                (lambda (&rest _)
+                  (list :commits
+                        (list '((sha . "abc123def") (short . "abc123d")
+                                (subject . "Fix") (author . "Bob")
+                                (date . "2026-10-31T20:57:30Z")))
+                        :total 1))))
+       (gitlab-merge-request--insert-commits nil))
+     (goto-char (point-min))
+     (should (search-forward "Commits (1)" nil t))
+     (should (equal "Commits (1)"
+                    (get-text-property (line-beginning-position)
+                                       'gitlab-section))))))
+
+(ert-deftest gitlab-merge-request-notes-section ()
+  "The notes start a foldable section of the detail buffer."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab-merge-request--notes
+                 (list '((author (name . "Alice") (username . "alice"))
+                         (created_at . "2026-10-31T20:57:30Z")
+                         (body . "Looks good"))))
+     (setq-local gitlab-merge-request--notes-loaded t)
+     (gitlab-merge-request--insert-notes)
+     (goto-char (point-min))
+     (should (search-forward "Notes" nil t))
+     (should (equal "Notes"
+                    (get-text-property (line-beginning-position)
+                                       'gitlab-section))))))
+
 (ert-deftest gitlab-merge-request-notes-author-face ()
   "The notes header marks the author and the account name."
   (gitlab-test-with-environment
