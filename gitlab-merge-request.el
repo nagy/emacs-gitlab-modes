@@ -41,6 +41,9 @@
 ;; `gitlab-merge-request-show-notes' fetches the notes endpoint once and
 ;; renders the notes below the fields.  A later refresh keeps them.
 ;;
+;; The command `gitlab-approve-merge-request' approves the merge
+;; request on behalf of the user.
+;;
 ;; The list columns are IID, Title, State, Author, Branches, Labels and
 ;; Updated.  The row identity is the IID, so an update keeps point on
 ;; the same merge request.
@@ -288,6 +291,34 @@ stored notes without another request."
          (with-current-buffer buffer
            (gitlab--set-error error)))))))
 
+(defun gitlab-merge-request--approve-done (buffer iid)
+  "Report in BUFFER that the user approved merge request IID."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (message "Approved %s"
+               (gitlab-data-identifier 'merge-request iid gitlab--context)))))
+
+;;;###autoload
+(defun gitlab-approve-merge-request ()
+  "Approve the current merge request on behalf of the current user.
+The request runs in the background, so the buffer never blocks.
+The answer of the approve request holds no merge request field,
+so the buffer keeps its text and the next refresh shows the new
+state.  A failing request shows its condition in the header line."
+  (interactive nil gitlab-merge-request-mode)
+  (unless (derived-mode-p 'gitlab-merge-request-mode)
+    (user-error "This is not a merge request buffer"))
+  (let ((buffer (current-buffer))
+        (iid gitlab--id))
+    (gitlab-merge-request-approve-async
+     iid
+     (lambda (_text)
+       (gitlab-merge-request--approve-done buffer iid))
+     (lambda (error)
+       (when (buffer-live-p buffer)
+         (with-current-buffer buffer
+           (gitlab--set-error error)))))))
+
 (define-derived-mode gitlab-merge-request-mode gitlab-detail-mode
   "GitLab Merge Request"
   "Display one GitLab merge request.
@@ -297,7 +328,9 @@ fields, when `gitlab-merge-request-show-commits' is non-nil.
 d shows the local changes and l the local commit log, and an
 active region over commit lines limits both to those commits.
 `gitlab-merge-request-show-notes' loads the notes below the fields.
-RET opens the pipeline, the commit or the web page at point."
+`gitlab-approve-merge-request' approves the merge request on
+behalf of the user.  RET opens the pipeline, the commit or the web
+page at point."
   :group 'gitlab
   (setq-local gitlab--kind 'merge-request)
   (setq-local gitlab--label "GitLab merge request")

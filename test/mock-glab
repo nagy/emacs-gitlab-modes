@@ -13,6 +13,10 @@ fi
 
 case "$arguments" in
   *"probe pwd"*) printf '{"pwd":"%s"}' "$PWD" ;;
+  *"mr approve"*)
+    read -r -a argv <<< "$arguments"
+    printf '✓ Approved merge request !%s\n' "${argv[2]}"
+    ;;
   *"mr list"*) cat "$fixture_dir/mr-list.json" ;;
   *"mr view"*) cat "$fixture_dir/mr-view.json" ;;
   *"merge_requests/"*"/notes"*) cat "$fixture_dir/mr-notes.json" ;;

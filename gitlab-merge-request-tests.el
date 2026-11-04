@@ -80,6 +80,49 @@
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-merge-request-approve-data ()
+  "The approve entry point returns the text answer of glab."
+  (gitlab-test-with-environment
+   (let ((gitlab-repository "group/project"))
+     (should (string-match-p "Approved merge request !12"
+                             (gitlab-merge-request-approve "12"))))))
+
+(ert-deftest gitlab-merge-request-approve-command ()
+  "The approve command sends the IID and reports the approval."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR approve test*"))
+         (iid nil)
+         (success nil)
+         (messages nil))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12")
+             (setq-local gitlab--context "group/project"))
+           (cl-letf (((symbol-function 'gitlab-merge-request-approve-async)
+                      (lambda (argument callback _error)
+                        (setq iid argument
+                              success callback))))
+             (with-current-buffer buffer
+               (call-interactively #'gitlab-approve-merge-request)))
+           (should (equal "12" iid))
+           (should (functionp success))
+           (cl-letf (((symbol-function 'message)
+                      (lambda (format-string &rest arguments)
+                        (push (apply #'format format-string arguments)
+                              messages))))
+             (funcall success "✓ Approved merge request !12"))
+           (should (equal '("Approved group/project!12") messages)))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-approve-command-elsewhere ()
+  "The approve command needs a merge request buffer."
+  (with-temp-buffer
+    (should-error (gitlab-approve-merge-request) :type 'user-error)))
+
 (ert-deftest gitlab-merge-request-detail-render ()
   "The detail buffer shows fields and nested objects."
   (gitlab-test-with-environment
@@ -351,6 +394,8 @@ request of another project opens the list of that project."
                  (command-modes #'gitlab-merge-request-show-changes)))
   (should (equal '(gitlab-merge-request-mode)
                  (command-modes #'gitlab-merge-request-show-log)))
+  (should (equal '(gitlab-merge-request-mode)
+                 (command-modes #'gitlab-approve-merge-request)))
   (should-not (command-modes #'gitlab-list-merge-requests))
   (should-not (command-modes #'gitlab-display-merge-request)))
 
