@@ -425,6 +425,61 @@
         (gitlab-open-at-point))
       (should (equal "100" opened)))))
 
+(ert-deftest gitlab-mode-navigation-string-is-a-button ()
+  "A navigation string is a text button of the type `gitlab-object'.
+`button.el' supplies the mouse face, the tooltip and the action, so
+the renderer names none of them."
+  (let* ((string (gitlab--nav-string "#100" 'gitlab-pipeline-id "100"))
+         (category (get-text-property 0 'category string)))
+    (should (equal "#100" string))
+    (should (eq 'gitlab-object (get category 'type)))
+    (should (equal "100" (get-text-property 0 'gitlab-pipeline-id string)))
+    (should (eq 'highlight (get-text-property 0 'mouse-face string)))
+    (should (equal "100" (get-text-property 0 'help-echo string)))
+    (should-not (get-text-property 0 'keymap string))))
+
+(ert-deftest gitlab-mode-button-push-opens-object ()
+  "`push-button' runs the action of a GitLab object button."
+  (with-temp-buffer
+    (insert (gitlab--nav-string "#100" 'gitlab-pipeline-id "100") "\n")
+    (gitlab-detail-mode)
+    (let (opened)
+      (cl-letf (((symbol-function 'gitlab-display-pipeline)
+                 (lambda (id) (setq opened id))))
+        (should (push-button (point-min))))
+      (should (equal "100" opened)))))
+
+(ert-deftest gitlab-mode-button-opens-commit ()
+  "A commit line opens the commit at point."
+  (with-temp-buffer
+    (insert (gitlab--button-string "abc123d Fix" "Open the commit"))
+    (add-text-properties (point-min) (point-max)
+                         '(gitlab-commit-sha "abc123def"))
+    (gitlab-detail-mode)
+    (let (opened)
+      (cl-letf (((symbol-function 'gitlab-git-show-commit)
+                 (lambda (sha) (setq opened sha))))
+        (goto-char (point-min))
+        (gitlab-open-at-point))
+      (should (equal "abc123def" opened)))))
+
+(ert-deftest gitlab-mode-button-follows-one-click ()
+  "One click follows a button in a detail buffer alone.
+A list buffer keeps the click for the selection of a row."
+  (with-temp-buffer
+    (gitlab-detail-mode)
+    (should (gitlab--button-follow-mouse-1-p (point-min)))
+    (gitlab-list-mode)
+    (should-not (gitlab--button-follow-mouse-1-p (point-min)))))
+
+(ert-deftest gitlab-mode-list-id-cell-is-a-button ()
+  "A list identifier cell is a button that opens its row."
+  (let* ((cell (gitlab-list--id-cell "!12" 'gitlab-merge-request-iid))
+         (category (get-text-property 0 'category cell)))
+    (should (eq 'gitlab-object (get category 'type)))
+    (should (eq 'highlight (get-text-property 0 'mouse-face cell)))
+    (should-not (get-text-property 0 'keymap cell))))
+
 (ert-deftest gitlab-mode-list-revert ()
   "`revert-buffer' fetches the collection again."
   (gitlab-test-with-environment

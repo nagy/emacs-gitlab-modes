@@ -588,11 +588,10 @@ newest first."
 
 (defun gitlab-pipeline--insert-job (job name-width)
   "Insert one JOB row with NAME-WIDTH for the name column.
-Only the name cell carries the mouse face.  Emacs highlights every
-contiguous character that holds the same `mouse-face' value, so a
-mouse face on a whole row would light the rest of the table too.
-The navigation properties stay on the whole row, so RET and a click
-offer the job from any cell."
+The row is one text button, so the mouse face covers the row
+without joining the rows above and below, and a click or a tooltip
+reaches the job from any cell.  The navigation properties stay on
+the whole row, so RET offers the job from any cell too."
   (let* ((id (gitlab-data-id-string (gitlab-data-field "id" job)))
          (status (gitlab-data-field-string "status" job))
          (stage (gitlab-data-field-string "stage" job))
@@ -600,17 +599,17 @@ offer the job from any cell."
          (duration (gitlab--format-duration
                     (gitlab-data-field "duration" job)))
          (help (format "Job %s (%s)" name id))
+         (start (point))
          (status-cell (propertize (format "%-12s" status)
                                   'face (or (gitlab--status-face status)
-                                            'default)))
-         (name-cell (propertize (format (format "%%-%ds" name-width) name)
-                                'mouse-face 'highlight
-                                'help-echo help)))
-    (insert (propertize (format "%s %-12s %s %-12s %14s\n"
-                                status-cell stage name-cell duration id)
-                        'gitlab-job-id id
-                        'gitlab-job-name name
-                        'help-echo help))))
+                                            'default))))
+    (insert (format (format "%%s %%-12s %%-%ds %%-12s %%14s" name-width)
+                    status-cell stage name duration id))
+    (add-text-properties start (point)
+                         (list 'gitlab-job-id id
+                               'gitlab-job-name name))
+    (gitlab--buttonize start (point) help)
+    (insert "\n")))
 
 (defun gitlab-pipeline--children ()
   "Return the job rows of the current pipeline buffer in display order.

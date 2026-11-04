@@ -180,6 +180,12 @@ The notes request and the jobs request ask for one page of 100 items.
 A merge request with more notes, or a pipeline with more jobs, shows
 the first page only.
 
+Every link and every table row is a text button.  Emacs shows the
+tooltip on the mouse, =C-h .= describes the action behind the object at
+point, and a left click follows a link in a detail buffer.  A left
+click on a list row keeps the row selection, so a double click still
+toggles a row and the middle button still opens it.
+
 Both detail modes provide these keys:
 
 | Key       | Command                  |

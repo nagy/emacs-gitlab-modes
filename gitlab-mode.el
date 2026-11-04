@@ -77,8 +77,11 @@
 ;; The renderers attach text properties that the navigation commands
 ;; read: `gitlab-field' names a field line, `gitlab-pipeline-id' opens
 ;; a pipeline, `gitlab-merge-request-iid' opens a merge request,
-;; `gitlab-job-id' opens a job log and `gitlab-url' opens the browser.
-;; RET and mouse-2 run `gitlab-open-at-point'.
+;; `gitlab-job-id' opens a job log, `gitlab-commit-sha' opens a commit
+;; and `gitlab-url' opens the browser.  A link and a table row are
+;; text buttons of the type `gitlab-object', so `button.el' carries the
+;; mouse face, the tooltip and the action.  RET and mouse-2 run
+;; `gitlab-open-at-point'.
 ;;
 ;; `gitlab-go-to-parent' walks up one level: a merge request or a
 ;; pipeline opens its list, a job log opens the pipeline that holds
@@ -111,6 +114,7 @@
 (require 'autorevert)
 (require 'bookmark)
 (require 'browse-url)
+(require 'button)
 (require 'cl-lib)
 (require 'json)
 (require 'seq)
@@ -1033,15 +1037,63 @@ The notes command uses this after it fetched comments."
       (json-encode value)
     (error (format "%S" value))))
 
+;;; Text buttons
+
+;; A link and a table row are text buttons of the type `gitlab-object'.
+;; The type carries the mouse face, the follow link rule and the
+;; action, so a renderer adds no mouse face of its own and the mode
+;; keymap keeps RET, TAB and mouse-2.  Button properties are plain
+;; symbols here, because `define-button-type' reserves the keyword
+;; `:type' and `:supertype' alone.  The type keeps no keymap, because
+;; an inherited `button-map' would bind RET and TAB and shadow the
+;; mode keymap of a list row.
+
+(defun gitlab--button-push (button)
+  "Open the GitLab object of BUTTON.
+A list buffer opens the row of the table, and every other buffer
+opens the object at point, as `gitlab-open-at-point' documents."
+  (when (integer-or-marker-p button)
+    (goto-char button))
+  (if (derived-mode-p 'gitlab-list-mode)
+      (gitlab-list-open)
+    (gitlab-open-at-point)))
+
+(defun gitlab--button-follow-mouse-1-p (_position)
+  "Return non-nil when one click follows the button at POSITION.
+A list buffer keeps the left click for the selection, so a double
+click toggles the row and the middle button opens it."
+  (not (derived-mode-p 'gitlab-list-mode)))
+
+(define-button-type 'gitlab-object
+  'action #'gitlab--button-push
+  'face nil
+  'mouse-face 'highlight
+  'follow-link #'gitlab--button-follow-mouse-1-p
+  'keymap nil)
+
+(defun gitlab--buttonize (start end &optional help)
+  "Make the text between START and END a GitLab object button.
+HELP is the text of the tooltip.  The text keeps its own faces,
+because the type names no face."
+  (make-text-button start end
+                    :type 'gitlab-object
+                    'help-echo help))
+
+(defun gitlab--button-string (text &optional help)
+  "Return TEXT as a GitLab object button.
+HELP is the text of the tooltip."
+  (make-text-button text nil
+                    :type 'gitlab-object
+                    'help-echo help))
+
 (defun gitlab--nav-string (text property value &optional help)
-  "Return TEXT with navigation PROPERTY set to VALUE.
-The string also carries a mouse face and HELP, so a click and a
-tooltip both work."
+  "Return TEXT as a button with navigation PROPERTY set to VALUE.
+HELP is the text of the tooltip, and it defaults to VALUE.  The
+button carries the mouse face and the action, so a renderer names
+no mouse face of its own."
   (declare (pure t) (side-effect-free t))
-  (propertize text
-              property value
-              'mouse-face 'highlight
-              'help-echo (or help (format "%s" value))))
+  (gitlab--button-string (propertize text property value)
+                         (or help (format "%s" value))))
 
 (defun gitlab--format-object (object)
   "Return a readable one-line form of the decoded OBJECT."
@@ -1365,7 +1417,8 @@ the render and restores it after the render."
   "Open the GitLab object at point.
 Read the text properties that the renderers attach: a job opens
 its log, a pipeline opens its detail buffer, a merge request opens
-its detail buffer and a web URL opens the browser."
+its detail buffer, a commit opens its own view and a web URL opens
+the browser."
   (interactive nil gitlab-detail-mode)
   (cond
    ((get-text-property (point) 'gitlab-job-id)
@@ -1378,6 +1431,8 @@ its detail buffer and a web URL opens the browser."
    ((get-text-property (point) 'gitlab-merge-request-iid)
     (gitlab-display-merge-request
      (get-text-property (point) 'gitlab-merge-request-iid)))
+   ((get-text-property (point) 'gitlab-commit-sha)
+    (gitlab-git-show-commit (get-text-property (point) 'gitlab-commit-sha)))
    ((get-text-property (point) 'gitlab-url)
     (browse-url (get-text-property (point) 'gitlab-url)))
    (t (user-error "No GitLab object at point"))))

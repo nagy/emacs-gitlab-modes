@@ -130,10 +130,9 @@ without evil.  The suite never opens a network connection.
   table with `gitlab-commit-sha` on every line.  `gitlab-open-at-point`
   reads that property first.  A commit limit shows "N more commits."
   The section appears only with `gitlab-merge-request-show-commits`
-  and a local merge request ref.  Only the short SHA cell carries
-  `mouse-face`, because Emacs lights every contiguous character that
-  holds the same `mouse-face` value, and a mouse face on each whole
-  row would light the entire commit list.
+  and a local merge request ref.  Every line is one text button, so
+  the mouse face covers the line without joining the line above and
+  the line below, because the newline stays outside the button.
 - `gitlab-merge-request-approve` is the first write entry point.  It
   runs `glab mr approve` with PARSE `text`, because the answer holds
   prose and not JSON, and it returns that text.  The synchronous form
@@ -373,9 +372,21 @@ without evil.  The suite never opens a network connection.
   while `auto-revert-mode` refreshes it.
 - The renderers attach text properties.  `gitlab-field` names a field
   line.  `gitlab-pipeline-id`, `gitlab-merge-request-iid`,
-  `gitlab-job-id` and `gitlab-url` are navigation targets.
-  `gitlab-open-at-point` reads them.  A new object type adds one property
-  and one branch there.
+  `gitlab-job-id`, `gitlab-commit-sha` and `gitlab-url` are navigation
+  targets.  `gitlab-open-at-point` reads them.  A new object type adds
+  one property and one branch there.
+- A link and a row are text buttons of the type `gitlab-object`, and
+  `button.el` carries the mouse face, the tooltip and the action.
+  `gitlab--button-string` makes one from a string,
+  `gitlab--buttonize` covers a buffer range, and `gitlab--nav-string`
+  makes one that names a navigation property.  The type keeps
+  `keymap` nil, because the inherited `button-map` would bind RET and
+  TAB and shadow the mode keymap of a list row.  Its `follow-link` is
+  the function `gitlab--button-follow-mouse-1-p`, which answers nil in
+  a list buffer, so one left click keeps the selection of a row and
+  still follows a link in a detail buffer.  Do not set `mouse-face` by
+  hand: a row-level button ends before the newline, so the runs of two
+  rows never join.
 - The merge request detail renders every top-level JSON field.  Nested
   objects go through `gitlab--format-object`: a user becomes
   `Name (@username)`, a milestone its title, and an object with `id`
@@ -385,10 +396,10 @@ without evil.  The suite never opens a network connection.
   `-`.
 - The pipeline detail uses a hand-written jobs table, not
   `tabulated-list-mode`, because the pipeline fields occupy the same
-  buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`.
-  Only the name cell carries `mouse-face`, because Emacs lights every
-  contiguous character that holds the same `mouse-face` value, and a
-  mouse face on each whole row would light the entire table.
+  buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`,
+  and it is one text button that names the job in its tooltip.  The
+  mouse face therefore covers the row without joining the rows above
+  and below.
   The table lists the oldest job first, because
   glab answers the jobs array newest first.  `gitlab-pipeline--sort-jobs`
   copies the array and sorts it by numeric job ID, so the table, the

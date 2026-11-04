@@ -393,6 +393,26 @@ runs of the neighbour rows into one block."
                      (setq position (1+ position))))))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-detail-job-row-is-a-button ()
+  "A job row is one text button of the type `gitlab-object'.
+The button carries the mouse face and the tooltip, and the row
+carries the navigation properties."
+  (with-temp-buffer
+    (gitlab-pipeline--insert-job
+     '((id . 5001) (status . "success") (stage . "test")
+       (name . "unit-tests") (duration . 100))
+     36)
+    (goto-char (point-min))
+    (let ((button (button-at (point))))
+      (should button)
+      (should (eq 'gitlab-object (button-type button))))
+    (should (eq 'highlight (get-char-property (point) 'mouse-face)))
+    (should (equal "Job unit-tests (5001)"
+                   (get-char-property (point) 'help-echo)))
+    (should (equal "5001" (get-text-property (point) 'gitlab-job-id)))
+    (should (equal "unit-tests"
+                   (get-text-property (point) 'gitlab-job-name)))))
+
 (ert-deftest gitlab-pipeline-detail-keeps-job-point ()
   "A re-render keeps point on the same job row."
   (gitlab-test-with-environment
