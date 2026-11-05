@@ -49,6 +49,15 @@
   (should (equal "1m 40s" (gitlab--format-duration 100.234765)))
   (should (equal "1h 0m 5s" (gitlab--format-duration 3605))))
 
+(ert-deftest gitlab-mode-date-field-face ()
+  "Timestamp fields carry `gitlab-date' and a compact form."
+  (dolist (key '(created_at updated_at latest_build_started_at
+                 latest_build_finished_at authored_date))
+    (let ((text (gitlab--format-field-value
+                 key "2026-10-31T20:57:30.763Z")))
+      (should (equal "2026-10-31 20:57:30" text))
+      (should (eq 'gitlab-date (get-text-property 0 'face text))))))
+
 (ert-deftest gitlab-mode-id-field-face ()
   "Identifier fields carry `gitlab-id'."
   (dolist (key '(id iid project_id sha before_sha merge_commit_sha))

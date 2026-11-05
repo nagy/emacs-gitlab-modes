@@ -209,7 +209,8 @@ name keeps the default face."
 (defcustom gitlab-date-fields
   '("created_at" "updated_at" "started_at" "finished_at" "merged_at"
     "closed_at" "prepared_at" "committed_at" "authored_date"
-    "committed_date")
+    "committed_date" "latest_build_started_at"
+    "latest_build_finished_at")
   "Field names that take `gitlab-date'.
 A list column compares a space against an underscore, so one
 entry serves both views."
@@ -1425,8 +1426,7 @@ DATA is the object that holds KEY, when the caller has it."
                   'gitlab-pipeline-id (gitlab-data-id-string id)
                   "Open the pipeline")
                (gitlab--format-value value))))
-          ((memq key '(created_at updated_at started_at finished_at
-                       merged_at closed_at committed_at))
+          ((gitlab--date-field-p key)
            (gitlab--format-date value))
           ((memq key '(duration queued_duration))
            (gitlab--format-duration value))

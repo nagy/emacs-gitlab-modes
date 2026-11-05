@@ -846,7 +846,10 @@ without evil.  The suite never opens a network connection.
 - Colors, dates, identifiers, authors, branches and status values go
   through `gitlab--field-value-face`, `gitlab--format-date` and
   `gitlab-status-face`.  A new date field goes into
-  `gitlab-date-fields`; a new identifier field goes into
+  `gitlab-date-fields`, so it takes `gitlab-date' and the compact
+  form of `gitlab--format-date', because `gitlab--format-field-value'
+  asks `gitlab--date-field-p' and keeps no second list of names; a
+  new identifier field goes into
   `gitlab-id-fields`, so `id`, `iid`, `project_id`, `sha` and
   `before_sha` share `gitlab-id`.  A new author field goes into
   `gitlab-author-fields`, so `author`, `assignee`, `assignees`,
