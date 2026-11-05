@@ -122,6 +122,44 @@
        (should (equal "5001" (gitlab-read-job-id)))
        (should (= 2 calls))))))
 
+(ert-deftest gitlab-read-group-text ()
+  "The group prompt accepts a path, a context and a group URL."
+  (should (equal "my-group" (gitlab-read--group-text "my-group")))
+  (should (equal "my-group@gitlab.example.com"
+                 (gitlab-read--group-text "my-group@gitlab.example.com")))
+  (should (equal "my-group"
+                 (gitlab-read--group-text
+                  "https://gitlab.com/groups/my-group")))
+  (should (equal "group/sub@gitlab.example.com"
+                 (gitlab-read--group-text
+                  "https://gitlab.example.com/groups/group/sub")))
+  (should (equal "my-group@gitlab.example.com"
+                 (gitlab-read--group-text
+                  (concat "https://gitlab.example.com/groups/my-group"
+                          "/-/merge_requests?state=opened")))))
+
+(ert-deftest gitlab-read-namespace ()
+  "The group candidate drops the last path segment and keeps the host."
+  (should (equal "group" (gitlab-read--namespace "group/project")))
+  (should (equal "group/sub" (gitlab-read--namespace "group/sub/project")))
+  (should (equal "group@host" (gitlab-read--namespace "group/project@host")))
+  (should-not (gitlab-read--namespace "project"))
+  (should-not (gitlab-read--namespace nil)))
+
+(ert-deftest gitlab-read-group-default ()
+  "A group buffer offers its own group, and a project buffer its namespace."
+  (gitlab-test-with-environment
+   (cl-letf (((symbol-function 'gitlab-git-context)
+              (lambda (&optional _directory) "group/project"))
+             ((symbol-function 'completing-read)
+              (lambda (_prompt collection _predicate _require _initial history
+                       default)
+                (should (member default collection))
+                (should (memq history '(gitlab-read-group-history)))
+                default)))
+     (should (equal "group" (gitlab-read-group)))
+     (should (equal "my-group" (gitlab-read-group nil "my-group"))))))
+
 (provide 'gitlab-read-tests)
 
 ;;; gitlab-read-tests.el ends here

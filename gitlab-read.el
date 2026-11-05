@@ -92,6 +92,73 @@ current directory comes first."
                                  current)))
     (gitlab-cli-repository-normalize input)))
 
+(defvar gitlab-read-group-history nil
+  "History of the group prompts.")
+
+;;;###autoload
+(defun gitlab-read-group (&optional prompt current)
+  "Read a GitLab group and return it as PATH or PATH@HOST.
+PROMPT defaults to \"Group: \".  CURRENT names the group of the
+calling buffer, so a group buffer offers its own group.  The prompt
+accepts a group path, a PATH@HOST string and a group URL such as
+https://HOST/groups/PATH, so a link pasted from a browser works.
+Without CURRENT, the default comes from the namespace of the project
+of the current directory.  Completion offers the namespaces of the
+projects that this session displayed, in the PATH or PATH@HOST
+spelling, so a group of another instance stays reachable.  No
+request starts before the list fetch."
+  (let* ((parent (unless current
+                   (gitlab-read--namespace (gitlab-git-context))))
+         (default (or current parent))
+         (candidates (delete-dups
+                      (delq nil
+                            (cons default
+                                  (mapcar #'gitlab-read--namespace
+                                          gitlab-repositories)))))
+         (completion-extra-properties
+          (list :category 'gitlab-group
+                :annotation-function
+                (lambda (candidate)
+                  (when (equal candidate default) "  (current)"))
+                :display-sort-function #'identity))
+         (input (completing-read (or prompt "Group: ")
+                                 candidates nil nil nil
+                                 'gitlab-read-group-history
+                                 default)))
+    (gitlab-read--group-text input)))
+
+(defun gitlab-read--namespace (context)
+  "Return the group namespace of CONTEXT, or nil.
+The function drops the last path segment and keeps the instance, so
+group/sub/project answers group/sub@host."
+  (declare (side-effect-free t))
+  (when-let* ((split (gitlab-cli-repository-split context))
+              (path (cdr split))
+              (position (cl-search "/" path :from-end t)))
+    (let ((namespace (substring path 0 position)))
+      (if (car split)
+          (format "%s@%s" namespace (car split))
+        namespace))))
+
+(defun gitlab-read--group-text (text)
+  "Return TEXT as a group context in PATH or PATH@HOST form.
+The function accepts a path, a PATH@HOST string, a group URL such
+as https://HOST/groups/PATH, and the same URL behind a page of the
+group."
+  (let* ((text (string-trim (or text "")))
+         (url (and (string-match
+                    "\\`\\(?:https?://\\)?\\([^/]+\\)/groups/\\(.+\\)\\'"
+                    text)
+                   (cons (match-string 1 text) (match-string 2 text)))))
+    (if url
+        (let ((host (car url))
+              (path (cdr url)))
+          (when (string-match "/-/\\|[?#]" path)
+            (setq path (substring path 0 (match-beginning 0))))
+          (gitlab-cli-repository-normalize
+           (format "%s@%s" (string-trim path "/+" "/+") host)))
+      (gitlab-cli-repository-normalize text))))
+
 (defun gitlab-read--strip (text prefixes)
   "Return TEXT without a leading character from PREFIXES."
   (declare (pure t) (side-effect-free t))

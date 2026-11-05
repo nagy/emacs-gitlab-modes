@@ -229,8 +229,9 @@
            (should (equal "13" (gitlab-data-id-string
                                  (gitlab-data-field
                                   "iid"
-                                  (gitlab-merge-request--target-data "13")))))
-           (should-not (gitlab-merge-request--target-data "99")))
+                                  (gitlab-merge-request--target-data
+                                   "13" nil)))))
+           (should-not (gitlab-merge-request--target-data "99" nil)))
        (with-current-buffer buffer
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))
@@ -608,6 +609,62 @@ request of another project opens the list of that project."
          (with-current-buffer detail
            (should-error (gitlab-next-sibling) :type 'user-error))
        (kill-buffer detail)))))
+
+(ert-deftest gitlab-merge-request-group-entries ()
+  "A group row keeps its project in the row ID and the leftmost cell."
+  (gitlab-test-with-environment
+   (let ((data
+          '(((iid . 12) (title . "Fix") (state . "opened")
+             (author (name . "Alice") (username . "alice"))
+             (source_branch . "feature") (target_branch . "main")
+             (labels) (updated_at . "2026-10-31T20:57:30Z")
+             (web_url . "https://gitlab.example.com/group/project/-/merge_requests/12"))
+            ((iid . 12) (title . "Other") (state . "opened")
+             (author (name . "Bob") (username . "bob"))
+             (source_branch . "fix") (target_branch . "main")
+             (labels) (updated_at . "2026-10-31T20:57:30Z")
+             (web_url . "https://gitlab.example.com/other/project/-/merge_requests/12")))))
+     (with-temp-buffer
+       (setq-local gitlab--scope 'group)
+       (setq-local gitlab--context "group")
+       (let* ((entries (gitlab-merge-request--entries data))
+              (first (cadr (car entries)))
+              (second (cadr (cadr entries))))
+         (should (equal '("group/project@gitlab.example.com!12"
+                          "other/project@gitlab.example.com!12")
+                        (mapcar #'car entries)))
+         (should (equal '("group/project@gitlab.example.com!12"
+                          "other/project@gitlab.example.com!12")
+                        (mapcar #'car (gitlab-merge-request--rows data))))
+         (should (equal "group/project@gitlab.example.com" (aref first 0)))
+         (should (equal "other/project@gitlab.example.com" (aref second 0)))
+         (should (equal "!12" (aref first 1)))
+         (should (equal "group/project@gitlab.example.com!12"
+                        (get-text-property 0 'gitlab-merge-request-iid
+                                           (aref first 1))))
+         (should (= 8 (length first))))))))
+
+(ert-deftest gitlab-merge-request-group-entries-project-list ()
+  "A project row keeps the bare IID and no project cell."
+  (gitlab-test-with-environment
+   (let ((data '(((iid . 12) (title . "Fix") (state . "opened")
+                  (author (name . "Alice") (username . "alice"))
+                  (source_branch . "feature") (target_branch . "main")
+                  (labels) (updated_at . "2026-10-31T20:57:30Z")))))
+     (with-temp-buffer
+       (setq-local gitlab--scope nil)
+       (let* ((entries (gitlab-merge-request--entries data))
+              (row (cadr (car entries))))
+         (should (equal "12" (car (car entries))))
+         (should (equal "!12" (aref row 0)))
+         (should (= 7 (length row))))))))
+
+(ert-deftest gitlab-merge-request-group-web-url ()
+  "A group row reads its own project from the `web_url' field."
+  (should (equal "group/project@gitlab.example.com"
+                 (gitlab-merge-request--row-context
+                  '((web_url . "https://gitlab.example.com/group/project/-/merge_requests/12")))))
+  (should-not (gitlab-merge-request--row-context '((iid . 12)))))
 
 (ert-deftest gitlab-merge-request-command-modes ()
   "The merge request commands name their mode, the display commands do not."

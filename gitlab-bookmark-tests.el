@@ -166,6 +166,37 @@
                               (car record))))))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-bookmark-group-list-record ()
+  "A group list record keeps the scope, the group and the row."
+  (gitlab-test-with-environment
+   (let ((buffer nil))
+     (unwind-protect
+         (progn
+           (cl-letf (((symbol-function 'completing-read)
+                      (lambda (&rest _arguments) "my-group")))
+             (gitlab-list-group-merge-requests)
+             (setq buffer (current-buffer)))
+           (should (gitlab-test-wait
+                    (lambda ()
+                      (with-current-buffer buffer
+                        (= 2 (length tabulated-list-entries))))))
+           (with-current-buffer buffer
+             (should (eq 'group gitlab--scope))
+             (should (equal "my-group" gitlab--context))
+             (should (equal "my-group" list-buffers-directory))
+             (should (equal "Project" (car (aref tabulated-list-format 0))))
+             (should (gitlab-list--goto-id
+                      "group/project@gitlab.example!13"))
+             (let ((record (gitlab-bookmark-tests--record)))
+               (should (equal "GitLab Group Merge Requests gitlab-mr-list:my-group"
+                              (car record)))
+               (should (eq 'group (alist-get 'scope (cdr record))))
+               (should (equal "my-group" (alist-get 'repository (cdr record))))
+               (should (equal '(row . "group/project@gitlab.example!13")
+                              (alist-get 'target (cdr record)))))))
+       (when (buffer-live-p buffer)
+         (kill-buffer buffer))))))
+
 (ert-deftest gitlab-bookmark-job-log-record ()
   "A job log record adds the job name and the pipeline."
   (gitlab-test-with-environment

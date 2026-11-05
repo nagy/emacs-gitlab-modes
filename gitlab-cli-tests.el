@@ -16,6 +16,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'seq)
 (require 'gitlab-test-helpers)
 (require 'gitlab-cli)
 (require 'gitlab-data)
@@ -82,6 +83,33 @@
     (should (equal '("mr" "list" "-Rother/x")
                    (gitlab-cli--repository-arguments
                     '("mr" "list" "-Rother/x"))))))
+
+(ert-deftest gitlab-cli-group-suppresses-repository ()
+  "A group selection wins over the repository, because glab ignores one."
+  (let ((gitlab-repository "group/project"))
+    (should (equal '("mr" "list" "--group" "my-group")
+                   (gitlab-cli--repository-arguments
+                    '("mr" "list" "--group" "my-group"))))
+    (should (equal '("mr" "list" "--group=my-group")
+                   (gitlab-cli--repository-arguments
+                    '("mr" "list" "--group=my-group"))))
+    (should (equal '("mr" "list" "-gmy-group")
+                   (gitlab-cli--repository-arguments
+                    '("mr" "list" "-gmy-group"))))))
+
+(ert-deftest gitlab-cli-host-environment ()
+  "The request environment names the instance of a group request."
+  (let ((gitlab-cli--host "gitlab.example.com"))
+    (should (member "GITLAB_HOST=gitlab.example.com"
+                    (gitlab-cli--environment))))
+  (let ((gitlab-cli--host nil))
+    (should-not (seq-find (lambda (entry)
+                            (string-prefix-p "GITLAB_HOST=" entry))
+                          (gitlab-cli--environment))))
+  (let ((gitlab-cli--host ""))
+    (should-not (seq-find (lambda (entry)
+                            (string-prefix-p "GITLAB_HOST=" entry))
+                          (gitlab-cli--environment)))))
 
 (ert-deftest gitlab-cli-directory ()
   "glab runs in `gitlab-cli-directory' when it is set."

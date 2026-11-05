@@ -276,11 +276,34 @@ ERROR receives a condition.  Return the process object."
 
 ;;; Merge requests
 
-(defun gitlab--cli-merge-request-list-arguments (arguments)
+(defun gitlab--scope-group (scope)
+  "Return the group context of SCOPE, or nil.
+SCOPE is a cons of a kind and a context, or nil for a project."
+  (declare (pure t) (side-effect-free t))
+  (and (eq (car-safe scope) 'group) (cdr scope)))
+
+(defun gitlab--with-scope (scope function)
+  "Bind the instance host of SCOPE around a call of FUNCTION.
+A group request names no repository, so glab needs GITLAB_HOST to
+select an instance of its own."
+  (let ((gitlab-cli--host (when-let* ((group (gitlab--scope-group scope)))
+                            (gitlab-cli-repository-host group))))
+    (funcall function)))
+
+(defun gitlab--cli-merge-request-list-arguments (arguments scope)
   "Return the glab arguments for a merge request list.
-ARGUMENTS holds extra flags such as --all."
-  (gitlab-cli--repository-arguments
-   (append (list "mr" "list" "--output" "json") arguments)))
+ARGUMENTS holds extra flags such as --all.  SCOPE names a group, or
+nil for the current project.  A group request asks for one full
+page, because `--paginate' would concatenate several JSON arrays."
+  (let ((group (gitlab--scope-group scope)))
+    (if group
+        (gitlab-cli--repository-arguments
+         (append (list "mr" "list" "--output" "json"
+                       "--group" (gitlab-cli-repository-path group)
+                       "--per-page" "100")
+                 arguments))
+      (gitlab-cli--repository-arguments
+       (append (list "mr" "list" "--output" "json") arguments)))))
 
 (defun gitlab--cli-merge-request-show-arguments (iid)
   "Return the glab arguments for merge request IID."
@@ -298,22 +321,29 @@ decode cannot read that."
           (format "merge_requests/%s/notes?per_page=100"
                   (gitlab-data-id-string iid))))))
 
-(defun gitlab-merge-request-list (&optional arguments)
-  "Return the merge requests of the current project.
-ARGUMENTS holds extra glab flags.  This synchronous call serves
-prompts and tests; display buffers use
-`gitlab-merge-request-list-async'."
+(defun gitlab-merge-request-list (&optional arguments scope)
+  "Return the merge requests of the current project or of a group.
+ARGUMENTS holds extra glab flags, and SCOPE names a group with a
+cons of `group' and a context.  This synchronous call serves prompts
+and tests; display buffers use `gitlab-merge-request-list-async'."
   (gitlab--with-backend
-   (gitlab-cli-request
-    (gitlab--cli-merge-request-list-arguments arguments))))
+   (gitlab--with-scope
+    scope
+    (lambda ()
+      (gitlab-cli-request
+       (gitlab--cli-merge-request-list-arguments arguments scope))))))
 
-(defun gitlab-merge-request-list-async (success error &optional arguments)
+(defun gitlab-merge-request-list-async (success error &optional arguments scope)
   "Fetch the merge request list and deliver it to SUCCESS or ERROR.
-ARGUMENTS holds extra glab flags.  Return the process object."
+ARGUMENTS holds extra glab flags, and SCOPE names a group with a cons
+of `group' and a context.  Return the process object."
   (gitlab--with-backend
-   (gitlab-cli-request-async
-    (gitlab--cli-merge-request-list-arguments arguments)
-    success error)))
+   (gitlab--with-scope
+    scope
+    (lambda ()
+      (gitlab-cli-request-async
+       (gitlab--cli-merge-request-list-arguments arguments scope)
+       success error)))))
 
 (defun gitlab-merge-request-show (iid)
   "Return one merge request by IID.
@@ -385,12 +415,15 @@ ERROR receives a condition.  Return the process object."
   (gitlab--write-async (gitlab--cli-merge-request-merge-arguments iid)
                        success error))
 
-(defun gitlab-merge-request-list-cached (&optional arguments)
+(defun gitlab-merge-request-list-cached (&optional arguments scope)
   "Return the cached merge request list, fetching it when stale.
-ARGUMENTS holds extra glab flags.  Prompts use this; display
-buffers never do."
-  (gitlab--cached (list 'merge-request gitlab-repository arguments)
-                  (lambda () (gitlab-merge-request-list arguments))))
+ARGUMENTS holds extra glab flags, and SCOPE names a group with a cons
+of `group' and a context.  Prompts use this; display buffers never
+do."
+  (gitlab--cached (list 'merge-request (car-safe scope)
+                        (or (cdr-safe scope) gitlab-repository)
+                        arguments)
+                  (lambda () (gitlab-merge-request-list arguments scope))))
 
 ;;; Pipelines
 

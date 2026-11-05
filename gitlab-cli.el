@@ -110,6 +110,13 @@ callback, so the callback reads the exact glab text next to the
 decoded answer.  A request chain that merges two answers binds nil,
 because no single text describes the merged answer.")
 
+(defvar gitlab-cli--host nil
+  "Instance host of the request that runs next, or nil for the default.
+A request that names no repository, such as a group list, selects
+its instance here, and `gitlab-cli--environment' adds GITLAB_HOST.
+Bind this variable around the request and not around the whole
+command.")
+
 (defcustom gitlab-cli-directory nil
   "Directory in which glab runs.
 A nil value uses `default-directory' of the calling buffer.  A
@@ -242,10 +249,26 @@ an equal sign, and the short form, both alone and joined."
                  (string-prefix-p "-R" argument)))
            arguments))
 
+(defun gitlab-cli--group-named-p (arguments)
+  "Return non-nil when ARGUMENTS select a group.
+The long form works as a separate word and with an equal sign, and
+the short form works alone and joined."
+  (declare (pure t) (side-effect-free t))
+  (cl-some (lambda (argument)
+             (or (string= argument "--group")
+                 (string-prefix-p "--group=" argument)
+                 (string-prefix-p "-g" argument)))
+           arguments))
+
 (defun gitlab-cli--environment ()
   "Return the process environment for one glab request.
-GLAB_NO_PROMPT stops glab from waiting for a terminal answer."
-  (cons "GLAB_NO_PROMPT=1" process-environment))
+GLAB_NO_PROMPT stops glab from waiting for a terminal answer.
+`gitlab-cli--host' names the instance of the request, because glab
+selects no instance from a group argument."
+  (let ((environment (cons "GLAB_NO_PROMPT=1" process-environment)))
+    (if (and gitlab-cli--host (not (string-empty-p gitlab-cli--host)))
+        (cons (concat "GITLAB_HOST=" gitlab-cli--host) environment)
+      environment)))
 
 (defun gitlab-cli--command (arguments)
   "Return the process command for ARGUMENTS."
@@ -253,15 +276,18 @@ GLAB_NO_PROMPT stops glab from waiting for a terminal answer."
 
 (defun gitlab-cli--repository-arguments (arguments)
   "Append the repository selection to ARGUMENTS when one is set.
-A caller that already names --repo or -R keeps its own value.  The
-value comes from `gitlab-cli--repo-argument', so a project of a
-second instance selects that instance.  A repository that names no
-project appends nothing."
+A caller that already names --repo or -R keeps its own value.  A
+caller that names --group gets no repository, because glab ignores
+a repository beside a group.  The value comes from
+`gitlab-cli--repo-argument', so a project of a second instance
+selects that instance.  A repository that names no project
+appends nothing."
   (let ((repository (and gitlab-repository
                          (gitlab-cli--repo-argument gitlab-repository))))
     (if (and repository
              (not (string-empty-p repository))
-             (not (gitlab-cli--repository-named-p arguments)))
+             (not (gitlab-cli--repository-named-p arguments))
+             (not (gitlab-cli--group-named-p arguments)))
         (append arguments (list "--repo" repository))
       arguments)))
 

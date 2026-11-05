@@ -486,6 +486,18 @@ A list of the major mode, the object ID and the project context.
 A display command compares it, so it finds an open buffer whatever
 the user renamed it to.")
 
+(defvar-local gitlab--scope nil
+  "Scope of the current list buffer.
+The value is `group' for a group list, and nil for a project, the
+default scope.  `gitlab--use-project-directory' sets it, and
+`gitlab--context' carries the group or the project context.")
+
+(defvar gitlab--pending-scope nil
+  "Scope that the next display buffer adopts.
+A list command binds this variable around the mode call, because
+`define-derived-mode' kills every local variable that a caller set
+first and the mode body must know the scope of the collection.")
+
 (defvar-local gitlab--target nil
   "Position target of the current display buffer, or nil.
 A cons of the symbol `field' and a field name, of `job' and a job
@@ -649,7 +661,7 @@ every expanded row open.  Killing the buffer drops the table.")
 
 ;;; Small helpers
 
-(defun gitlab--use-project-directory (&optional directory repository)
+(defun gitlab--use-project-directory (&optional directory repository scope)
   "Set the directory and the project context of the current buffer.
 DIRECTORY defaults to `gitlab-cli-directory-of', and REPOSITORY is
 the explicit project of the display, or nil to read the context of
@@ -658,26 +670,38 @@ buffer-local `gitlab-cli-directory' to the project root that
 project.el reports, because glab must run in the project.  A
 directory that belongs to no project stays as it is.
 
-The buffer keeps REPOSITORY buffer-locally, so a later auto refresh
-reads the same project.  A bookmark jump and an xref definition
-take the project of their record, and a display of another project
-replaces the value.  Pass the value of the caller and not the value
-of an earlier display in the same buffer.
+SCOPE names the collection of a list buffer as a cons of `group'
+and a group context, or nil for a project.  A group buffer keeps no
+`gitlab-repository', because glab takes a group and not a project,
+and its context comes from SCOPE.  The buffer keeps REPOSITORY
+buffer-locally, so a later auto refresh reads the same project.  A
+bookmark jump and an xref definition take the project of their
+record, and a display of another project replaces the value.  Pass
+the value of the caller and not the value of an earlier display in
+the same buffer.
 
-The function also sets `gitlab--context', the project identity of
-the buffer, and remembers it in `gitlab-repositories'."
+The function also sets `gitlab--context', the identity of the
+buffer, and remembers a project in `gitlab-repositories'.  A group
+never enters that list, because the project prompt would offer it
+as a project."
   (let* ((root (gitlab-cli--project-directory
                 (or directory (gitlab-cli-directory-of))))
-         (repository (gitlab-cli-repository-normalize repository))
+         (group (gitlab--scope-group scope))
+         (repository (and (not group)
+                          (gitlab-cli-repository-normalize repository)))
          (remote (gitlab-git-remote-context root))
-         (context (or repository
-                      (and gitlab-git-context-from-git remote))))
+         (context (if group
+                      group
+                    (or repository
+                        (and gitlab-git-context-from-git remote)))))
     (setq-local default-directory root)
     (setq-local gitlab-cli-directory root)
     (setq-local gitlab-repository repository)
+    (setq-local gitlab--scope (and group 'group))
     (setq-local gitlab--context context)
     (setq-local gitlab--context-local (and context (equal context remote)))
-    (gitlab--remember-repository context)))
+    (unless group
+      (gitlab--remember-repository context))))
 
 (defun gitlab--local-checkout-p ()
   "Return non-nil when the buffer shows the local checkout.
@@ -1702,19 +1726,39 @@ A URL of another family, such as an issue page, answers nil."
             (gitlab-cli-repository-normalize
              (format "https://%s/%s" host path))))))
 
+(defun gitlab--identifier-object (kind text context source)
+  "Return the object of KIND that TEXT names, as a list.
+The answer holds KIND, ID, CONTEXT and SOURCE.  A TEXT that carries
+a repository part, such as group/project!12, names that repository;
+otherwise CONTEXT serves.  A list cell of a group list carries the
+full identifier, so one row of another project keeps its own
+project."
+  (when (and text (not (string-empty-p (format "%s" text))))
+    (let* ((split (gitlab-data-identifier-split kind
+                                                (gitlab-data-id-string text)))
+           (repository (car split)))
+      (list kind (cdr split)
+            (if (and repository (not (string-empty-p repository)))
+                repository
+              context)
+            source))))
+
 (defun gitlab--property-object ()
   "Return (KIND ID CONTEXT SOURCE) from the text property at point.
 SOURCE is `property', or `url' for a web URL of the object."
   (cond
    ((get-text-property (point) 'gitlab-job-id)
-    (list 'job (get-text-property (point) 'gitlab-job-id)
-          gitlab--context 'property))
+    (gitlab--identifier-object
+     'job (get-text-property (point) 'gitlab-job-id)
+     gitlab--context 'property))
    ((get-text-property (point) 'gitlab-pipeline-id)
-    (list 'pipeline (get-text-property (point) 'gitlab-pipeline-id)
-          gitlab--context 'property))
+    (gitlab--identifier-object
+     'pipeline (get-text-property (point) 'gitlab-pipeline-id)
+     gitlab--context 'property))
    ((get-text-property (point) 'gitlab-merge-request-iid)
-    (list 'merge-request (get-text-property (point) 'gitlab-merge-request-iid)
-          gitlab--context 'property))
+    (gitlab--identifier-object
+     'merge-request (get-text-property (point) 'gitlab-merge-request-iid)
+     gitlab--context 'property))
    ((get-text-property (point) 'gitlab-url)
     (when-let* ((object (gitlab--url-object
                          (get-text-property (point) 'gitlab-url))))
@@ -1962,7 +2006,10 @@ buffer and on a list row."
 (defun gitlab--init-display-buffer ()
   "Wire the current buffer into the asynchronous refresh pipeline."
   (gitlab--kill-pending)
-  (gitlab--use-project-directory nil gitlab-repository)
+  (gitlab--use-project-directory
+   nil gitlab-repository
+   (or gitlab--pending-scope
+       (and gitlab--scope (cons gitlab--scope gitlab--context))))
   (setq-local bookmark-make-record-function #'gitlab--bookmark-make-record)
   (when gitlab--pending-target
     (setq-local gitlab--target gitlab--pending-target))
@@ -2031,25 +2078,30 @@ without blocking Emacs."
   (gitlab--init-display-buffer)
   (setq-local truncate-lines t))
 
-(defun gitlab-list--show (buffer mode &optional setup)
+(defun gitlab-list--show (buffer mode &optional setup scope)
   "Show the list BUFFER in MODE and refresh it.
 BUFFER is the name to use when no display buffer holds the
 collection yet; an open display buffer of the same MODE and project
 wins, whatever its current name is.  SETUP runs in the buffer
 before the fetch, so a display command can set the buffer-local
-arguments or the origin buffer."
+arguments or the origin buffer.  SCOPE names a group collection as
+a cons of `group' and a group context, or nil for a project."
   (let* ((origin (current-buffer))
          (directory (gitlab-cli-directory-of))
-         (repository (gitlab-cli-repository-normalize gitlab-repository))
-         (context (gitlab-git-context directory))
+         (group (gitlab--scope-group scope))
+         (repository (and (not group)
+                          (gitlab-cli-repository-normalize
+                           gitlab-repository)))
+         (context (or group (gitlab-git-context directory)))
          (target (or (gitlab--identity-buffer mode nil context)
                      (get-buffer-create
                       (generate-new-buffer-name
                        (gitlab--contextual-name buffer context))))))
     (with-current-buffer target
-      (funcall mode)
+      (let ((gitlab--pending-scope scope))
+        (funcall mode))
       (setq-local gitlab--origin-buffer origin)
-      (gitlab--use-project-directory directory repository)
+      (gitlab--use-project-directory directory repository scope)
       (setq-local gitlab--identity (list mode nil gitlab--context))
       (when setup (funcall setup))
       (gitlab--update-list-buffers-directory)
@@ -2630,11 +2682,13 @@ a merge request IID carries a leading !, so keep the digits only."
                      "[^0-9]" "" (aref (cadr entry) column))))))
     (< (funcall number a) (funcall number b))))
 
-(defun gitlab-list--id-cell (id property)
-  "Return ID as a table cell with PROPERTY set and `gitlab-id'."
+(defun gitlab-list--id-cell (id property &optional value)
+  "Return ID as a table cell with PROPERTY set and `gitlab-id'.
+VALUE defaults to ID, and it names the object behind the cell when
+the cell text differs from the identifier, as in a group list."
   (declare (pure t) (side-effect-free t))
   (gitlab--nav-string (propertize id 'face 'gitlab-id)
-                      property id "Open"))
+                      property (or value id) "Open"))
 
 (defun gitlab-list-sort (&optional column)
   "Sort the rows of the current list buffer by the column at point.
@@ -2683,6 +2737,15 @@ separates a row from the rows that it holds."
     (pipeline-list . "GitLab Pipelines"))
   "Name prefix of each bookmarkable GitLab buffer kind.")
 
+(defun gitlab--bookmark-label (kind)
+  "Return the bookmark name prefix of KIND in the current buffer.
+A merge request list of a group says so, because the context alone
+names a group and a project the same way to a reader."
+  (declare (side-effect-free t))
+  (if (and (eq kind 'merge-request-list) (eq gitlab--scope 'group))
+      "GitLab Group Merge Requests"
+    (alist-get kind gitlab--bookmark-labels)))
+
 (defconst gitlab--bookmark-link-types
   '((merge-request . "gitlab-mr")
     (pipeline . "gitlab-pipeline")
@@ -2700,11 +2763,12 @@ one syntax.")
   (intern (string-remove-suffix "-list" (symbol-name kind))))
 
 (defun gitlab--identifier-repository ()
-  "Return the project of the current buffer in identifier form.
+  "Return the context of the current buffer in identifier form.
 The explicit `gitlab-repository' and the context from the Git
 remote serve the same purpose here, so a bookmark and an Org link
-of a derived context carry the project too."
-  (gitlab-git-context))
+of a derived context carry the project too.  A group list carries
+its group, because no project names it."
+  (or gitlab--context (gitlab-git-context)))
 
 (defun gitlab--bookmark-location (kind id)
   "Return the Org link text of KIND with ID.
@@ -2741,8 +2805,8 @@ of the job and the parent row, so a jump opens the parent again."
 Intended for use as `bookmark-make-record-function'.  The record
 names the object or the collection, the project, the directory in
 which glab runs and the field line, job row or list row at point.
-A list record adds the fetch arguments and the sort column, so a
-filtered table comes back the same."
+A list record adds the fetch arguments, the sort column and the
+scope, so a filtered table and a group table come back the same."
   (let* ((list-p (derived-mode-p 'gitlab-list-mode))
          (kind (if list-p
                    (intern (format "%s-list" gitlab-list--kind))
@@ -2750,7 +2814,7 @@ filtered table comes back the same."
          (id (unless list-p gitlab--id))
          (location (gitlab--bookmark-location kind id))
          (target (gitlab--bookmark-target)))
-    (cons (format "%s %s" (alist-get kind gitlab--bookmark-labels)
+    (cons (format "%s %s" (gitlab--bookmark-label kind)
                   location)
           (append
            `((kind . ,kind)
@@ -2761,7 +2825,8 @@ filtered table comes back the same."
              (directory . ,(gitlab-cli-directory-of)))
            (when list-p
              `((arguments . ,gitlab-list--arguments)
-               (sort . ,tabulated-list-sort-key)))
+               (sort . ,tabulated-list-sort-key)
+               (scope . ,gitlab--scope)))
            (when target
              (list (cons 'target target)))))))
 
@@ -2811,10 +2876,10 @@ replaces it."
   "Open the GitLab buffer that BOOKMARK names.
 BOOKMARK is a bookmark record, not a bookmark name, so
 `bookmark-jump' passes it here.  The jump restores the project,
-the directory in which glab runs, the collection arguments and the
-sort column, then moves point to the saved field line, job row or
-list row.  A job log restarts its trace, because a trace streams
-and has no snapshot."
+the directory in which glab runs, the collection arguments, the
+scope and the sort column, then moves point to the saved field
+line, job row or list row.  A job log restarts its trace, because
+a trace streams and has no snapshot."
   (interactive
    (let ((bookmark-alist
           (cl-remove-if-not (lambda (record)
@@ -2828,8 +2893,9 @@ and has no snapshot."
         (directory (bookmark-prop-get bookmark 'directory))
         (name (bookmark-prop-get bookmark 'name))
         (arguments (bookmark-prop-get bookmark 'arguments))
-        (sort (bookmark-prop-get bookmark 'sort)))
-    (let ((gitlab-repository repository)
+        (sort (bookmark-prop-get bookmark 'sort))
+        (scope (bookmark-prop-get bookmark 'scope)))
+    (let ((gitlab-repository (unless (eq scope 'group) repository))
           (gitlab-cli-directory (or directory gitlab-cli-directory))
           (gitlab--pending-target (bookmark-prop-get bookmark 'target)))
       (pcase kind
@@ -2841,7 +2907,8 @@ and has no snapshot."
          (gitlab-list--show
           gitlab-merge-request-list-buffer-name
           #'gitlab-merge-request-list-mode
-          (gitlab--bookmark-list-setup arguments sort)))
+          (gitlab--bookmark-list-setup arguments sort)
+          (when (eq scope 'group) (cons 'group repository))))
         ('pipeline-list
          (gitlab-list--show
           gitlab-pipeline-list-buffer-name

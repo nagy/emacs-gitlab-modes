@@ -107,58 +107,107 @@ A list buffer fits every width to its rows, so these numbers apply
 only with `gitlab-list-fit-columns' nil.  A numeric column aligns
 its cells to the right, as a printed table does.")
 
+(defvar gitlab-merge-request-group-list-format
+  [("Project" 28 t)
+   ("IID" 7 gitlab-list--number-sort :right-align t)
+   ("Title" 40 t)
+   ("State" 10 t)
+   ("Author" 20 t)
+   ("Branches" 30 t)
+   ("Labels" 16 t)
+   ("Updated" 20 t)]
+  "Table format of the merge request list of a group.
+The Project column comes first, because one group holds the merge
+requests of many projects.  A project list keeps
+`gitlab-merge-request-list-format' and shows no such column.")
+
+(defun gitlab-merge-request--group-p ()
+  "Return non-nil when the current list buffer shows a group."
+  (declare (side-effect-free t))
+  (eq gitlab--scope 'group))
+
+(defun gitlab-merge-request--row-context (merge-request)
+  "Return the project context of MERGE-REQUEST, or nil.
+The `web_url' field names the project of the row, so a group list
+never reads the project from the buffer."
+  (when-let* ((url (gitlab-data-field "web_url" merge-request)))
+    (nth 2 (gitlab--url-object url))))
+
+(defun gitlab-merge-request--row-id (merge-request)
+  "Return the row ID of MERGE-REQUEST in the current list.
+A project list keeps the bare IID.  A group list writes the full
+identifier, so two projects that both hold !12 stay apart."
+  (let ((iid (gitlab-data-id-string
+              (gitlab-data-field "iid" merge-request))))
+    (if (gitlab-merge-request--group-p)
+        (gitlab-data-identifier
+         'merge-request iid (gitlab-merge-request--row-context merge-request))
+      iid)))
+
 (defun gitlab-merge-request--rows (data)
-  "Return an alist of merge request ID to row for DATA."
+  "Return an alist of merge request row ID to row for DATA."
   (mapcar (lambda (merge-request)
-            (cons (gitlab-data-id-string
-                   (gitlab-data-field "iid" merge-request))
-                  merge-request))
+            (cons (gitlab-merge-request--row-id merge-request) merge-request))
           data))
 
 (defun gitlab-merge-request--entries (data)
-  "Return `tabulated-list-entries' for merge request DATA."
-  (mapcar
-   (lambda (merge-request)
-     (let* ((iid (gitlab-data-field "iid" merge-request))
-            (id (gitlab-data-id-string iid))
-            (title (gitlab-data-field-string "title" merge-request))
-            (state (gitlab-data-field-string "state" merge-request))
-            (author (gitlab--format-author
-                     (gitlab-data-field "author" merge-request)))
-            (source (gitlab--format-branch
-                     (gitlab-data-field "source_branch" merge-request)))
-            (target (gitlab--format-branch
-                     (gitlab-data-field "target_branch" merge-request)))
-            (labels (gitlab--format-value
-                     (gitlab-data-field "labels" merge-request)))
-            (updated (gitlab-list--date-cell
-                      (gitlab-data-field "updated_at" merge-request))))
-       (list id
-             (vector
-              (gitlab-list--id-cell (format "!%s" id)
-                                    'gitlab-merge-request-iid)
-              title
-              (propertize state 'face (or (gitlab--status-face state)
-                                          'default))
-              author
-              (format "%s -> %s" source target)
-              labels
-              updated))))
-   data))
+  "Return `tabulated-list-entries' for merge request DATA.
+A group list puts the project of the row in the leftmost cell, and
+the IID cell keeps the full identifier as its navigation target."
+  (let ((group-p (gitlab-merge-request--group-p)))
+    (mapcar
+     (lambda (merge-request)
+       (let* ((iid (gitlab-data-field "iid" merge-request))
+              (id (gitlab-merge-request--row-id merge-request))
+              (title (gitlab-data-field-string "title" merge-request))
+              (state (gitlab-data-field-string "state" merge-request))
+              (author (gitlab--format-author
+                       (gitlab-data-field "author" merge-request)))
+              (source (gitlab--format-branch
+                       (gitlab-data-field "source_branch" merge-request)))
+              (target (gitlab--format-branch
+                       (gitlab-data-field "target_branch" merge-request)))
+              (labels (gitlab--format-value
+                       (gitlab-data-field "labels" merge-request)))
+              (updated (gitlab-list--date-cell
+                        (gitlab-data-field "updated_at" merge-request))))
+         (list id
+               (vconcat
+                (when group-p
+                  (vector (or (gitlab-merge-request--row-context merge-request)
+                              "-")))
+                (vector
+                 (gitlab-list--id-cell (format "!%s"
+                                               (gitlab-data-id-string iid))
+                                       'gitlab-merge-request-iid id)
+                 title
+                 (propertize state 'face (or (gitlab--status-face state)
+                                             'default))
+                 author
+                 (format "%s -> %s" source target)
+                 labels
+                 updated)))))
+     data)))
 
 (defun gitlab-merge-request--fetch-list (success error)
   "Fetch the merge request list for the current list buffer.
 Call SUCCESS with the decoded array or ERROR with a condition."
-  (gitlab-merge-request-list-async success error gitlab-list--arguments))
+  (gitlab-merge-request-list-async
+   success error gitlab-list--arguments
+   (and gitlab--scope (cons gitlab--scope gitlab--context))))
 
 (define-derived-mode gitlab-merge-request-list-mode gitlab-list-mode
   "GitLab Merge Requests"
-  "Display the merge requests of the current project.
+  "Display the merge requests of the current project or of a group.
 The table columns are IID, Title, State, Author, Branches, Labels
-and Updated.  RET opens the merge request at point; c copies its
-IID and w opens its web page."
+and Updated, and a group list puts the Project column first.  RET
+opens the merge request at point; c copies its identifier and w
+opens its web page."
   :group 'gitlab
-  (setq-local tabulated-list-format gitlab-merge-request-list-format)
+  (setq-local tabulated-list-format
+              (if (gitlab-merge-request--group-p)
+                  gitlab-merge-request-group-list-format
+                gitlab-merge-request-list-format))
   (setq-local tabulated-list-sort-key '("Updated" . t))
   (setq-local gitlab-list--kind 'merge-request)
   (setq-local gitlab-list--fetch-function #'gitlab-merge-request--fetch-list)
@@ -185,6 +234,27 @@ context prompts for the project, because neither a Git remote nor
        #'gitlab-merge-request-list-mode
        (lambda ()
          (setq-local gitlab-list--arguments arguments))))))
+
+;;;###autoload
+(defun gitlab-list-group-merge-requests (&optional all)
+  "Display the merge requests of a group.
+The command reads a group context and asks glab for the merge
+requests of that group, so one buffer holds the merge requests of
+many projects.  A Project column comes first, because a row alone
+names no project.  With prefix argument ALL, include closed and
+merged requests by adding --all to the glab arguments."
+  (interactive "P")
+  (let ((group (gitlab-read-group
+                nil (and (eq gitlab--scope 'group) gitlab--context)))
+        (arguments (if all
+                       (cons "--all" gitlab-merge-request-list-arguments)
+                     gitlab-merge-request-list-arguments)))
+    (gitlab-list--show
+     gitlab-merge-request-list-buffer-name
+     #'gitlab-merge-request-list-mode
+     (lambda ()
+       (setq-local gitlab-list--arguments arguments))
+     (cons 'group group))))
 
 ;;; Detail
 
@@ -414,21 +484,26 @@ Return nil without an active region or without a commit line."
           (forward-line 1))
         (nreverse commits)))))
 
-(defun gitlab-merge-request--target-data (iid)
-  "Return the merge request data of IID at point, or nil.
+(defun gitlab-merge-request--target-data (iid context)
+  "Return the merge request data of IID in CONTEXT, or nil.
 The data of the current detail buffer wins, and the merge request
 row at point serves next, so the local commit range reads the same
-base that the display shows."
+base that the display shows.  A group row compares its own project
+too, because two projects can both hold the same IID."
   (let ((iid (gitlab-data-id-string iid)))
     (cond
      ((and (eq gitlab--kind 'merge-request)
-           (equal (gitlab-data-id-string gitlab--id) iid))
+           (equal (gitlab-data-id-string gitlab--id) iid)
+           (equal gitlab--context context))
       gitlab--last-data)
      ((derived-mode-p 'gitlab-merge-request-list-mode)
       (when-let* ((row (gitlab-list--row-at-point)))
-        (when (equal (gitlab-data-id-string
-                      (gitlab-data-field "iid" row))
-                     iid)
+        (when (and (equal (gitlab-data-id-string
+                           (gitlab-data-field "iid" row))
+                          iid)
+                   (or (not (gitlab-merge-request--group-p))
+                       (equal (gitlab-merge-request--row-context row)
+                              context)))
           row))))))
 
 (defun gitlab-merge-request--checkout-p (context)
@@ -456,7 +531,8 @@ local checkout holds no ref of that project."
           (context (nth 2 object)))
       (unless (gitlab-merge-request--checkout-p context)
         (user-error "No local checkout of %s" context))
-      (gitlab-git-show-changes iid (gitlab-merge-request--target-data iid)
+      (gitlab-git-show-changes iid
+                               (gitlab-merge-request--target-data iid context)
                                (gitlab-merge-request--region-commits)))))
 
 (defun gitlab-merge-request-show-log ()
@@ -477,7 +553,8 @@ because the local checkout holds no ref of that project."
           (context (nth 2 object)))
       (unless (gitlab-merge-request--checkout-p context)
         (user-error "No local checkout of %s" context))
-      (gitlab-git-show-log iid (gitlab-merge-request--target-data iid)
+      (gitlab-git-show-log iid
+                           (gitlab-merge-request--target-data iid context)
                            (gitlab-merge-request--region-commits)))))
 
 (define-key gitlab-merge-request-mode-map (kbd "n")
@@ -499,13 +576,17 @@ project is unknown."
 ;;;###autoload
 (defun gitlab-display-merge-request (iid &optional repository)
   "Display the merge request with IID in its own buffer.
-IID is the project-scoped number, with or without a leading !.
-REPOSITORY names the project and the instance of the merge
-request, and it defaults to the project of the current directory or
-to the set `gitlab-repository'.  A merge request of another project
-opens in its own buffer."
+IID is the project-scoped number, with or without a leading !, or
+a full identifier such as group/project!12.  REPOSITORY names the
+project and the instance of the merge request, and it defaults to
+the repository part of IID, to the project of the current directory
+or to the set `gitlab-repository'.  A merge request of another
+project opens in its own buffer."
   (interactive (list (gitlab-read-merge-request-iid)))
-  (let ((iid (gitlab-data-id-string iid)))
+  (let* ((split (gitlab-data-identifier-split
+                 'merge-request (gitlab-data-id-string iid)))
+         (iid (cdr split))
+         (repository (or repository (car split))))
     (when (string-prefix-p "!" iid)
       (setq iid (substring iid 1)))
     (gitlab--show-detail #'gitlab-merge-request--buffer-name

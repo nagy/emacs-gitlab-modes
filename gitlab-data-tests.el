@@ -103,6 +103,35 @@
                   (gitlab-data-field "name" (gitlab-job-show 5001))))
    (should (equal "1001" (gitlab-job-pipeline-id 5001)))))
 
+(ert-deftest gitlab-data-merge-request-group-arguments ()
+  "A group list asks for the group, one page, and no repository."
+  (let ((gitlab-repository "group/project"))
+    (should (equal '("mr" "list" "--output" "json" "--group" "my-group"
+                     "--per-page" "100")
+                   (gitlab--cli-merge-request-list-arguments
+                    nil (cons 'group "my-group"))))
+    (should-not (member "--repo"
+                        (gitlab--cli-merge-request-list-arguments
+                         nil (cons 'group "my-group@gitlab.example.com"))))
+    (should (equal '("mr" "list" "--output" "json" "--repo" "group/project")
+                   (gitlab--cli-merge-request-list-arguments nil nil)))))
+
+(ert-deftest gitlab-data-merge-request-group-host ()
+  "A group request names its instance and keeps the project request clean."
+  (let ((gitlab-repository "group/project")
+        (request nil))
+    (cl-letf (((symbol-function 'gitlab-cli-request-async)
+               (lambda (arguments _success _error)
+                 (setq request (list arguments gitlab-cli--host)))))
+      (gitlab-merge-request-list-async
+       #'ignore #'ignore nil (cons 'group "my-group@gitlab.example.com"))
+      (should (equal "gitlab.example.com" (nth 1 request)))
+      (should (equal '("mr" "list" "--output" "json" "--group" "my-group"
+                       "--per-page" "100")
+                     (car request)))
+      (gitlab-merge-request-list-async #'ignore #'ignore nil nil)
+      (should-not (nth 1 request)))))
+
 (ert-deftest gitlab-list-cache ()
   "A cached list keeps its answer until the cache is cleared."
   (gitlab-test-with-environment

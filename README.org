@@ -258,6 +258,17 @@ ID, aligns its cells to the right, so a reader compares the last digit.
 The same holds for the duration column and the identifier column of
 the jobs table of a pipeline buffer.
 
+=gitlab-list-merge-requests= shows one project.  The command
+=gitlab-list-group-merge-requests= shows one group, so one buffer holds
+the merge requests of many projects.  It reads a group path, a
+=PATH@HOST= string or a =https://HOST/groups/PATH= URL, and it offers
+the namespaces of the projects of this session.  A group list puts a
+Project column first and shows the group path in the buffer name.  Its
+row ID is the full identifier, so two projects of one group never mix.
+=c= copies that full identifier there.  Both commands take ==C-u== for
+==--all==.  Filters such as a label live in
+=gitlab-merge-request-list-arguments=.
+
 A list buffer fits the width of every column to its rows.  A column
 takes the width of its longest cell, or the width of its header when
 that is wider.  When the columns are wider than the window, the widest

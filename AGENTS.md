@@ -20,12 +20,12 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 |---|---|
 | `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
-| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
+| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  The merge request list takes a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
-| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, and the project prompt `gitlab-read-repository`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
-| `gitlab-merge-request.el` | Merge request list mode, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
+| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
+| `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
@@ -348,16 +348,32 @@ without evil.  The suite never opens a network connection.
   list.  A user can rename a buffer to anything and the display command
   still reuses it.  A new display path must set the identity through
   the same place that sets the mode.
-- `gitlab--use-project-directory` takes an optional DIRECTORY and an
-  optional REPOSITORY.  Pass the value of the caller, because a dynamic
-  `let` of `gitlab-repository` loses to a buffer-local value of an
-  earlier display in the same buffer.  The helper sets
-  `default-directory`, `gitlab-cli-directory` (glab must run in the
-  project), `gitlab-repository`, `gitlab--context` and
-  `gitlab--context-local`, then remembers the context in
-  `gitlab-repositories`.  Call it in `gitlab--prepare-detail`,
-  `gitlab-list--show` and `gitlab-pipeline--prepare-job-log`, so a
-  second display of the same buffer never keeps an old project.
+- `gitlab--use-project-directory` takes an optional DIRECTORY, an
+  optional REPOSITORY and an optional SCOPE.  Pass the value of the
+  caller, because a dynamic `let` of `gitlab-repository` loses to a
+  buffer-local value of an earlier display in the same buffer.  The
+  helper sets `default-directory`, `gitlab-cli-directory` (glab must
+  run in the project), `gitlab-repository`, `gitlab--scope`,
+  `gitlab--context` and `gitlab--context-local`, then remembers a
+  project in `gitlab-repositories`.  Call it in
+  `gitlab--prepare-detail`, `gitlab-list--show` and
+  `gitlab-pipeline--prepare-job-log`, so a second display of the same
+  buffer never keeps an old project.
+- One list buffer holds one scope: a project, or a group.  SCOPE is a
+  cons of `group` and the group context, or nil for a project, and
+  `gitlab--scope` keeps the kind in the buffer.  A group buffer sets
+  `gitlab-repository` nil, because glab takes a group and not a
+  project, and its context comes from SCOPE.  A group never enters
+  `gitlab-repositories`, because the project prompt would offer it as
+  a project.  The context spelling stays `PATH` or `PATH@HOST`: one
+  path on one instance names either a project or a group, so the
+  identity list and the buffer name need no second element.
+- `define-derived-mode` runs `kill-all-local-variables`, so a caller
+  cannot set a buffer local before the mode call.  `gitlab-list--show`
+  binds `gitlab--pending-scope` around the mode, and
+  `gitlab--init-display-buffer` passes it to
+  `gitlab--use-project-directory`.  The mode body therefore reads the
+  scope when it chooses the table format.
 - `gitlab--context-local` is non-nil when the context equals the remote
   of the buffer directory.  `gitlab--local-checkout-p` is the guard of
   the Git views: it is non-nil for a buffer without a context too,
@@ -372,6 +388,15 @@ without evil.  The suite never opens a network connection.
   the display.  Do not prompt when a context exists: the C-u prefix
   already carries `--all` for merge requests and the extra glab flags of
   a pipeline list.
+- `gitlab-list-group-merge-requests` reads a group through
+  `gitlab-read-group` and passes `(cons 'group CONTEXT)` to
+  `gitlab-list--show`.  The prompt accepts a path, a `PATH@HOST`
+  string and a `https://HOST/groups/PATH` URL, and it defaults to the
+  parent namespace of the context, or to the group of a group buffer.
+  Its candidates come from the namespaces of `gitlab-repositories`,
+  so it starts no request.  The prompt declares the
+  `gitlab-group` category.  The command keeps C-u for `--all` and adds
+  no key.
 - A prompt binds `completion-extra-properties` to a `:category`, an
   `:annotation-function` and a `:display-sort-function`, so marginalia,
   embark, `completion-preview` and `completion-category-overrides`
@@ -722,6 +747,22 @@ without evil.  The suite never opens a network connection.
   pipeline ID, so an update keeps point on the same row.
   `gitlab-change-functions` receives `gitlab-list--kind` and a nil ID
   for a list buffer, because one collection has no single ID.
+- A group list keeps the row ID apart from a project list.  Its row ID
+  is the full identifier, `group/project!12` or
+  `group/project@HOST!12`, because two projects of one group can both
+  hold !12.  The IID cell shows `!12` and carries the full identifier
+  as its navigation property, so `gitlab-list--id-cell` takes an
+  optional VALUE, and `gitlab--identifier-object` reads the repository
+  part of a property.  `gitlab-display-merge-request` accepts a full
+  identifier too, so RET from a row opens the project of the row.  A
+  project list keeps the bare IID.
+- The group fetch runs `glab mr list --group PATH --per-page 100`.
+  `gitlab-cli--repository-arguments` appends no `--repo` beside a
+  `--group`, because glab ignores one there.  A group of another
+  instance sets `gitlab-cli--host`, which
+  `gitlab-cli--environment` turns into GITLAB_HOST, because `glab mr
+  list` takes no host flag.  One request per buffer stays, and the
+  cache key holds the scope.
 - A row expands into child rows through `gitlab-list--child-function`,
   a function of the row ID that answers the entries of the child rows
   or nil.  `gitlab-list--expanded` holds the row IDs that a buffer
@@ -816,14 +857,20 @@ without evil.  The suite never opens a network connection.
   the pipeline of the row, so the log walks up without a request.
   `gitlab-pipeline--row-data` answers the job of a job row, so `w` and
   `thing-at-point 'url` reach the job page.
-- The list columns live in `gitlab-merge-request-list-format` and
-  `gitlab-pipeline-list-format`.  Numeric columns use
+- The list columns live in `gitlab-merge-request-list-format`,
+  `gitlab-merge-request-group-list-format` and
+  `gitlab-pipeline-list-format`.  A group list puts the Project column
+  first, because one row alone names no project; a project list shows
+  no such column.  The list mode chooses the format from
+  `gitlab--scope` in its body.  Numeric columns use
   `gitlab-list--number-sort` and take `:right-align t` in the column
   plist, because a printed table aligns a number to the right and a
   reader compares the last digit.  A `tabulated-list` SORT predicate
   receives whole `tabulated-list-entries` elements, not the cell
   strings, so the helper reads the sorted column from the entry and
-  strips the `!` of a merge request IID.  A date column goes through
+  strips the `!` of a merge request IID; a group row keeps `!12` in
+  that cell, so the sort never reads the digits of the project path.
+  A date column goes through
   `gitlab-list--date-cell`, so the cell carries `gitlab-date`.  The
   identifier column goes through `gitlab-list--id-cell`, so the cell
   carries `gitlab-id` and its navigation property.
@@ -1017,12 +1064,16 @@ without evil.  The suite never opens a network connection.
   run the display base mode; the wrapper adds the job name, and the
   pipeline ID when the buffer knows it.
   `gitlab--bookmark-make-record` stores `kind`, `id`, `location`,
-  `repository`, `directory` and `target`, plus `arguments` and `sort`
-  for a list buffer.  The kind of a list buffer is the collection kind
-  with a `-list` suffix, and `gitlab--bookmark-base-kind` gives the
-  object kind back.  A new bookmarkable kind needs one entry in
-  `gitlab--bookmark-labels`, one in `gitlab--bookmark-link-types` and
-  one `pcase` branch in `gitlab-bookmark-jump`.
+  `repository`, `directory` and `target`, plus `arguments`, `sort` and
+  `scope` for a list buffer.  The kind of a list buffer is the
+  collection kind with a `-list` suffix, and
+  `gitlab--bookmark-base-kind` gives the object kind back.  A group
+  list stores `group` in `scope`, keeps the group context in
+  `repository` and takes its name from `gitlab--bookmark-label`, which
+  says "GitLab Group Merge Requests".  A new bookmarkable kind needs
+  one entry in `gitlab--bookmark-labels`, one in
+  `gitlab--bookmark-link-types` and one `pcase` branch in
+  `gitlab-bookmark-jump`.
 - A target names a field line, a job row or a list row, never a buffer
   position, because the first render erases the buffer and moves point
   to its start.  `gitlab--goto-property` and `gitlab-list--goto-id`

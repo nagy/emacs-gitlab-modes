@@ -1203,6 +1203,17 @@ alone and adds the child rows after the sort."
       (insert "no object")
       (should-error (gitlab-copy-id) :type 'user-error))))
 
+(ert-deftest gitlab-mode-object-at-point-group-row ()
+  "A group row ID names its own project, not the group."
+  (with-temp-buffer
+    (insert (propertize "!12" 'gitlab-merge-request-iid
+                        "other/project!12"))
+    (setq-local gitlab--scope 'group)
+    (setq-local gitlab--context "group")
+    (goto-char (point-min))
+    (should (equal '(merge-request "12" "other/project" property)
+                   (gitlab--object-at-point)))))
+
 (provide 'gitlab-mode-tests)
 
 ;;; gitlab-mode-tests.el ends here
