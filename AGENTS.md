@@ -850,7 +850,8 @@ without evil.  The suite never opens a network connection.
   `gitlab-id-fields`, so `id`, `iid`, `project_id`, `sha` and
   `before_sha` share `gitlab-id`.  A new author field goes into
   `gitlab-author-fields`, so `author`, `assignee`, `assignees`,
-  `reviewers` and the `user` of a pipeline carry the author faces.
+  `reviewers`, the `user` of a pipeline, `merge_user` and
+  `merged_by` carry the author faces.
   A field that holds an array of users goes through
   `gitlab--format-author-list`, which maps `gitlab--format-author`
   over the array.  A new branch or ref field goes into

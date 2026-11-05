@@ -84,7 +84,13 @@
   (should (eq 'gitlab-author
               (get-text-property
                0 'face (gitlab--format-field-value
-                        'author '((name . "Alice")))))))
+                        'author '((name . "Alice"))))))
+  (dolist (key '(merge_user merged_by))
+    (let ((text (gitlab--format-field-value
+                 key '((name . "Alice") (username . "alice")))))
+      (should (equal "Alice (@alice)" text))
+      (should (eq 'gitlab-author (get-text-property 0 'face text)))
+      (should (eq 'gitlab-id (get-text-property 7 'face text))))))
 
 (ert-deftest gitlab-mode-tag-field-face ()
   "A ref that the tag flag marks a tag takes `gitlab-tag'."

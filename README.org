@@ -67,9 +67,10 @@ A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 An author carries the =gitlab-author= face, which inherits the Magit
 =magit-log-author= face, and its account name carries =gitlab-id=.
-An assignee, an assignee list, a reviewer list and the user of a
-pipeline carry the same two faces, so a name looks the same in a
-detail buffer and in a list column.
+An assignee, an assignee list, a reviewer list, the user of a
+pipeline, the merge user and the user who merged carry the same two
+faces, so a name looks the same in a detail buffer and in a list
+column.
 A branch carries the =gitlab-branch= face, which inherits
 =magit-branch-remote=, and a ref that the =tag= flag of a pipeline
 marks a tag carries the =gitlab-tag= face, which inherits

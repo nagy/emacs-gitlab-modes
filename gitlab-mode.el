@@ -227,7 +227,8 @@ Every field that names one object or one commit belongs here, so
   :group 'gitlab)
 
 (defcustom gitlab-author-fields
-  '("author" "assignee" "assignees" "reviewers" "user")
+  '("author" "assignee" "assignees" "reviewers" "user"
+    "merge_user" "merged_by")
   "Field names that take `gitlab-author'.
 A field that names a user belongs here.  A field that holds an
 array of users takes the same faces on every entry."
