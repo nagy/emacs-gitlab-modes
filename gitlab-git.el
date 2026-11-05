@@ -68,7 +68,7 @@
   :group 'gitlab)
 
 (defcustom gitlab-git-use-magit t
-  "Whether the GitLab views use Magit when it is available.
+  "Non-nil if the GitLab views use Magit when it is available.
 A nil value keeps every view in the plain `diff-mode' buffers of
 this package.  The package never requires Magit at load time."
   :type 'boolean
@@ -89,12 +89,12 @@ instead."
   :group 'gitlab)
 
 (defcustom gitlab-git-context-from-git t
-  "Whether a display buffer takes its project from the Git remote.
-When non-nil, a project whose `gitlab-repository' is nil reads the
-URL of `gitlab-git-preferred-remote', so two projects and two
-instances never share one buffer.  A nil value leaves the buffer
-name without a project, and glab infers the project from the
-directory, as an earlier version did."
+  "Non-nil if a display buffer takes its project from the Git remote.
+A project whose `gitlab-repository' is nil then reads the URL of
+`gitlab-git-preferred-remote', so two projects and two instances
+never share one buffer.  A nil value leaves the buffer name
+without a project, and glab infers the project from the directory,
+as an earlier version did."
   :type 'boolean
   :group 'gitlab)
 

@@ -702,7 +702,7 @@ own buffer."
 ;;; Job log
 
 (defcustom gitlab-job-log-show-timestamps t
-  "Whether the job log shows the prefix of a trace line.
+  "Non-nil if the job log shows the prefix of a trace line.
 GitLab writes an ISO 8601 timestamp in front of every line when
 the job enables runner timestamps.  A stream identifier such as
 00O, 01O, 01E or 00O+ follows the timestamp.  A nil value hides
@@ -713,7 +713,7 @@ without dropping the received text, so
   :group 'gitlab)
 
 (defcustom gitlab-job-log-show-region-duration t
-  "Whether the job log shows the duration of the active region.
+  "Non-nil if the job log shows the duration of the active region.
 When a region is active, the mode line shows the number of trace
 lines that carry a timestamp and the time between the first and the
 last of them.  The section sits on the right edge of the mode line
@@ -734,7 +734,7 @@ bookmark knows its pipeline.  A nil value asks GitLab once, in
 `gitlab-job-log-pipeline-id'.")
 
 (defvar-local gitlab-job-log--finished nil
-  "Non-nil when the trace process of the current buffer finished.")
+  "Non-nil if the trace process of the current buffer finished.")
 
 (defvar-local gitlab-job-log--pending nil
   "Tail of the trace that waits for the end of its line.
@@ -742,7 +742,7 @@ A process filter receives arbitrary chunks, so an incomplete line
 stays here until the next chunk or until the process ends.")
 
 (defvar-local gitlab-job-log--banner t
-  "Non-nil while the buffer holds no line of the trace itself.
+  "Non-nil if the buffer holds no line of the trace itself.
 The empty lines before the first trace line belong to the banner
 of glab and never reach the buffer.")
 

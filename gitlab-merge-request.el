@@ -68,7 +68,7 @@ a renamed buffer stays reachable."
   :group 'gitlab)
 
 (defcustom gitlab-merge-request-show-commits t
-  "Whether a merge request buffer lists the local commits.
+  "Non-nil if a merge request buffer lists the local commits.
 The list needs a fetched merge request ref, for example through
 this fetch refspec:
 
@@ -90,7 +90,7 @@ that invocation only."
   "Decoded notes of the merge request in the current buffer.")
 
 (defvar-local gitlab-merge-request--notes-loaded nil
-  "Non-nil when the notes of the current buffer were fetched.")
+  "Non-nil if the notes of the current buffer were fetched.")
 
 ;;; List
 

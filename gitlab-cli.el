@@ -97,9 +97,9 @@ condition."
   :group 'gitlab)
 
 (defcustom gitlab-cli-ansi-color t
-  "Whether a streamed job log keeps its ANSI colors.
-When non-nil, `gitlab-cli-stream' converts SGR sequences into
-text properties.  Set it to nil to keep the raw output."
+  "Non-nil if a streamed job log keeps its ANSI colors.
+`gitlab-cli-stream' then converts SGR sequences into text
+properties.  Set it to nil to keep the raw output."
   :type 'boolean
   :group 'gitlab)
 

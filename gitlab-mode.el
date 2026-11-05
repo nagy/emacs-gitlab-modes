@@ -205,9 +205,9 @@ user."
 ;;; Customization
 
 (defcustom gitlab-auto-revert t
-  "Whether GitLab display buffers refresh themselves.
-When non-nil, a display buffer enables `auto-revert-mode'.  The
-refresh is asynchronous, so Emacs never waits for glab."
+  "Non-nil if GitLab display buffers refresh themselves.
+A display buffer then enables `auto-revert-mode'.  The refresh is
+asynchronous, so Emacs never waits for glab."
   :type 'boolean
   :group 'gitlab)
 
@@ -329,7 +329,7 @@ that many spaces in front of its first column."
   :group 'gitlab)
 
 (defcustom gitlab-list-fit-columns t
-  "Whether a list buffer sizes its columns to the shown content.
+  "Non-nil if a list buffer sizes its columns to the shown content.
 A fitted column takes the width of its widest cell, or the width of
 its header when that is wider.  When the columns are wider than the
 window, the widest columns shrink to one common cap, so no column
@@ -339,28 +339,27 @@ format of the collection."
   :group 'gitlab)
 
 (defcustom gitlab-bug-reference t
-  "Whether a display buffer links the identifiers in its text.
-When non-nil, a commit subject, a note body and a job trace turn a
-reference such as !12, #34 or &56 into a link to the web page of
-the object, and a reference that starts with a project path links
-that project.  The sigils follow `gitlab-data-identifier-signs'.
-The link comes from `bug-reference-mode', so its own keys follow
-it."
+  "Non-nil if a display buffer links the identifiers in its text.
+A commit subject, a note body and a job trace then turn a reference
+such as !12, #34 or &56 into a link to the web page of the object,
+and a reference that starts with a project path links that
+project.  The sigils follow `gitlab-data-identifier-signs'.  The
+link comes from `bug-reference-mode', so its own keys follow it."
   :type 'boolean
   :group 'gitlab)
 
 (defcustom gitlab-goto-address t
-  "Whether a display buffer links the URLs in its text.
-When non-nil, `goto-address-mode' turns a URL of a job trace or of
-a note body into a link, so the reader opens it with the keys of
-that mode."
+  "Non-nil if a display buffer links the URLs in its text.
+`goto-address-mode' then turns a URL of a job trace or of a note
+body into a link, so the reader opens it with the keys of that
+mode."
   :type 'boolean
   :group 'gitlab)
 
 (defcustom gitlab-browse-url-handler t
-  "Whether Emacs opens a GitLab web URL in a GitLab buffer.
-When non-nil, a URL such as
-https://gitlab.com/group/project/-/merge_requests/12 opens the
+  "Non-nil if Emacs opens a GitLab web URL in a GitLab buffer.
+A URL such as
+https://gitlab.com/group/project/-/merge_requests/12 then opens the
 buffer of that merge request, and a pipeline URL and a job URL
 behave the same.  The package adds its entry to
 `browse-url-default-handlers'; `browse-url-handlers' stays with
@@ -476,7 +475,7 @@ another instance.  `gitlab--use-project-directory' sets it.  Buffer
 names and the identity lookup use it.")
 
 (defvar-local gitlab--context-local nil
-  "Non-nil when `gitlab--context' is the checkout of the buffer.
+  "Non-nil if `gitlab--context' is the checkout of the buffer.
 A buffer of another project reads no local merge request ref, so
 the Git views stay out of the way.")
 
@@ -571,7 +570,7 @@ decoded from.  A nil value means that the data layer merged more
 than one answer, so a JSON export encodes `gitlab--last-data'.")
 
 (defvar-local gitlab--rendered nil
-  "Non-nil when the current buffer holds a rendered answer.")
+  "Non-nil if the current buffer holds a rendered answer.")
 
 (defvar-local gitlab--last-fetch-time nil
   "Float time of the last fetch of the current buffer.")
@@ -582,7 +581,7 @@ The value is a process object, or t while a synchronous fetch
 runs.")
 
 (defvar-local gitlab--refresh-requested nil
-  "Non-nil when a refresh arrived during a running fetch.")
+  "Non-nil if a refresh arrived during a running fetch.")
 
 (defvar-local gitlab--last-error nil
   "Last fetch error of the current buffer, or nil.")

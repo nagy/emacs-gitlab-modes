@@ -86,10 +86,10 @@
   (require 'evil))
 
 (defcustom gitlab-evil-auto-enable t
-  "Whether to install the evil bindings without an explicit call.
-When non-nil, `gitlab-evil-auto-setup' enables `gitlab-evil-mode'
-once evil loads.  Set this option to nil before evil loads to keep
-the bindings off until a user calls `gitlab-evil-mode'."
+  "Non-nil if the evil bindings install without an explicit call.
+`gitlab-evil-auto-setup' then enables `gitlab-evil-mode' once evil
+loads.  Set this option to nil before evil loads to keep the
+bindings off until a user calls `gitlab-evil-mode'."
   :type 'boolean
   :group 'gitlab)
 
