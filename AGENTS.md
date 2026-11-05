@@ -145,10 +145,38 @@ without evil.  The suite never opens a network connection.
   buffer never blocks.  The approve answer carries no merge request
   field, so the command reports the approval in the echo area and
   calls `gitlab--refresh-after-write`, which fetches the merge
-  request again.  A
-  failure goes through `gitlab--set-error`, which the next render
-  clears.  The command holds no key: the merge request keymap keeps no
-  binding that would shadow an evil motion.
+  request again.  A failure goes through `gitlab--report-error`,
+  which sets the header line of a GitLab buffer and writes the echo
+  area elsewhere.  The command holds no key: the merge request
+  keymap keeps no binding that would shadow an evil motion, and the
+  list keymap gains none either.
+- A command that acts on one object takes its target from
+  `gitlab--object-at-point`, a list of KIND, ID, CONTEXT and SOURCE.
+  The precedence is the text property at point, the identity of the
+  display buffer, and the web URL at point, so one command serves a
+  detail buffer, a list row and a link in any buffer.  The URL
+  comes from `thing-at-point 'url`, which the list mode answers
+  through its own provider.  `gitlab--object-at-point` takes a
+  wanted KIND, and a target of another kind signals a user error
+  instead of falling back, because a silent fallback would act on a
+  different object than point names.  `gitlab--object-id` strips
+  the sigil of a list cell, because a cell writes `!13` and `#34`
+  and glab wants the digits.  Commands that belong to a view stay
+  buffer-bound: the notes render into the current buffer, the JSON
+  export needs the raw answer text, and the parent, sibling and job
+  log commands walk a view.
+- A write names its CONTEXT.  `gitlab-approve-merge-request` and
+  `gitlab-merge-merge-request` bind `gitlab-repository` and
+  `gitlab-cli-directory` to the resolved value around the
+  asynchronous request, so a write from a list row or from a link
+  reaches the right project.  `gitlab--write-buffer` names the
+  buffer to refresh: a live detail buffer of the object, else the
+  current buffer when it shows GitLab data, else nil so the write
+  drops every cached list and touches no foreign buffer.  A write
+  that acts on an object outside its own detail buffer asks
+  `yes-or-no-p` first, and `gitlab--target-elsewhere-p` answers that
+  question.  The merge request commands therefore work from a list
+  row and from a pasted URL.
 - `gitlab-merge-request-merge` is the second write entry point.  It
   runs `glab mr merge IID --yes` through `gitlab--write` and returns
   that text.  `--yes` is required, because `GLAB_NO_PROMPT=1` leaves
@@ -910,7 +938,13 @@ without evil.  The suite never opens a network connection.
   `gitlab-go-to-parent`, `gitlab-next-sibling` and
   `gitlab-previous-sibling` name both `gitlab-detail-mode` and
   `gitlab-job-log-mode`; `gitlab-export-json` names both base modes.
-  `command-modes` returns the list, and the suites assert it.
+  A command that takes its target from `gitlab--object-at-point`
+  names no mode, because it works in any buffer that shows a
+  property or a URL: `gitlab-approve-merge-request`,
+  `gitlab-merge-merge-request`, `gitlab-merge-request-show-changes`,
+  `gitlab-merge-request-show-log` and `gitlab-copy-id` all carry a
+  plain `(interactive)`.  `command-modes` returns the list, and the
+  suites assert it.
 - `gitlab-evil.el` binds every command key through
   `evil-define-minor-mode-key`, one key set per state and local minor
   mode.  A key that evil already binds becomes a `[remap

@@ -63,6 +63,15 @@ buffer never blocks.  The command =gitlab-merge-merge-request= merges
 it.  It asks for confirmation first, because a merge changes the
 target branch.  Both commands fetch the merge request again after the
 write, so the buffer shows the new state.
+
+Every command that acts on one object reads the object at point, so
+it works in a detail buffer, on a list row and on a GitLab web URL in
+any buffer.  The text property at point wins, then the display
+buffer, then =thing-at-point 'url=.  A write outside a detail buffer
+of the same object asks for confirmation first, because the reader
+does not see that object.  This rule covers =gitlab-approve-merge-request=,
+=gitlab-merge-merge-request=, =gitlab-merge-request-show-changes=,
+=gitlab-merge-request-show-log= and =gitlab-copy-id=.
 A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 An author carries the =gitlab-author= face, which inherits the Magit
@@ -228,6 +237,11 @@ and reports the approval in the echo area.  The command
 =gitlab-merge-merge-request= asks for confirmation, runs =glab mr merge=
 in the background and reports the merge in the echo area.  Both fetch
 the merge request again and hold no key.
+
+Both write commands, the two local commit views and =gitlab-copy-id=
+take their object from point, so M-x reaches a row of the list buffer
+without a key of its own.  A target outside the detail buffer of the
+same object asks for confirmation before a write.
 
 * List buffers
 

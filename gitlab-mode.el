@@ -135,6 +135,9 @@
                   (pipeline-id &optional repository))
 (declare-function gitlab-display-job-log "gitlab-pipeline"
                   (job-id &optional name pipeline-id repository))
+(declare-function gitlab-job-log-mode "gitlab-pipeline" ())
+(declare-function gitlab-merge-request-mode "gitlab-merge-request" ())
+(declare-function gitlab-pipeline-mode "gitlab-pipeline" ())
 (declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
 (declare-function gitlab-pipeline-list-mode "gitlab-pipeline" ())
 (declare-function gitlab-export-json "gitlab-export" ())
@@ -173,18 +176,14 @@ own instance and project, so a link of another project or of a
 private instance opens the buffer of that project.  Return nil
 when URL names no known object, and ignore ARGUMENTS, because a
 display buffer takes a new window flag from its own command."
-  (when (string-match gitlab--browse-url-regexp url)
-    (let ((host (match-string 1 url))
-          (path (match-string 2 url))
-          (kind (match-string 3 url))
-          (id (match-string 4 url)))
-      (let ((repository (gitlab-cli-repository-normalize
-                         (format "https://%s/%s" host path))))
-        (pcase kind
-          ("merge_requests" (gitlab-display-merge-request id repository))
-          ("pipelines" (gitlab-display-pipeline id repository))
-          ("jobs" (gitlab-display-job-log id nil nil repository)))
-        t))))
+  (when-let* ((object (gitlab--url-object url)))
+    (pcase (car object)
+      ('merge-request (gitlab-display-merge-request
+                       (nth 1 object) (nth 2 object)))
+      ('pipeline (gitlab-display-pipeline (nth 1 object) (nth 2 object)))
+      ('job (gitlab-display-job-log
+             (nth 1 object) nil nil (nth 2 object))))
+    t))
 
 (defconst gitlab--browse-url-handler-entry
   (cons gitlab--browse-url-regexp #'gitlab-browse-url)
@@ -1686,6 +1685,116 @@ the render and restores it after the render."
 
 ;;; Navigation
 
+(defun gitlab--url-object (url)
+  "Return (KIND ID CONTEXT) of the GitLab object that URL names, or nil.
+A URL of another family, such as an issue page, answers nil."
+  (when (and (stringp url)
+             (string-match gitlab--browse-url-regexp url))
+    (let ((host (match-string 1 url))
+          (path (match-string 2 url))
+          (kind (match-string 3 url))
+          (id (match-string 4 url)))
+      (list (pcase kind
+              ("merge_requests" 'merge-request)
+              ("pipelines" 'pipeline)
+              ("jobs" 'job))
+            id
+            (gitlab-cli-repository-normalize
+             (format "https://%s/%s" host path))))))
+
+(defun gitlab--property-object ()
+  "Return (KIND ID CONTEXT SOURCE) from the text property at point.
+SOURCE is `property', or `url' for a web URL of the object."
+  (cond
+   ((get-text-property (point) 'gitlab-job-id)
+    (list 'job (get-text-property (point) 'gitlab-job-id)
+          gitlab--context 'property))
+   ((get-text-property (point) 'gitlab-pipeline-id)
+    (list 'pipeline (get-text-property (point) 'gitlab-pipeline-id)
+          gitlab--context 'property))
+   ((get-text-property (point) 'gitlab-merge-request-iid)
+    (list 'merge-request (get-text-property (point) 'gitlab-merge-request-iid)
+          gitlab--context 'property))
+   ((get-text-property (point) 'gitlab-url)
+    (when-let* ((object (gitlab--url-object
+                         (get-text-property (point) 'gitlab-url))))
+      (append object '(url))))))
+
+(defun gitlab--buffer-object ()
+  "Return (KIND ID CONTEXT buffer) of the display buffer, or nil."
+  (when (and gitlab--kind gitlab--id)
+    (list gitlab--kind gitlab--id gitlab--context 'buffer)))
+
+(defun gitlab--point-object ()
+  "Return (KIND ID CONTEXT SOURCE) of the GitLab object at point, or nil.
+SOURCE is `property' for a text property, `buffer' for the display
+buffer and `url' for a web URL.  A property and the buffer win over
+the URL, because they name the object that the reader sees."
+  (or (gitlab--property-object)
+      (gitlab--buffer-object)
+      (when-let* ((url (thing-at-point 'url t)))
+        (when-let* ((object (gitlab--url-object url)))
+          (append object '(url))))))
+
+(defun gitlab--object-id (kind value)
+  "Return the ID text of KIND for VALUE, without a leading sigil.
+A list cell writes a pipeline as #ID and a merge request as !IID."
+  (cdr (gitlab-data-identifier-split kind (gitlab-data-id-string value))))
+
+(defun gitlab--object-at-point (&optional kind)
+  "Return (KIND ID CONTEXT SOURCE) of the GitLab object at point, or nil.
+KIND, when non-nil, names the wanted kind.  A target of another
+kind signals a user error, because a silent fallback would act on a
+different object than point names."
+  (when-let* ((object (gitlab--point-object)))
+    (let ((object-kind (car object))
+          (id (gitlab--object-id (car object) (nth 1 object)))
+          (context (nth 2 object))
+          (source (nth 3 object)))
+      (when (and kind (not (eq object-kind kind)))
+        (user-error "Point names %s, not a %s"
+                    (gitlab-data-identifier object-kind id context)
+                    (replace-regexp-in-string
+                     "-" " " (symbol-name kind))))
+      (list object-kind id context source))))
+
+(defun gitlab--target-elsewhere-p (object)
+  "Return non-nil when OBJECT is not the object of the current buffer.
+A write from a list row, from a web URL or from another buffer acts
+on an object that the reader does not see in a detail buffer, so the
+command confirms it."
+  (not (and (derived-mode-p 'gitlab-detail-mode)
+            (eq (car object) gitlab--kind)
+            (equal (nth 1 object) (gitlab-data-id-string gitlab--id))
+            (equal (nth 2 object) gitlab--context))))
+
+(defun gitlab--kind-mode (kind)
+  "Return the detail mode function of KIND."
+  (declare (pure t) (side-effect-free t))
+  (pcase kind
+    ('merge-request #'gitlab-merge-request-mode)
+    ('pipeline #'gitlab-pipeline-mode)
+    ('job #'gitlab-job-log-mode)))
+
+(defun gitlab--write-buffer (kind id context)
+  "Return the buffer that a write of KIND, ID and CONTEXT refreshes.
+A live detail buffer of that object wins.  The current buffer serves
+next when it shows GitLab data, because a list buffer shows the
+collection that holds the object.  Return nil in every other
+buffer, so the write touches no foreign buffer."
+  (or (gitlab--identity-buffer (gitlab--kind-mode kind) id context)
+      (when (derived-mode-p 'gitlab-detail-mode 'gitlab-list-mode)
+        (current-buffer))))
+
+(defun gitlab--report-error (buffer error)
+  "Report in BUFFER the ERROR, or in the echo area without a GitLab buffer."
+  (if (and (buffer-live-p buffer)
+           (with-current-buffer buffer
+             (derived-mode-p 'gitlab-detail-mode 'gitlab-list-mode)))
+      (with-current-buffer buffer
+        (gitlab--set-error error))
+    (message "%s" (gitlab--error-message error))))
+
 (defun gitlab-open-at-point ()
   "Open the GitLab object at point.
 Read the text properties that the renderers attach: a job opens
@@ -1818,13 +1927,17 @@ walks forward."
   (gitlab--move-sibling (- (or n 1))))
 
 (defun gitlab-copy-id ()
-  "Copy the identifier of the current buffer to the kill ring."
-  (interactive nil gitlab-detail-mode)
-  (if gitlab--id
-      (progn
-        (kill-new (gitlab-data-id-string gitlab--id))
-        (message "Copied %s" gitlab--id))
-    (user-error "This buffer has no GitLab identifier")))
+  "Copy the identifier of the GitLab object at point to the kill ring.
+The object comes from the text property at point, the display
+buffer or the web URL at point, so the command works in a detail
+buffer and on a list row."
+  (interactive)
+  (let ((object (gitlab--object-at-point)))
+    (unless object
+      (user-error "No GitLab object at point"))
+    (let ((id (gitlab-data-id-string (nth 1 object))))
+      (kill-new id)
+      (message "Copied %s" id))))
 
 (defun gitlab-open-web ()
   "Open the web page of the current object in a browser."

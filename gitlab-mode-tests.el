@@ -983,9 +983,9 @@ The fake header line and the empty rows contribute nothing."
                  (command-modes #'gitlab-open-at-point)))
   (should (equal '(gitlab-detail-mode)
                  (command-modes #'gitlab-mouse-open-at-point)))
-  (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-copy-id)))
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-open-web)))
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-pop)))
+  (should-not (command-modes #'gitlab-copy-id))
   (should (equal '(gitlab-detail-mode)
                  (command-modes #'gitlab-detail-toggle-section)))
   (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
@@ -1006,13 +1006,13 @@ The fake header line and the empty rows contribute nothing."
   "A mode-tagged command hides outside its mode in M-x completion."
   (with-temp-buffer
     (should-not (command-completion-default-include-p
-                 #'gitlab-copy-id (current-buffer)))
+                 #'gitlab-open-web (current-buffer)))
     (gitlab-detail-mode)
     (should (command-completion-default-include-p
-             #'gitlab-copy-id (current-buffer)))
+             #'gitlab-open-web (current-buffer)))
     (gitlab-list-mode)
     (should-not (command-completion-default-include-p
-                 #'gitlab-copy-id (current-buffer)))))
+                 #'gitlab-open-web (current-buffer)))))
 
 (ert-deftest gitlab-mode-remaps-the-json-major-mode ()
   "The display layer remaps `js-json-mode' to the export command.
@@ -1164,6 +1164,44 @@ alone and adds the child rows after the sort."
                  (prog1 (current-buffer) (setq arguments value)))))
       (gitlab-display-job-log "5001" nil nil "group/project@host")
       (should (equal '("5001" nil nil "group/project@host") arguments)))))
+
+(ert-deftest gitlab-mode-object-at-point ()
+  "The object at point comes from the property, the buffer or the URL."
+  (with-temp-buffer
+    (insert "https://gitlab.example.com/a/b/-/pipelines/1001")
+    (goto-char (point-min))
+    (should (equal '(pipeline "1001" "a/b@gitlab.example.com" url)
+                   (gitlab--object-at-point))))
+  (with-temp-buffer
+    (insert "no GitLab object here")
+    (should-not (gitlab--object-at-point)))
+  (with-temp-buffer
+    (insert (propertize "!12" 'gitlab-merge-request-iid "12"))
+    (setq-local gitlab--context "group/project")
+    (goto-char (point-min))
+    (should (equal '(merge-request "12" "group/project" property)
+                   (gitlab--object-at-point)))
+    (should-error (gitlab--object-at-point 'pipeline) :type 'user-error))
+  (with-temp-buffer
+    (gitlab-detail-mode)
+    (setq-local gitlab--kind 'pipeline)
+    (setq-local gitlab--id "7")
+    (setq-local gitlab--context "group/project")
+    (should (equal '(pipeline "7" "group/project" buffer)
+                   (gitlab--object-at-point)))))
+
+(ert-deftest gitlab-mode-copy-id-at-point ()
+  "Copy-id reads the object at point."
+  (let ((kill-ring nil))
+    (with-temp-buffer
+      (insert "See https://gitlab.com/group/project/-/merge_requests/12 now")
+      (goto-char (point-min))
+      (search-forward "merge_requests")
+      (gitlab-copy-id)
+      (should (equal "12" (car kill-ring))))
+    (with-temp-buffer
+      (insert "no object")
+      (should-error (gitlab-copy-id) :type 'user-error))))
 
 (provide 'gitlab-mode-tests)
 

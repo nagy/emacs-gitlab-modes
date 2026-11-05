@@ -295,71 +295,81 @@ stored notes without another request."
          (with-current-buffer buffer
            (gitlab--set-error error)))))))
 
-(defun gitlab-merge-request--approve-done (buffer iid)
-  "Report in BUFFER that the user approved merge request IID.
+(defun gitlab-merge-request--approve-done (buffer iid context)
+  "Report in BUFFER that the user approved merge request IID in CONTEXT.
 Fetch BUFFER again, so the new approval state shows."
-  (when (buffer-live-p buffer)
-    (with-current-buffer buffer
-      (message "Approved %s"
-               (gitlab-data-identifier 'merge-request iid gitlab--context))))
+  (message "Approved %s"
+           (gitlab-data-identifier 'merge-request iid context))
   (gitlab--refresh-after-write buffer))
 
 ;;;###autoload
 (defun gitlab-approve-merge-request ()
-  "Approve the current merge request on behalf of the current user.
-The request runs in the background, so the buffer never blocks.
-The answer of the approve request holds no merge request field,
-so the command fetches the merge request again and the buffer
-shows the new approval state.  A failing request shows its
-condition in the header line."
-  (interactive nil gitlab-merge-request-mode)
-  (unless (derived-mode-p 'gitlab-merge-request-mode)
-    (user-error "This is not a merge request buffer"))
-  (let ((buffer (current-buffer))
-        (iid gitlab--id))
-    (gitlab-merge-request-approve-async
-     iid
-     (lambda (_text)
-       (gitlab-merge-request--approve-done buffer iid))
-     (lambda (error)
-       (when (buffer-live-p buffer)
-         (with-current-buffer buffer
-           (gitlab--set-error error)))))))
+  "Approve the merge request at point on behalf of the current user.
+Point names the merge request through its text property, its
+display buffer or its web URL, so the command works in a merge
+request buffer, on a list row and on a link in any buffer.  A
+target outside a merge request buffer asks for confirmation first.
+The request runs in the background, so the buffer never blocks.  The
+answer of the approve request holds no merge request field, so the
+command fetches the merge request again and the buffer shows the
+new approval state.  A failing request shows its condition in the
+header line of a GitLab buffer and in the echo area elsewhere."
+  (interactive)
+  (let ((object (gitlab--object-at-point 'merge-request)))
+    (unless object
+      (user-error "No merge request at point"))
+    (let* ((iid (nth 1 object))
+           (context (nth 2 object))
+           (buffer (gitlab--write-buffer 'merge-request iid context))
+           (identifier (gitlab-data-identifier 'merge-request iid context)))
+      (if (and (gitlab--target-elsewhere-p object)
+               (not (yes-or-no-p (format "Approve %s? " identifier))))
+          (message "Approval cancelled")
+        (let ((gitlab-repository context)
+              (gitlab-cli-directory (gitlab-cli-directory-of)))
+          (gitlab-merge-request-approve-async
+           iid
+           (lambda (_text)
+             (gitlab-merge-request--approve-done buffer iid context))
+           (lambda (error)
+             (gitlab--report-error buffer error))))))))
 
-(defun gitlab-merge-request--merge-done (buffer iid)
-  "Report in BUFFER that the user merged merge request IID.
+(defun gitlab-merge-request--merge-done (buffer iid context)
+  "Report in BUFFER that the user merged merge request IID in CONTEXT.
 Fetch BUFFER again, so the new state shows."
-  (when (buffer-live-p buffer)
-    (with-current-buffer buffer
-      (message "Merged %s"
-               (gitlab-data-identifier 'merge-request iid gitlab--context))))
+  (message "Merged %s"
+           (gitlab-data-identifier 'merge-request iid context))
   (gitlab--refresh-after-write buffer))
 
 ;;;###autoload
 (defun gitlab-merge-merge-request ()
-  "Merge the current merge request.
-Ask for confirmation, because a merge changes the target branch,
-and run `glab mr merge' in the background, so the buffer never
-blocks.  The answer of the merge request holds no merge request
-field, so the command fetches the merge request again and the
-buffer shows the new state.  A failing request shows its condition
-in the header line."
-  (interactive nil gitlab-merge-request-mode)
-  (unless (derived-mode-p 'gitlab-merge-request-mode)
-    (user-error "This is not a merge request buffer"))
-  (let* ((buffer (current-buffer))
-         (iid gitlab--id)
-         (identifier (gitlab-data-identifier 'merge-request iid
-                                             gitlab--context)))
-    (when (yes-or-no-p (format "Merge %s? " identifier))
-      (gitlab-merge-request-merge-async
-       iid
-       (lambda (_text)
-         (gitlab-merge-request--merge-done buffer iid))
-       (lambda (error)
-         (when (buffer-live-p buffer)
-           (with-current-buffer buffer
-             (gitlab--set-error error))))))))
+  "Merge the merge request at point.
+Point names the merge request through its text property, its
+display buffer or its web URL, so the command works in a merge
+request buffer, on a list row and on a link in any buffer.  Ask for
+confirmation, because a merge changes the target branch, and run
+`glab mr merge' in the background, so the buffer never blocks.  The
+answer of the merge request holds no merge request field, so the
+command fetches the merge request again and the buffer shows the
+new state.  A failing request shows its condition in the header
+line of a GitLab buffer and in the echo area elsewhere."
+  (interactive)
+  (let ((object (gitlab--object-at-point 'merge-request)))
+    (unless object
+      (user-error "No merge request at point"))
+    (let* ((iid (nth 1 object))
+           (context (nth 2 object))
+           (buffer (gitlab--write-buffer 'merge-request iid context))
+           (identifier (gitlab-data-identifier 'merge-request iid context)))
+      (when (yes-or-no-p (format "Merge %s? " identifier))
+        (let ((gitlab-repository context)
+              (gitlab-cli-directory (gitlab-cli-directory-of)))
+          (gitlab-merge-request-merge-async
+           iid
+           (lambda (_text)
+             (gitlab-merge-request--merge-done buffer iid context))
+           (lambda (error)
+             (gitlab--report-error buffer error))))))))
 
 (define-derived-mode gitlab-merge-request-mode gitlab-detail-mode
   "GitLab Merge Request"
@@ -404,35 +414,71 @@ Return nil without an active region or without a commit line."
           (forward-line 1))
         (nreverse commits)))))
 
+(defun gitlab-merge-request--target-data (iid)
+  "Return the merge request data of IID at point, or nil.
+The data of the current detail buffer wins, and the merge request
+row at point serves next, so the local commit range reads the same
+base that the display shows."
+  (let ((iid (gitlab-data-id-string iid)))
+    (cond
+     ((and (eq gitlab--kind 'merge-request)
+           (equal (gitlab-data-id-string gitlab--id) iid))
+      gitlab--last-data)
+     ((derived-mode-p 'gitlab-merge-request-list-mode)
+      (when-let* ((row (gitlab-list--row-at-point)))
+        (when (equal (gitlab-data-id-string
+                      (gitlab-data-field "iid" row))
+                     iid)
+          row))))))
+
+(defun gitlab-merge-request--checkout-p (context)
+  "Return non-nil when the current directory holds CONTEXT.
+A nil CONTEXT keeps the old behavior, because then the buffer of
+the user names its own project."
+  (or (null context)
+      (equal context (gitlab-git-remote-context (gitlab-cli-directory-of)))))
+
 (defun gitlab-merge-request-show-changes ()
-  "Show the local changes of the current merge request.
-The view needs a fetched merge request ref.  With an active region
-over commit lines, the view covers only those commits.  Magit, when
+  "Show the local changes of the merge request at point.
+Point names the merge request through its text property, its
+display buffer or its web URL, so the command works in a merge
+request buffer, on a list row and on a link in any buffer.  The
+view needs a fetched merge request ref.  With an active region over
+commit lines, the view covers only those commits.  Magit, when
 available, supplies the diff buffer and its Ediff command on E.
 Signal a user error in a buffer of another project, because the
 local checkout holds no ref of that project."
-  (interactive nil gitlab-merge-request-mode)
-  (unless (derived-mode-p 'gitlab-merge-request-mode)
-    (user-error "This is not a merge request buffer"))
-  (unless (gitlab--local-checkout-p)
-    (user-error "No local checkout of %s" gitlab--context))
-  (gitlab-git-show-changes gitlab--id gitlab--last-data
-                           (gitlab-merge-request--region-commits)))
+  (interactive)
+  (let ((object (gitlab--object-at-point 'merge-request)))
+    (unless object
+      (user-error "No merge request at point"))
+    (let ((iid (nth 1 object))
+          (context (nth 2 object)))
+      (unless (gitlab-merge-request--checkout-p context)
+        (user-error "No local checkout of %s" context))
+      (gitlab-git-show-changes iid (gitlab-merge-request--target-data iid)
+                               (gitlab-merge-request--region-commits)))))
 
 (defun gitlab-merge-request-show-log ()
-  "Show the local commit log of the current merge request.
-The log holds only the commits of the merge request.  With an
-active region over commit lines, the log covers only those
-commits.  Magit, when available, supplies the log buffer and its
-Ediff commands.  Signal a user error in a buffer of another
-project, because the local checkout holds no ref of that project."
-  (interactive nil gitlab-merge-request-mode)
-  (unless (derived-mode-p 'gitlab-merge-request-mode)
-    (user-error "This is not a merge request buffer"))
-  (unless (gitlab--local-checkout-p)
-    (user-error "No local checkout of %s" gitlab--context))
-  (gitlab-git-show-log gitlab--id gitlab--last-data
-                       (gitlab-merge-request--region-commits)))
+  "Show the local commit log of the merge request at point.
+Point names the merge request through its text property, its
+display buffer or its web URL, so the command works in a merge
+request buffer, on a list row and on a link in any buffer.  The
+log holds only the commits of the merge request.  With an active
+region over commit lines, the log covers only those commits.
+Magit, when available, supplies the log buffer and its Ediff
+commands.  Signal a user error in a buffer of another project,
+because the local checkout holds no ref of that project."
+  (interactive)
+  (let ((object (gitlab--object-at-point 'merge-request)))
+    (unless object
+      (user-error "No merge request at point"))
+    (let ((iid (nth 1 object))
+          (context (nth 2 object)))
+      (unless (gitlab-merge-request--checkout-p context)
+        (user-error "No local checkout of %s" context))
+      (gitlab-git-show-log iid (gitlab-merge-request--target-data iid)
+                           (gitlab-merge-request--region-commits)))))
 
 (define-key gitlab-merge-request-mode-map (kbd "n")
   #'gitlab-merge-request-show-notes)

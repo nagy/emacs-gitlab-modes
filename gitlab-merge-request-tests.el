@@ -130,9 +130,110 @@
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-merge-request-approve-command-elsewhere ()
-  "The approve command needs a merge request buffer."
+  "The approve command needs a merge request at point."
   (with-temp-buffer
     (should-error (gitlab-approve-merge-request) :type 'user-error)))
+
+(ert-deftest gitlab-merge-request-approve-from-url ()
+  "A web URL at point names the merge request, and the write confirms."
+  (gitlab-test-with-environment
+   (let ((prompt nil)
+         (iid nil)
+         (repository nil))
+     (with-temp-buffer
+       (insert
+        "https://gitlab.example.com/group/project/-/merge_requests/12")
+       (goto-char (point-min))
+       (cl-letf (((symbol-function 'yes-or-no-p)
+                  (lambda (format-string &rest arguments)
+                    (setq prompt (apply #'format format-string arguments))
+                    t))
+                 ((symbol-function 'gitlab-merge-request-approve-async)
+                  (lambda (argument &rest _)
+                    (setq iid argument
+                          repository gitlab-repository))))
+         (gitlab-approve-merge-request))
+       (should (equal "12" iid))
+       (should (equal "group/project@gitlab.example.com" repository))
+       (should (equal "Approve group/project@gitlab.example.com!12? "
+                      prompt))))))
+
+(ert-deftest gitlab-merge-request-approve-detail-no-prompt ()
+  "A merge request buffer needs no confirmation."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR approve prompt test*"))
+         (iid nil))
+     (unwind-protect
+         (progn
+           (with-current-buffer buffer
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12")
+             (setq-local gitlab--context "group/project"))
+           (cl-letf (((symbol-function 'yes-or-no-p)
+                      (lambda (&rest _) (error "Asked for confirmation")))
+                     ((symbol-function 'gitlab-merge-request-approve-async)
+                      (lambda (argument &rest _) (setq iid argument))))
+             (with-current-buffer buffer
+               (gitlab-approve-merge-request)))
+           (should (equal "12" iid)))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-approve-from-list-row ()
+  "A list row names its merge request through the url at point."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR approve row test*"))
+         (prompt nil)
+         (iid nil)
+         (repository nil))
+     (unwind-protect
+         (let ((gitlab-repository "group/project"))
+           (with-current-buffer buffer
+             (gitlab-merge-request-list-mode)
+             (gitlab-list--refresh)
+             (should (gitlab-test-wait
+                      (lambda () (= 2 (length tabulated-list-entries)))))
+             (goto-char (point-min))
+             (forward-line 1)
+             (forward-char 3))
+           (cl-letf (((symbol-function 'yes-or-no-p)
+                      (lambda (format-string &rest arguments)
+                        (setq prompt (apply #'format format-string arguments))
+                        t))
+                     ((symbol-function 'gitlab-merge-request-approve-async)
+                      (lambda (argument &rest _)
+                        (setq iid argument
+                              repository gitlab-repository))))
+             (with-current-buffer buffer
+               (gitlab-approve-merge-request)))
+           (should (equal "13" iid))
+           (should (equal "group/project" repository))
+           (should (equal "Approve group/project!13? " prompt)))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
+(ert-deftest gitlab-merge-request-target-data-at-row ()
+  "The commit range reads the data of the row at point."
+  (gitlab-test-with-environment
+   (let ((buffer (generate-new-buffer "*GitLab MR row data test*")))
+     (unwind-protect
+         (with-current-buffer buffer
+           (gitlab-merge-request-list-mode)
+           (gitlab-list--refresh)
+           (should (gitlab-test-wait
+                    (lambda () (= 2 (length tabulated-list-entries)))))
+           (goto-char (point-min))
+           (forward-line 1)
+           (should (equal "13" (gitlab-data-id-string
+                                 (gitlab-data-field
+                                  "iid"
+                                  (gitlab-merge-request--target-data "13")))))
+           (should-not (gitlab-merge-request--target-data "99")))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
 
 (ert-deftest gitlab-merge-request-merge-data ()
   "The merge entry point returns the text answer of glab."
@@ -204,7 +305,7 @@
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-merge-request-merge-command-elsewhere ()
-  "The merge command needs a merge request buffer."
+  "The merge command needs a merge request at point."
   (with-temp-buffer
     (should-error (gitlab-merge-merge-request) :type 'user-error)))
 
@@ -512,14 +613,10 @@ request of another project opens the list of that project."
   "The merge request commands name their mode, the display commands do not."
   (should (equal '(gitlab-merge-request-mode)
                  (command-modes #'gitlab-merge-request-show-notes)))
-  (should (equal '(gitlab-merge-request-mode)
-                 (command-modes #'gitlab-merge-request-show-changes)))
-  (should (equal '(gitlab-merge-request-mode)
-                 (command-modes #'gitlab-merge-request-show-log)))
-  (should (equal '(gitlab-merge-request-mode)
-                 (command-modes #'gitlab-approve-merge-request)))
-  (should (equal '(gitlab-merge-request-mode)
-                 (command-modes #'gitlab-merge-merge-request)))
+  (should-not (command-modes #'gitlab-merge-request-show-changes))
+  (should-not (command-modes #'gitlab-merge-request-show-log))
+  (should-not (command-modes #'gitlab-approve-merge-request))
+  (should-not (command-modes #'gitlab-merge-merge-request))
   (should-not (command-modes #'gitlab-list-merge-requests))
   (should-not (command-modes #'gitlab-display-merge-request)))
 
