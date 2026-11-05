@@ -255,6 +255,16 @@ set to nil keeps the widths of the table format of the collection.
 merge request or pipeline, so =browse-url-at-point= and every caller
 that reads a URL work on the table.
 
+The opposite direction works too.  A GitLab web URL opens its own
+buffer, so a link in a mail, a chat or a note =RET= opens the merge
+request, the pipeline or the job log and not the browser.  The URL
+names its own project and instance, so no list of private GitLab
+instances is necessary.  The package adds its entry to
+=browse-url-default-handlers=, the alist of Emacs and packages, and
+leaves =browse-url-handlers= to the user.  =gitlab-browse-url-handler=
+(default =t=) turns the behavior off.  Set the option through
+Customize or =setopt=.
+
 =gitlab-list-sort= on =S= sorts the table by the column at point and
 turns the direction on a second call.  A numeric prefix names the
 column, and a prefix of -1 returns the order of the collection.  The

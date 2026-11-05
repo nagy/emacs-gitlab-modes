@@ -451,11 +451,12 @@ project is unknown."
     (format "*GitLab MR !%s*" iid)))
 
 ;;;###autoload
-(defun gitlab-display-merge-request (iid)
+(defun gitlab-display-merge-request (iid &optional repository)
   "Display the merge request with IID in its own buffer.
 IID is the project-scoped number, with or without a leading !.
-The buffer belongs to the project of the current directory or to
-the set `gitlab-repository', so a merge request of another project
+REPOSITORY names the project and the instance of the merge
+request, and it defaults to the project of the current directory or
+to the set `gitlab-repository'.  A merge request of another project
 opens in its own buffer."
   (interactive (list (gitlab-read-merge-request-iid)))
   (let ((iid (gitlab-data-id-string iid)))
@@ -463,7 +464,7 @@ opens in its own buffer."
       (setq iid (substring iid 1)))
     (gitlab--show-detail #'gitlab-merge-request--buffer-name
                          #'gitlab-merge-request-mode
-                         iid)))
+                         iid repository)))
 
 (provide 'gitlab-merge-request)
 

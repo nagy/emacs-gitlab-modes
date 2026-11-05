@@ -687,16 +687,17 @@ project is unknown."
     (format "*GitLab Pipeline #%s*" pipeline-id)))
 
 ;;;###autoload
-(defun gitlab-display-pipeline (pipeline-id)
+(defun gitlab-display-pipeline (pipeline-id &optional repository)
   "Display the pipeline with PIPELINE-ID in its own buffer.
-The buffer belongs to the project of the current directory or to
-the set `gitlab-repository', so a pipeline of another project opens
-in its own buffer."
+REPOSITORY names the project and the instance of the pipeline, and
+it defaults to the project of the current directory or to the set
+`gitlab-repository'.  A pipeline of another project opens in its
+own buffer."
   (interactive (list (gitlab-read-pipeline-id)))
   (let ((id (gitlab-data-id-string pipeline-id)))
     (gitlab--show-detail #'gitlab-pipeline--buffer-name
                          #'gitlab-pipeline-mode
-                         id)))
+                         id repository)))
 
 ;;; Job log
 
@@ -1726,17 +1727,20 @@ text of a section header and the text of every end marker."
       (format "*GitLab Job %s&%s*" context job-id)
     (format "*GitLab Job %s*" job-id)))
 
-(defun gitlab-pipeline--prepare-job-log (job-id &optional name pipeline-id)
+(defun gitlab-pipeline--prepare-job-log (job-id &optional name pipeline-id
+                                                repository)
   "Prepare the job log buffer of JOB-ID and return it.
 NAME is the optional job name for the header line.  PIPELINE-ID is
 the optional ID of the pipeline that holds the job, so the parent
-command costs no request.  The function captures the directory in
-which glab must run, starts `glab ci trace JOB-ID' and does not
-display the buffer.  An open job log of the same job and project
-wins, whatever its current name is."
+command costs no request.  REPOSITORY names the project and the
+instance of the job, and it defaults to `gitlab-repository'.  The
+function captures the directory in which glab must run, starts
+`glab ci trace JOB-ID' and does not display the buffer.  An open job
+log of the same job and project wins, whatever its current name is."
   (let* ((directory (gitlab-cli-directory-of))
-         (repository (gitlab-cli-repository-normalize gitlab-repository))
-         (context (gitlab-git-context directory))
+         (repository (gitlab-cli-repository-normalize
+                      (or repository gitlab-repository)))
+         (context (or repository (gitlab-git-context directory)))
          (id (gitlab-data-id-string job-id))
          (pipeline (and pipeline-id (gitlab-data-id-string pipeline-id)))
          (buffer (or (gitlab--identity-buffer
@@ -1760,13 +1764,16 @@ wins, whatever its current name is."
     buffer))
 
 ;;;###autoload
-(defun gitlab-display-job-log (job-id &optional name pipeline-id)
+(defun gitlab-display-job-log (job-id &optional name pipeline-id repository)
   "Display the live log of JOB-ID in its own buffer.
 NAME is the optional job name for the header line.  PIPELINE-ID is
-the optional ID of the pipeline that holds the job.  The command
-starts `glab ci trace JOB-ID' and returns immediately."
+the optional ID of the pipeline that holds the job.  REPOSITORY
+names the project and the instance of the job, and it defaults to
+`gitlab-repository'.  The command starts `glab ci trace JOB-ID' and
+returns immediately."
   (interactive (list (gitlab-read-job-id)))
-  (pop-to-buffer (gitlab-pipeline--prepare-job-log job-id name pipeline-id)))
+  (pop-to-buffer (gitlab-pipeline--prepare-job-log
+                  job-id name pipeline-id repository)))
 
 (provide 'gitlab-pipeline)
 

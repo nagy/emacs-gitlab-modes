@@ -23,6 +23,13 @@
 (require 'gitlab-test-helpers)
 (require 'gitlab-mode)
 
+(declare-function gitlab-display-job-log "gitlab-pipeline"
+                  (job-id &optional name pipeline-id repository))
+(declare-function gitlab-display-merge-request "gitlab-merge-request"
+                  (iid &optional repository))
+(declare-function gitlab-display-pipeline "gitlab-pipeline"
+                  (pipeline-id &optional repository))
+
 (ert-deftest gitlab-mode-format-value ()
   "Values render as readable text."
   (should (equal "-" (gitlab--format-value nil)))
@@ -1103,6 +1110,60 @@ alone and adds the child rows after the sort."
      (gitlab-list-sort -1)
      (should-not tabulated-list-sort-key)
      (should (equal '("2" "1") (mapcar #'car tabulated-list-entries))))))
+
+(ert-deftest gitlab-mode-browse-url ()
+  "A GitLab web URL opens the object of its own project."
+  (let (calls)
+    (cl-letf (((symbol-function 'gitlab-display-merge-request)
+               (lambda (id &optional repository)
+                 (push (list 'merge-request id repository) calls)))
+              ((symbol-function 'gitlab-display-pipeline)
+               (lambda (id &optional repository)
+                 (push (list 'pipeline id repository) calls)))
+              ((symbol-function 'gitlab-display-job-log)
+               (lambda (id &optional name pipeline-id repository)
+                 (push (list 'job id name pipeline-id repository) calls))))
+      (should (gitlab-browse-url
+               "https://gitlab.com/group/project/-/merge_requests/12/diffs"))
+      (should (gitlab-browse-url
+               "https://gitlab.example.com/a/b/-/pipelines/1001?ref=main"))
+      (should (gitlab-browse-url
+               "https://gitlab.example.com/a/b/-/jobs/5001#L10"))
+      (should-not (gitlab-browse-url "https://gitlab.com/group/project"))
+      (should-not (gitlab-browse-url
+                   "https://example.com/a/b/-/issues/1")))
+    (should (equal '((merge-request "12" "group/project")
+                     (pipeline "1001" "a/b@gitlab.example.com")
+                     (job "5001" nil nil "a/b@gitlab.example.com"))
+                   (nreverse calls)))))
+
+(ert-deftest gitlab-mode-browse-url-handler-option ()
+  "The option adds and removes the `browse-url' entry."
+  (let ((browse-url-default-handlers (copy-sequence
+                                      browse-url-default-handlers)))
+    (customize-set-variable 'gitlab-browse-url-handler nil)
+    (should-not (assoc gitlab--browse-url-regexp browse-url-default-handlers))
+    (customize-set-variable 'gitlab-browse-url-handler t)
+    (should (eq #'gitlab-browse-url
+                (cdr (assoc gitlab--browse-url-regexp
+                            browse-url-default-handlers))))
+    (customize-set-variable 'gitlab-browse-url-handler nil)))
+
+(ert-deftest gitlab-mode-display-commands-take-repository ()
+  "A display command passes its project to the display helper."
+  (let (arguments)
+    (cl-letf (((symbol-function 'gitlab--show-detail)
+               (lambda (&rest value)
+                 (prog1 (current-buffer) (setq arguments value)))))
+      (gitlab-display-merge-request "!12" "group/project@host")
+      (should (equal '("12" "group/project@host") (cddr arguments)))
+      (gitlab-display-pipeline "1001" "group/project@host")
+      (should (equal '("1001" "group/project@host") (cddr arguments))))
+    (cl-letf (((symbol-function 'gitlab-pipeline--prepare-job-log)
+               (lambda (&rest value)
+                 (prog1 (current-buffer) (setq arguments value)))))
+      (gitlab-display-job-log "5001" nil nil "group/project@host")
+      (should (equal '("5001" nil nil "group/project@host") arguments)))))
 
 (provide 'gitlab-mode-tests)
 

@@ -376,9 +376,12 @@ without evil.  The suite never opens a network connection.
   export and its source show one identifier.
 - `gitlab--prepare-detail` and `gitlab-pipeline--prepare-job-log`
   return a buffer without displaying it.  The xref backend uses them, so
-  a definition never moves the window configuration.  Both take the
-  context of the caller, so a definition of another project opens the
-  buffer of that project.
+  a definition never moves the window configuration.  Both take an
+  optional REPOSITORY, so a caller outside the project names the
+  project and the instance of the object.  Without it they take the
+  context of the caller.  A display command passes the argument
+  through, and the identity lookup uses the same context, so one
+  project never meets a buffer of another.
 - Every render keeps point by the identity of its line, never by a
   buffer position.  `gitlab--render` records `gitlab--point-record`
   before it calls the render function and `gitlab--restore-point`
@@ -740,6 +743,23 @@ without evil.  The suite never opens a network connection.
   returns nil on a line without a row, and `thing-at-point` then falls
   back to its own scan.  `gitlab-list-open-web` and the provider share
   that function, so `w` and `thing-at-point` never disagree.
+- The reverse direction is an entry in `browse-url-default-handlers`,
+  the alist that Emacs and packages own.  `browse-url-handlers` stays
+  with the user, so the package adds nothing there.
+  `gitlab--browse-url-regexp` reads the host, the project path, the
+  object family and the number of
+  `https://HOST/PATH/-/merge_requests/ID`, `/-/pipelines/ID` and
+  `/-/jobs/ID`, with any suffix, query or anchor behind the number.
+  The shape carries everything that the display needs, so no list of
+  private instances exists.  `gitlab-browse-url` normalizes host and
+  path to the one context spelling and passes it as the REPOSITORY
+  argument of the display command, so a link of another project or of
+  another instance opens its own buffer, and a dynamic `let` of
+  `gitlab-repository` never meets a buffer-local value.  A job URL
+  knows no pipeline, so the log reads it once through
+  `gitlab-job-pipeline-id`.  `gitlab-browse-url-handler` (default t)
+  registers the entry through its `:set` function, so Customize and
+  `setopt` add and remove it, and a plain `setq` does not.
 - The pipeline list expands a row into the jobs of that pipeline.
   `gitlab-pipeline--jobs` holds the answer of each expanded pipeline
   in a plist of `:jobs`, `:loaded`, `:process`, `:error`, `:stale` and

@@ -128,11 +128,13 @@
 (require 'gitlab-error)
 (require 'gitlab-git)
 
-(declare-function gitlab-display-merge-request "gitlab-merge-request" (iid))
+(declare-function gitlab-display-merge-request "gitlab-merge-request"
+                  (iid &optional repository))
 (declare-function gitlab-git-show-commit "gitlab-git" (sha))
-(declare-function gitlab-display-pipeline "gitlab-pipeline" (pipeline-id))
+(declare-function gitlab-display-pipeline "gitlab-pipeline"
+                  (pipeline-id &optional repository))
 (declare-function gitlab-display-job-log "gitlab-pipeline"
-                  (job-id &optional name pipeline-id))
+                  (job-id &optional name pipeline-id repository))
 (declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
 (declare-function gitlab-pipeline-list-mode "gitlab-pipeline" ())
 (declare-function gitlab-export-json "gitlab-export" ())
@@ -141,6 +143,65 @@
 ;; variables live in the resource files, which load after this one.
 (defvar gitlab-merge-request-list-buffer-name)
 (defvar gitlab-pipeline-list-buffer-name)
+
+;;; Web URLs
+
+;; A web URL names one GitLab object of one project on one instance, so
+;; the package answers it with its own buffer.  The entry lives in
+;; `browse-url-default-handlers', the alist that Emacs and packages
+;; own, and `browse-url-handlers' stays with the user.  The shape of a
+;; GitLab URL carries everything that the display needs: the host, the
+;; project path, the object family and the number.  No list of
+;; instances is necessary.
+
+(defconst gitlab--browse-url-regexp
+  (concat "\\`https?://\\([^/?#]+\\)/"
+          "\\(.+?\\)/-/\\(merge_requests\\|pipelines\\|jobs\\)/"
+          "\\([0-9]+\\)")
+  "Regexp that matches the web URL of a GitLab object.
+Group 1 is the instance host, group 2 the project path, group 3 the
+object family and group 4 the number.  The text behind the number
+stays free, so a /diffs suffix, a query string and a note anchor
+still match.")
+
+(defun gitlab-browse-url (url &rest _arguments)
+  "Open the GitLab object that URL names in its own buffer.
+The function serves `browse-url-default-handlers', so `browse-url',
+`browse-url-at-point' and every other caller reach the detail
+buffer of a merge request, a pipeline or a job log.  URL names its
+own instance and project, so a link of another project or of a
+private instance opens the buffer of that project.  Return nil
+when URL names no known object, and ignore ARGUMENTS, because a
+display buffer takes a new window flag from its own command."
+  (when (string-match gitlab--browse-url-regexp url)
+    (let ((host (match-string 1 url))
+          (path (match-string 2 url))
+          (kind (match-string 3 url))
+          (id (match-string 4 url)))
+      (let ((repository (gitlab-cli-repository-normalize
+                         (format "https://%s/%s" host path))))
+        (pcase kind
+          ("merge_requests" (gitlab-display-merge-request id repository))
+          ("pipelines" (gitlab-display-pipeline id repository))
+          ("jobs" (gitlab-display-job-log id nil nil repository)))
+        t))))
+
+(defconst gitlab--browse-url-handler-entry
+  (cons gitlab--browse-url-regexp #'gitlab-browse-url)
+  "The alist entry that `gitlab-browse-url-handler' registers.")
+
+(defun gitlab--set-browse-url-handler (symbol value)
+  "Set SYMBOL to VALUE and register or remove the URL handler.
+The handler lives in `browse-url-default-handlers', the alist that
+Emacs and packages own.  `browse-url-handlers' stays with the
+user."
+  (set-default symbol value)
+  (if value
+      (add-to-list 'browse-url-default-handlers
+                   gitlab--browse-url-handler-entry)
+    (setq browse-url-default-handlers
+          (delete gitlab--browse-url-handler-entry
+                  browse-url-default-handlers))))
 
 ;;; Customization
 
@@ -296,6 +357,19 @@ a note body into a link, so the reader opens it with the keys of
 that mode."
   :type 'boolean
   :group 'gitlab)
+
+(defcustom gitlab-browse-url-handler t
+  "Whether Emacs opens a GitLab web URL in a GitLab buffer.
+When non-nil, a URL such as
+https://gitlab.com/group/project/-/merge_requests/12 opens the
+buffer of that merge request, and a pipeline URL and a job URL
+behave the same.  The package adds its entry to
+`browse-url-default-handlers'; `browse-url-handlers' stays with
+the user.  Set the option through Customize or `setopt', because a
+plain `setq' leaves the entry in the alist."
+  :type 'boolean
+  :group 'gitlab
+  :set #'gitlab--set-browse-url-handler)
 
 ;;; Faces
 
@@ -2666,18 +2740,20 @@ and has no snapshot."
 
 ;;; Detail display helper
 
-(defun gitlab--prepare-detail (name mode id)
+(defun gitlab--prepare-detail (name mode id &optional repository)
   "Prepare NAME in MODE for ID, start the fetch and return BUFFER.
 NAME is a function of ID and the project context that returns the
-buffer name.  An open display buffer of the same MODE, ID and
-context wins, whatever its current name is, so a renamed buffer
-stays in use.  The function captures the current buffer as the
-origin and the directory in which glab must run, then does not
-display the buffer."
+buffer name.  REPOSITORY names the project and the instance of the
+object, and it defaults to `gitlab-repository'.  An open display
+buffer of the same MODE, ID and context wins, whatever its current
+name is, so a renamed buffer stays in use.  The function captures
+the current buffer as the origin and the directory in which glab
+must run, then does not display the buffer."
   (let* ((origin (current-buffer))
          (directory (gitlab-cli-directory-of))
-         (repository (gitlab-cli-repository-normalize gitlab-repository))
-         (context (gitlab-git-context directory))
+         (repository (gitlab-cli-repository-normalize
+                      (or repository gitlab-repository)))
+         (context (or repository (gitlab-git-context directory)))
          (target (or (gitlab--identity-buffer mode id context)
                      (get-buffer-create
                       (generate-new-buffer-name
@@ -2692,12 +2768,13 @@ display the buffer."
       (gitlab--refresh))
     target))
 
-(defun gitlab--show-detail (name mode id)
+(defun gitlab--show-detail (name mode id &optional repository)
   "Show NAME in MODE for ID.
-NAME is the namer function of `gitlab--prepare-detail'.  The
-function captures the current buffer as the origin, then pops to
-the display buffer."
-  (pop-to-buffer (gitlab--prepare-detail name mode id)))
+NAME is the namer function of `gitlab--prepare-detail', and
+REPOSITORY is the optional project of the object.  The function
+captures the current buffer as the origin, then pops to the
+display buffer."
+  (pop-to-buffer (gitlab--prepare-detail name mode id repository)))
 
 (provide 'gitlab-mode)
 
