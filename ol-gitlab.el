@@ -31,6 +31,7 @@
 ;;   (require 'ol-gitlab)
 ;;
 ;;   [[gitlab-mr:12][Review the dialog]]
+;;   [[gitlab-work-item:12][Track the work item]]
 ;;   [[gitlab-pipeline:1001][Watch the pipeline]]
 ;;   [[gitlab-job:5001][Read the job log]]
 ;;
@@ -44,6 +45,7 @@
 ;; A path names its project when it holds one:
 ;;
 ;;   [[gitlab-mr:group/project!12][Fix the dialog]]
+;;   [[gitlab-work-item:group/project%12][Fix the dialog]]
 ;;   [[gitlab-pipeline:group/project#1001][Run]]
 ;;   [[gitlab-job:group/project&5001][Log]]
 ;;
@@ -57,6 +59,7 @@
 (require 'org)
 (require 'gitlab-data)
 (require 'gitlab-merge-request)
+(require 'gitlab-work-item)
 (require 'gitlab-pipeline)
 
 (defun gitlab-org--kind (type)
@@ -64,6 +67,7 @@
   (declare (pure t) (side-effect-free t))
   (pcase type
     ("gitlab-mr" 'merge-request)
+    ("gitlab-work-item" 'work-item)
     ("gitlab-pipeline" 'pipeline)
     ("gitlab-job" 'job)
     (_ (signal 'gitlab-error
@@ -130,6 +134,10 @@ object of another project."
   "Open the merge request named by PATH."
   (gitlab-org--open 'merge-request path #'gitlab-display-merge-request))
 
+(defun gitlab-org--follow-work-item (path _prefix)
+  "Open the work item named by PATH."
+  (gitlab-org--open 'work-item path #'gitlab-display-work-item))
+
 (defun gitlab-org--follow-pipeline (path _prefix)
   "Open the pipeline named by PATH."
   (gitlab-org--open 'pipeline path #'gitlab-display-pipeline))
@@ -160,6 +168,11 @@ buffer, and it returns nil when the buffer has no object."
   (gitlab-org--store-buffer "gitlab-mr" 'gitlab-merge-request-mode
                             "Merge request !%s"))
 
+(defun gitlab-org--store-work-item ()
+  "Store a link to the work item in the current buffer."
+  (gitlab-org--store-buffer "gitlab-work-item" 'gitlab-work-item-mode
+                            "Work item %%%s"))
+
 (defun gitlab-org--store-pipeline ()
   "Store a link to the pipeline in the current buffer.
 A point on a job row belongs to the job, so the call returns nil
@@ -188,6 +201,13 @@ log buffer names its own job."
  :store #'gitlab-org--store-mr
  :export (lambda (path description backend)
            (gitlab-org--export "gitlab-mr" path description backend)))
+
+(org-link-set-parameters
+ "gitlab-work-item"
+ :follow #'gitlab-org--follow-work-item
+ :store #'gitlab-org--store-work-item
+ :export (lambda (path description backend)
+           (gitlab-org--export "gitlab-work-item" path description backend)))
 
 (org-link-set-parameters
  "gitlab-pipeline"

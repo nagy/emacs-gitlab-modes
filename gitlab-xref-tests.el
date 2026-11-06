@@ -98,11 +98,37 @@
           (should (equal "group/project" repository)))
       (kill-buffer buffer))))
 
+(ert-deftest gitlab-xref-work-item-property-identifier ()
+  "A work item row carries the % sigil in its identifier."
+  (with-temp-buffer
+    (insert (propertize "%21" 'gitlab-work-item-iid "%21"))
+    (goto-char (point-min))
+    (should (equal "work-item:21" (gitlab-xref--property-identifier)))))
+
+(ert-deftest gitlab-xref-work-item-definition ()
+  "A work-item identifier yields one xref item."
+  (let ((buffer (generate-new-buffer "*GitLab xref work item test*"))
+        prepared)
+    (unwind-protect
+        (progn
+          (cl-letf (((symbol-function 'gitlab--prepare-detail)
+                     (lambda (_buffer _mode id)
+                       (setq prepared id)
+                       buffer)))
+            (let ((items (xref-backend-definitions
+                          'gitlab "work-item:group/project%21")))
+              (should (= 1 (length items)))
+              (should (string-match-p "Work item %21"
+                                      (xref-item-summary (car items))))))
+          (should (equal "21" prepared)))
+      (kill-buffer buffer))))
+
 (ert-deftest gitlab-xref-completion-table ()
-  "Completion lists merge requests and pipelines from the cache."
+  "Completion lists merge requests, work items and pipelines from the cache."
   (gitlab-test-with-environment
    (let ((ids (xref-backend-identifier-completion-table 'gitlab)))
      (should (member "mr:12" ids))
+     (should (member "work-item:21" ids))
      (should (member "pipeline:1003" ids)))))
 
 (ert-deftest gitlab-xref-completion-table-repository ()
@@ -111,6 +137,7 @@
    (let ((gitlab-repository "group/project"))
      (let ((ids (xref-backend-identifier-completion-table 'gitlab)))
        (should (member "mr:group/project!12" ids))
+       (should (member "work-item:group/project%21" ids))
        (should (member "pipeline:group/project#1003" ids))))))
 
 (provide 'gitlab-xref-tests)

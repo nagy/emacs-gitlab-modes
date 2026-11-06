@@ -77,16 +77,17 @@
 ;; The renderers attach text properties that the navigation commands
 ;; read: `gitlab-field' names a field line, `gitlab-pipeline-id' opens
 ;; a pipeline, `gitlab-merge-request-iid' opens a merge request,
-;; `gitlab-job-id' opens a job log, `gitlab-commit-sha' opens a commit
-;; and `gitlab-url' opens the browser.  A link and a table row are
+;; `gitlab-work-item-iid' opens a work item, `gitlab-job-id' opens a
+;; job log, `gitlab-commit-sha' opens a commit and `gitlab-url' opens
+;; the browser.  A link and a table row are
 ;; text buttons of the type `gitlab-object', so `button.el' carries the
 ;; mouse face, the tooltip and the action.  RET and mouse-2 run
 ;; `gitlab-open-at-point'.
 ;;
-;; `gitlab-go-to-parent' walks up one level: a merge request or a
-;; pipeline opens its list, a job log opens the pipeline that holds
-;; the job.  A list buffer has no parent.  The detail and job log
-;; keymaps remap `dired-jump' and `dired-up-directory' to it.
+;; `gitlab-go-to-parent' walks up one level: a merge request, a work
+;; item or a pipeline opens its list, a job log opens the pipeline
+;; that holds the job.  A list buffer has no parent.  The detail and
+;; job log keymaps remap `dired-jump' and `dired-up-directory' to it.
 ;;
 ;; `gitlab-next-sibling' and `gitlab-previous-sibling' walk inside one
 ;; collection.  The parent view holds the order of its children: a
@@ -131,6 +132,8 @@
 (declare-function gitlab-display-merge-request "gitlab-merge-request"
                   (iid &optional repository))
 (declare-function gitlab-git-show-commit "gitlab-git" (sha))
+(declare-function gitlab-display-work-item "gitlab-work-item"
+                  (iid &optional repository))
 (declare-function gitlab-display-pipeline "gitlab-pipeline"
                   (pipeline-id &optional repository))
 (declare-function gitlab-display-job-log "gitlab-pipeline"
@@ -140,12 +143,15 @@
 (declare-function gitlab-pipeline-mode "gitlab-pipeline" ())
 (declare-function gitlab-merge-request-list-mode "gitlab-merge-request" ())
 (declare-function gitlab-pipeline-list-mode "gitlab-pipeline" ())
+(declare-function gitlab-work-item-mode "gitlab-work-item" ())
+(declare-function gitlab-work-item-list-mode "gitlab-work-item" ())
 (declare-function gitlab-export-json "gitlab-export" ())
 
 ;; The bookmark handler names the list buffer of each family.  These
 ;; variables live in the resource files, which load after this one.
 (defvar gitlab-merge-request-list-buffer-name)
 (defvar gitlab-pipeline-list-buffer-name)
+(defvar gitlab-work-item-list-buffer-name)
 
 ;;; Web URLs
 
@@ -159,7 +165,7 @@
 
 (defconst gitlab--browse-url-regexp
   (concat "\\`https?://\\([^/?#]+\\)/"
-          "\\(.+?\\)/-/\\(merge_requests\\|pipelines\\|jobs\\)/"
+          "\\(.+?\\)/-/\\(merge_requests\\|pipelines\\|jobs\\|work_items\\|issues\\)/"
           "\\([0-9]+\\)")
   "Regexp that matches the web URL of a GitLab object.
 Group 1 is the instance host, group 2 the project path, group 3 the
@@ -171,7 +177,8 @@ still match.")
   "Open the GitLab object that URL names in its own buffer.
 The function serves `browse-url-default-handlers', so `browse-url',
 `browse-url-at-point' and every other caller reach the detail
-buffer of a merge request, a pipeline or a job log.  URL names its
+buffer of a merge request, a work item, a pipeline or a job log.
+URL names its
 own instance and project, so a link of another project or of a
 private instance opens the buffer of that project.  Return nil
 when URL names no known object, and ignore ARGUMENTS, because a
@@ -180,6 +187,8 @@ display buffer takes a new window flag from its own command."
     (pcase (car object)
       ('merge-request (gitlab-display-merge-request
                        (nth 1 object) (nth 2 object)))
+      ('work-item (gitlab-display-work-item
+                   (nth 1 object) (nth 2 object)))
       ('pipeline (gitlab-display-pipeline (nth 1 object) (nth 2 object)))
       ('job (gitlab-display-job-log
              (nth 1 object) nil nil (nth 2 object))))
@@ -1710,7 +1719,8 @@ the render and restores it after the render."
 
 (defun gitlab--url-object (url)
   "Return (KIND ID CONTEXT) of the GitLab object that URL names, or nil.
-A URL of another family, such as an issue page, answers nil."
+A URL of another family, such as a merge request page of another
+project, still names its object; an unknown family answers nil."
   (when (and (stringp url)
              (string-match gitlab--browse-url-regexp url))
     (let ((host (match-string 1 url))
@@ -1720,7 +1730,9 @@ A URL of another family, such as an issue page, answers nil."
       (list (pcase kind
               ("merge_requests" 'merge-request)
               ("pipelines" 'pipeline)
-              ("jobs" 'job))
+              ("jobs" 'job)
+              ("work_items" 'work-item)
+              ("issues" 'work-item))
             id
             (gitlab-cli-repository-normalize
              (format "https://%s/%s" host path))))))
@@ -1757,6 +1769,10 @@ SOURCE is `property', or `url' for a web URL of the object."
    ((get-text-property (point) 'gitlab-merge-request-iid)
     (gitlab--identifier-object
      'merge-request (get-text-property (point) 'gitlab-merge-request-iid)
+     gitlab--context 'property))
+   ((get-text-property (point) 'gitlab-work-item-iid)
+    (gitlab--identifier-object
+     'work-item (get-text-property (point) 'gitlab-work-item-iid)
      gitlab--context 'property))
    ((get-text-property (point) 'gitlab-url)
     (when-let* ((object (gitlab--url-object
@@ -1816,6 +1832,7 @@ command confirms it."
   (declare (pure t) (side-effect-free t))
   (pcase kind
     ('merge-request #'gitlab-merge-request-mode)
+    ('work-item #'gitlab-work-item-mode)
     ('pipeline #'gitlab-pipeline-mode)
     ('job #'gitlab-job-log-mode)))
 
@@ -2730,26 +2747,33 @@ separates a row from the rows that it holds."
 
 (defconst gitlab--bookmark-labels
   '((merge-request . "GitLab MR")
+    (work-item . "GitLab Work Item")
     (pipeline . "GitLab Pipeline")
     (job . "GitLab Job")
     (merge-request-list . "GitLab Merge Requests")
+    (work-item-list . "GitLab Work Items")
     (pipeline-list . "GitLab Pipelines"))
   "Name prefix of each bookmarkable GitLab buffer kind.")
 
 (defun gitlab--bookmark-label (kind)
   "Return the bookmark name prefix of KIND in the current buffer.
-A merge request list of a group says so, because the context alone
-names a group and a project the same way to a reader."
+A merge request or work item list of a group says so, because the
+context alone names a group and a project the same way to a reader."
   (declare (side-effect-free t))
-  (if (and (eq kind 'merge-request-list) (eq gitlab--scope 'group))
-      "GitLab Group Merge Requests"
-    (alist-get kind gitlab--bookmark-labels)))
+  (cond
+   ((and (eq kind 'merge-request-list) (eq gitlab--scope 'group))
+    "GitLab Group Merge Requests")
+   ((and (eq kind 'work-item-list) (eq gitlab--scope 'group))
+    "GitLab Group Work Items")
+   (t (alist-get kind gitlab--bookmark-labels))))
 
 (defconst gitlab--bookmark-link-types
   '((merge-request . "gitlab-mr")
+    (work-item . "gitlab-work-item")
     (pipeline . "gitlab-pipeline")
     (job . "gitlab-job")
     (merge-request-list . "gitlab-mr-list")
+    (work-item-list . "gitlab-work-item-list")
     (pipeline-list . "gitlab-pipeline-list"))
   "Org link type of each bookmarkable GitLab buffer kind.
 A bookmark stores the same text as its location, so a bookmark
@@ -2899,6 +2923,7 @@ a trace streams and has no snapshot."
           (gitlab--pending-target (bookmark-prop-get bookmark 'target)))
       (pcase kind
         ('merge-request (gitlab-display-merge-request id))
+        ('work-item (gitlab-display-work-item id))
         ('pipeline (gitlab-display-pipeline id))
         ('job (gitlab-display-job-log
                id name (bookmark-prop-get bookmark 'pipeline)))
@@ -2906,6 +2931,12 @@ a trace streams and has no snapshot."
          (gitlab-list--show
           gitlab-merge-request-list-buffer-name
           #'gitlab-merge-request-list-mode
+          (gitlab--bookmark-list-setup arguments sort)
+          (when (eq scope 'group) (cons 'group repository))))
+        ('work-item-list
+         (gitlab-list--show
+          gitlab-work-item-list-buffer-name
+          #'gitlab-work-item-list-mode
           (gitlab--bookmark-list-setup arguments sort)
           (when (eq scope 'group) (cons 'group repository))))
         ('pipeline-list

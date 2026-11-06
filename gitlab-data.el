@@ -142,15 +142,16 @@ ID is a number, a string or a symbol."
 (defconst gitlab-data-identifier-signs
   '((merge-request . "!")
     (pipeline . "#")
-    (job . "&"))
+    (job . "&")
+    (work-item . "%"))
   "Sigil that separates a repository from the ID of each kind.
 A GitLab project path holds letters, digits, dots, hyphens and
 underscores only, so a sigil never appears in a path.")
 
 (defun gitlab-data-identifier-sign (kind)
   "Return the sigil of KIND.
-KIND is `merge-request', `pipeline' or `job'.  Signal `gitlab-error'
-for another value."
+KIND is `merge-request', `pipeline', `job' or `work-item'.  Signal
+`gitlab-error' for another value."
   (declare (pure t) (side-effect-free t))
   (or (alist-get kind gitlab-data-identifier-signs)
       (signal 'gitlab-error
@@ -160,9 +161,9 @@ for another value."
   "Return the identifier text of KIND and ID in REPOSITORY.
 The text reads REPOSITORY<SIGIL>ID, or ID alone without a
 repository.  Org links, bookmarks and xref share the form, so one
-parser serves all three.  KIND is `merge-request', `pipeline' or
-`job'.  A nil ID returns the repository path alone, which names a
-collection rather than one object."
+parser serves all four.  KIND is `merge-request', `pipeline', `job'
+or `work-item'.  A nil ID returns the repository path alone, which
+names a collection rather than one object."
   (declare (pure t) (side-effect-free t))
   (let ((id (and id (gitlab-data-id-string id))))
     (cond
@@ -221,7 +222,7 @@ display command can call this with its own context."
 
 (defun gitlab-cache-invalidate (&optional kind)
   "Drop cached answers of KIND, or every answer when KIND is nil.
-KIND is `merge-request' or `pipeline'."
+KIND is `merge-request', `pipeline' or `work-item'."
   (if kind
       (maphash (lambda (key _value)
                  (when (eq (car key) kind)
@@ -425,6 +426,85 @@ do."
                         arguments)
                   (lambda () (gitlab-merge-request-list arguments scope))))
 
+;;; Work items
+
+;; GitLab renamed the issue object to work item, and the web interface
+;; now writes /-/work_items/12.  The stable transport is still the
+;; issue REST endpoint, so one work item is one issue and the list
+;; shows the issue types alone.  The `glab work-items' command stays
+;; experimental and answers too few fields for a detail buffer.
+
+(defun gitlab--cli-work-item-list-arguments (arguments scope)
+  "Return the glab arguments for a work item list.
+ARGUMENTS holds extra flags such as --all.  SCOPE names a group, or
+nil for the current project.  A group request asks for one full
+page, because `--paginate' would concatenate several JSON arrays."
+  (let ((group (gitlab--scope-group scope)))
+    (if group
+        (gitlab-cli--repository-arguments
+         (append (list "issue" "list" "--output" "json"
+                       "--group" (gitlab-cli-repository-path group)
+                       "--per-page" "100")
+                 arguments))
+      (gitlab-cli--repository-arguments
+       (append (list "issue" "list" "--output" "json"
+                     "--per-page" "100")
+               arguments)))))
+
+(defun gitlab--cli-work-item-show-arguments (iid)
+  "Return the glab arguments for work item IID."
+  (gitlab-cli--repository-arguments
+   (list "issue" "view" (gitlab-data-id-string iid) "--output" "json")))
+
+(defun gitlab-work-item-list (&optional arguments scope)
+  "Return the work items of the current project or of a group.
+ARGUMENTS holds extra glab flags, and SCOPE names a group with a
+cons of `group' and a context.  This synchronous call serves prompts
+and tests; display buffers use `gitlab-work-item-list-async'."
+  (gitlab--with-backend
+   (gitlab--with-scope
+    scope
+    (lambda ()
+      (gitlab-cli-request
+       (gitlab--cli-work-item-list-arguments arguments scope))))))
+
+(defun gitlab-work-item-list-async (success error &optional arguments scope)
+  "Fetch the work item list and deliver it to SUCCESS or ERROR.
+ARGUMENTS holds extra glab flags, and SCOPE names a group with a cons
+of `group' and a context.  Return the process object."
+  (gitlab--with-backend
+   (gitlab--with-scope
+    scope
+    (lambda ()
+      (gitlab-cli-request-async
+       (gitlab--cli-work-item-list-arguments arguments scope)
+       success error)))))
+
+(defun gitlab-work-item-show (iid)
+  "Return one work item by IID.
+IID is the project-scoped number that the web interface writes in a
+`/-/work_items/12' URL."
+  (gitlab--with-backend
+   (gitlab-cli-request (gitlab--cli-work-item-show-arguments iid))))
+
+(defun gitlab-work-item-show-async (iid success error)
+  "Fetch work item IID and deliver it to SUCCESS or ERROR.
+Return the process object."
+  (gitlab--with-backend
+   (gitlab-cli-request-async
+    (gitlab--cli-work-item-show-arguments iid)
+    success error)))
+
+(defun gitlab-work-item-list-cached (&optional arguments scope)
+  "Return the cached work item list, fetching it when stale.
+ARGUMENTS holds extra glab flags, and SCOPE names a group with a cons
+of `group' and a context.  Prompts use this; display buffers never
+do."
+  (gitlab--cached (list 'work-item (car-safe scope)
+                        (or (cdr-safe scope) gitlab-repository)
+                        arguments)
+                  (lambda () (gitlab-work-item-list arguments scope))))
+
 ;;; Pipelines
 
 (defun gitlab--cli-pipeline-list-arguments (arguments)
@@ -596,9 +676,10 @@ object."
 
 (defun gitlab-web-url (kind id &optional repository)
   "Return a GitLab web URL for KIND and ID, or nil.
-KIND is `merge-request', `pipeline' or `job'.  REPOSITORY
-defaults to `gitlab-repository', because the URL needs the project
-path; display buffers prefer the web_url field of their own data.
+KIND is `merge-request', `pipeline', `job' or `work-item'.
+REPOSITORY defaults to `gitlab-repository', because the URL needs
+the project path; display buffers prefer the web_url field of their
+own data.
 A repository of another instance makes the URL use that instance,
 and `gitlab-web-base-url' serves the default one."
   (declare (side-effect-free t))
@@ -614,6 +695,7 @@ and `gitlab-web-base-url' serves the default one."
                        ('merge-request "merge_requests")
                        ('pipeline "pipelines")
                        ('job "jobs")
+                       ('work-item "work_items")
                        (_ (signal 'gitlab-error
                                   (list (format "Unknown GitLab kind: %S"
                                                 kind)))))))

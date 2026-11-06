@@ -31,6 +31,8 @@
 ;;
 ;;   M-x gitlab-list-merge-requests
 ;;   M-x gitlab-display-merge-request
+;;   M-x gitlab-list-work-items
+;;   M-x gitlab-display-work-item
 ;;   M-x gitlab-list-pipelines
 ;;   M-x gitlab-display-pipeline
 ;;   M-x gitlab-display-job-log
@@ -67,6 +69,7 @@
 (require 'gitlab-mode)
 (require 'gitlab-read)
 (require 'gitlab-merge-request)
+(require 'gitlab-work-item)
 (require 'gitlab-pipeline)
 (require 'gitlab-export)
 

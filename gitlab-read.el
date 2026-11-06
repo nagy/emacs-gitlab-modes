@@ -61,6 +61,9 @@
 (defvar gitlab-read-merge-request-history nil
   "History of the merge request prompts.")
 
+(defvar gitlab-read-work-item-history nil
+  "History of the work item prompts.")
+
 (defvar gitlab-read-pipeline-history nil
   "History of the pipeline prompts.")
 
@@ -195,11 +198,11 @@ answer read the object and not its candidate text."
 INPUT is the text of the prompt, CANDIDATES the alist of
 `gitlab-read--candidates' and ID-FUNCTION the ID string of an
 object.  A candidate wins; otherwise the function returns INPUT
-without a leading !, # or &."
+without a leading !, #, & or %."
   (declare (pure t) (side-effect-free t))
   (if-let* ((object (cdr (assoc input candidates))))
       (funcall id-function object)
-    (gitlab-read--strip input '(?! ?# ?&))))
+    (gitlab-read--strip input '(?! ?# ?& ?%))))
 
 (defun gitlab-read--annotator (candidates description)
   "Return an annotation function for CANDIDATES.
@@ -241,6 +244,37 @@ and its annotation holds the title and the state."
      input candidates
      (lambda (merge-request)
        (gitlab-data-id-string (gitlab-data-field "iid" merge-request))))))
+
+;;;###autoload
+(defun gitlab-read-work-item-iid (&optional prompt)
+  "Read a work item IID, completing from the cached list.
+PROMPT defaults to \"Work item: \".  A typed ID wins when the list
+holds no matching candidate.  A candidate is the whole %IID, and
+its annotation holds the title and the state."
+  (let* ((work-items (gitlab-work-item-list-cached))
+         (id-function
+          (lambda (work-item)
+            (format "%%%s" (gitlab-data-id-string
+                             (gitlab-data-field "iid" work-item)))))
+         (candidates (gitlab-read--candidates work-items id-function))
+         (completion-extra-properties
+          (list :category 'gitlab-work-item
+                :annotation-function
+                (gitlab-read--annotator
+                 candidates
+                 (lambda (work-item)
+                   (format "%s  [%s]"
+                           (gitlab-data-field-string "title" work-item)
+                           (gitlab-data-field-string "state" work-item))))
+                :display-sort-function #'gitlab-read--sort-by-number))
+         (input (completing-read (or prompt "Work item: ")
+                                 (mapcar #'car candidates)
+                                 nil nil nil
+                                 'gitlab-read-work-item-history)))
+    (gitlab-read--selected
+     input candidates
+     (lambda (work-item)
+       (gitlab-data-id-string (gitlab-data-field "iid" work-item))))))
 
 ;;;###autoload
 (defun gitlab-read-pipeline-id (&optional prompt)

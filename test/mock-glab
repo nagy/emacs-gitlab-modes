@@ -23,6 +23,8 @@ case "$arguments" in
     ;;
   *"mr list"*) cat "$fixture_dir/mr-list.json" ;;
   *"mr view"*) cat "$fixture_dir/mr-view.json" ;;
+  *"issue list"*) cat "$fixture_dir/work-item-list.json" ;;
+  *"issue view"*) cat "$fixture_dir/work-item-view.json" ;;
   *"merge_requests/"*"/notes"*) cat "$fixture_dir/mr-notes.json" ;;
   *"ci list"*) cat "$fixture_dir/ci-list.json" ;;
   *"ci get"*)

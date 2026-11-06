@@ -11,8 +11,8 @@
 
 ;;; Commentary:
 
-;; Offline tests of the gitlab-mr, gitlab-pipeline and gitlab-job link
-;; types.
+;; Offline tests of the gitlab-mr, gitlab-work-item, gitlab-pipeline
+;; and gitlab-job link types.
 
 ;;; Code:
 
@@ -22,8 +22,8 @@
 (require 'ol-gitlab)
 
 (ert-deftest ol-gitlab-parameters ()
-  "The three link types are registered."
-  (dolist (type '("gitlab-mr" "gitlab-pipeline" "gitlab-job"))
+  "The four link types are registered."
+  (dolist (type '("gitlab-mr" "gitlab-work-item" "gitlab-pipeline" "gitlab-job"))
     (should (functionp (org-link-get-parameter type :follow)))
     (should (functionp (org-link-get-parameter type :store)))
     (should (functionp (org-link-get-parameter type :export)))))
@@ -74,6 +74,20 @@
                   (ol-gitlab-tests--stored #'gitlab-pipeline-mode "301")))
    (should (equal "gitlab-job:176"
                   (ol-gitlab-tests--stored #'gitlab-job-log-mode "176")))))
+
+(ert-deftest ol-gitlab-store-work-item ()
+  "Store reads the ID of a work item buffer."
+  (gitlab-test-with-environment
+   (should (equal "gitlab-work-item:21"
+                  (ol-gitlab-tests--stored #'gitlab-work-item-mode "21")))))
+
+(ert-deftest ol-gitlab-follow-work-item ()
+  "Follow calls the work item display command."
+  (let (opened)
+    (cl-letf (((symbol-function 'gitlab-display-work-item)
+               (lambda (iid) (setq opened iid))))
+      (gitlab-org--follow-work-item "%21" nil))
+    (should (equal "21" opened))))
 
 (ert-deftest ol-gitlab-store-outside-buffer ()
   "A store function outside a GitLab buffer signals no error.

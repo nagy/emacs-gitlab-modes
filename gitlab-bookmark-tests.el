@@ -34,6 +34,8 @@
                  (gitlab-data-identifier 'pipeline 301 "group/project/")))
   (should (equal "group/project&176"
                  (gitlab-data-identifier 'job "176" "group/project")))
+  (should (equal "group/project%21"
+                 (gitlab-data-identifier 'work-item "21" "group/project")))
   (should (equal "12" (gitlab-data-identifier 'merge-request "12")))
   (should (equal "12" (gitlab-data-identifier 'merge-request "12" "")))
   (should (equal "group/project"
@@ -46,6 +48,9 @@
                                                "group/project!12")))
   (should (equal '("a/b.c-d_e" . "7")
                  (gitlab-data-identifier-split 'job "a/b.c-d_e&7")))
+  (should (equal '("group/project" . "21")
+                 (gitlab-data-identifier-split 'work-item
+                                               "group/project%21")))
   (should (equal '(nil . "12")
                  (gitlab-data-identifier-split 'merge-request "12")))
   (should (equal '(nil . "12")
@@ -61,7 +66,7 @@
 
 (ert-deftest gitlab-bookmark-identifier-round-trip ()
   "A formatted identifier splits back to its parts."
-  (dolist (kind '(merge-request pipeline job))
+  (dolist (kind '(merge-request pipeline job work-item))
     (let* ((text (gitlab-data-identifier kind "42" "group/project"))
            (parts (gitlab-data-identifier-split kind text)))
       (should (equal "group/project" (car parts)))

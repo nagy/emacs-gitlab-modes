@@ -30,6 +30,7 @@
 ;; open a GitLab object from an identifier:
 ;;
 ;;   mr:12              a merge request
+;;   work-item:12       a work item
 ;;   pipeline:1001      a pipeline
 ;;   job:5001           a job log
 ;;
@@ -38,16 +39,18 @@
 ;; bookmark location:
 ;;
 ;;   mr:group/project!12
+;;   work-item:group/project%12
 ;;   pipeline:group/project#1001
 ;;   job:group/project&5001
 ;;
 ;; The backend reads the text properties that the renderers attach
-;; first, so xref on a pipeline, merge request or job row in a display
-;; buffer works without a typed prefix.  Outside a display buffer it
-;; accepts the prefixed form under point.
+;; first, so xref on a pipeline, merge request, work item or job row in
+;; a display buffer works without a typed prefix.  Outside a display
+;; buffer it accepts the prefixed form under point.
 ;;
 ;; Completion reads the cached lists of gitlab-data.el, so the first
-;; xref in a session may fetch the merge request and pipeline lists.
+;; xref in a session may fetch the merge request, work item and
+;; pipeline lists.
 
 ;;; Code:
 
@@ -56,6 +59,7 @@
 (require 'xref)
 (require 'gitlab-data)
 (require 'gitlab-merge-request)
+(require 'gitlab-work-item)
 (require 'gitlab-pipeline)
 
 (defun gitlab-xref--merge-request-iid (iid)
@@ -82,6 +86,15 @@ property may carry the sigil.  The glab command needs the number."
                'pipeline
                (get-text-property (point) 'gitlab-pipeline-id)
                repository)))
+     ((get-text-property (point) 'gitlab-work-item-iid)
+      (let* ((parts (gitlab-data-identifier-split
+                     'work-item
+                     (gitlab-data-id-string
+                      (get-text-property (point) 'gitlab-work-item-iid))))
+             (id (string-remove-prefix "%" (cdr parts)))
+             (context (or (car parts) repository)))
+        (format "work-item:%s"
+                (gitlab-data-identifier 'work-item id context))))
      ((get-text-property (point) 'gitlab-job-id)
       (format "job:%s"
               (gitlab-data-identifier
@@ -97,7 +110,7 @@ property may carry the sigil.  The glab command needs the number."
       (goto-char (line-beginning-position))
       (while (and (not found)
                   (re-search-forward
-                   "\\(mr\\|pipeline\\|job\\):[^][(){}<>[:space:]]+"
+                   "\\(mr\\|work-item\\|pipeline\\|job\\):[^][(){}<>[:space:]]+"
                    (line-end-position) t))
         (when (and (<= (match-beginning 0) point)
                    (<= point (match-end 0)))
@@ -139,6 +152,16 @@ move the window configuration."
                       #'gitlab-merge-request-mode iid)))
         (list (gitlab-xref--buffer-item
                (format "Merge request !%s" iid) buffer))))
+     ((string-match "\\`work-item:\\(.+\\)\\'" identifier)
+      (let* ((parts (gitlab-data-identifier-split
+                     'work-item (match-string 1 identifier)))
+             (iid (string-remove-prefix "%" (cdr parts)))
+             (gitlab-repository (or (car parts) gitlab-repository))
+             (buffer (gitlab--prepare-detail
+                      #'gitlab-work-item--buffer-name
+                      #'gitlab-work-item-mode iid)))
+        (list (gitlab-xref--buffer-item
+               (format "Work item %%%s" iid) buffer))))
      ((string-match "\\`pipeline:\\(.+\\)\\'" identifier)
       (let* ((parts (gitlab-data-identifier-split
                      'pipeline (match-string 1 identifier)))
@@ -169,6 +192,14 @@ move the window configuration."
                      'merge-request
                      (gitlab-data-id-string
                       (gitlab-data-field "iid" merge-request))
+                     repository))
+            identifiers))
+    (dolist (work-item (gitlab-work-item-list-cached))
+      (push (format "work-item:%s"
+                    (gitlab-data-identifier
+                     'work-item
+                     (gitlab-data-id-string
+                      (gitlab-data-field "iid" work-item))
                      repository))
             identifiers))
     (dolist (pipeline (gitlab-pipeline-list-cached))

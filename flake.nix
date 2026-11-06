@@ -1,5 +1,5 @@
 {
-  description = "Emacs modes for GitLab merge requests and CI pipelines (Emacs package)";
+  description = "Emacs modes for GitLab merge requests, work items and CI pipelines (Emacs package)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -144,18 +144,19 @@
               '';
 
               meta = {
-                description = "Emacs modes for GitLab merge requests and CI pipelines";
+                description = "Emacs modes for GitLab merge requests, work items and CI pipelines";
                 longDescription = ''
-                  A read-only Emacs interface to GitLab merge requests and
-                  CI pipelines.  One buffer shows one merge request or one
-                  pipeline, and a separate mode shows a collection as a
-                  sortable table.
+                  A read-only Emacs interface to GitLab merge requests, work
+                  items and CI pipelines.  One buffer shows one merge request,
+                  one work item or one pipeline, and a separate mode shows a
+                  collection as a sortable table.
 
                   A pipeline detail buffer renders the pipeline fields at
                   the top and its jobs table below.  RET on a job streams
                   the job trace into another buffer.  The merge request
                   detail buffer shows every glab JSON field and loads notes
-                  on demand.
+                  on demand.  A work item detail buffer shows every field
+                  of the issue that GitLab now calls a work item.
 
                   Both detail and list buffers refresh themselves through
                   auto-revert-mode.  The buffer-stale-function throttles

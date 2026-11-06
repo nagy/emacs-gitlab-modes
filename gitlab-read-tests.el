@@ -21,9 +21,10 @@
 (require 'gitlab-read)
 
 (ert-deftest gitlab-read-strip ()
-  "A leading ! or # goes away."
+  "A leading !, #, & or % goes away."
   (should (equal "12" (gitlab-read--strip "!12" '(?! ?#))))
   (should (equal "301" (gitlab-read--strip "#301" '(?! ?#))))
+  (should (equal "21" (gitlab-read--strip "%21" '(?! ?# ?& ?%))))
   (should (equal "plain" (gitlab-read--strip "plain" '(?! ?#)))))
 
 (ert-deftest gitlab-read-selected ()
@@ -103,6 +104,13 @@
    (cl-letf (((symbol-function 'completing-read)
               (lambda (&rest _arguments) "!12")))
      (should (equal "12" (gitlab-read-merge-request-iid))))))
+
+(ert-deftest gitlab-read-work-item-iid ()
+  "The work item prompt accepts a typed ID."
+  (gitlab-test-with-environment
+   (cl-letf (((symbol-function 'completing-read)
+              (lambda (&rest _arguments) "%21")))
+     (should (equal "21" (gitlab-read-work-item-iid))))))
 
 (ert-deftest gitlab-read-pipeline-id ()
   "The pipeline prompt accepts a typed ID."

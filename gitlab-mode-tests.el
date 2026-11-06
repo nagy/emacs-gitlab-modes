@@ -573,7 +573,10 @@ A list buffer keeps the click for the selection of a row."
            (gitlab-mode-test--reference-url "See other/proj#34")))
   (should (equal
            "https://gitlab.example.com/group/project/-/jobs/56"
-           (gitlab-mode-test--reference-url "Job &56"))))
+           (gitlab-mode-test--reference-url "Job &56")))
+  (should (equal
+           "https://gitlab.example.com/group/project/-/work_items/21"
+           (gitlab-mode-test--reference-url "Work item %21"))))
 
 (ert-deftest gitlab-mode-detail-links-text ()
   "A detail buffer links its text through two built-in modes."
@@ -1117,6 +1120,9 @@ alone and adds the child rows after the sort."
     (cl-letf (((symbol-function 'gitlab-display-merge-request)
                (lambda (id &optional repository)
                  (push (list 'merge-request id repository) calls)))
+              ((symbol-function 'gitlab-display-work-item)
+               (lambda (id &optional repository)
+                 (push (list 'work-item id repository) calls)))
               ((symbol-function 'gitlab-display-pipeline)
                (lambda (id &optional repository)
                  (push (list 'pipeline id repository) calls)))
@@ -1129,12 +1135,16 @@ alone and adds the child rows after the sort."
                "https://gitlab.example.com/a/b/-/pipelines/1001?ref=main"))
       (should (gitlab-browse-url
                "https://gitlab.example.com/a/b/-/jobs/5001#L10"))
-      (should-not (gitlab-browse-url "https://gitlab.com/group/project"))
-      (should-not (gitlab-browse-url
-                   "https://example.com/a/b/-/issues/1")))
+      (should (gitlab-browse-url
+               "https://gitlab.example.com/a/b/-/work_items/7"))
+      (should (gitlab-browse-url
+               "https://gitlab.example.com/a/b/-/issues/8"))
+      (should-not (gitlab-browse-url "https://gitlab.com/group/project")))
     (should (equal '((merge-request "12" "group/project")
                      (pipeline "1001" "a/b@gitlab.example.com")
-                     (job "5001" nil nil "a/b@gitlab.example.com"))
+                     (job "5001" nil nil "a/b@gitlab.example.com")
+                     (work-item "7" "a/b@gitlab.example.com")
+                     (work-item "8" "a/b@gitlab.example.com"))
                    (nreverse calls)))))
 
 (ert-deftest gitlab-mode-browse-url-handler-option ()

@@ -2,8 +2,9 @@
 
 ## Project
 
-`gitlab-modes` is an Emacs package for GitLab merge requests and CI
-pipelines.  One buffer shows one merge request or one pipeline.  A
+`gitlab-modes` is an Emacs package for GitLab merge requests, work
+items and CI pipelines.  One buffer shows one merge request, one work
+item or one pipeline.  A
 separate mode shows a collection as a table.  Every display buffer
 refreshes itself through `auto-revert-mode` and never blocks Emacs.
 
@@ -18,22 +19,23 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 
 | File | Purpose |
 |---|---|
-| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, both resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
+| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, the three resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, pipeline and job entry points.  The merge request list takes a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
+| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
-| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
+| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
+| `gitlab-work-item.el` | Work item list mode for a project and for a group, the Project column of a group list, detail mode, display commands and the work item list as the parent view of a detail buffer.  GitLab renamed the issue object to work item, so the transport is `glab issue` and the web URL uses `/-/work_items/`.  The family lists and displays issues.
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
-| `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
-| `gitlab-xref.el` | Optional xref backend: `mr:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
+| `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-work-item:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
+| `gitlab-xref.el` | Optional xref backend: `mr:`, `work-item:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
 | `test/gitlab-test-helpers.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
 | `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection.  `GITLAB_TEST_TRACE` selects another job trace fixture. |
-| `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections, a pipeline without a jobs array and two jobs fixtures: one for the pipeline detail and one that the row expansion of the pipeline list reads. |
+| `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections, a pipeline without a jobs array, two jobs fixtures (one for the pipeline detail and one for the row expansion of the pipeline list) and two work item fixtures (a list and a detail). |
 | `*-tests.el` | ERT suites.  `package-build` excludes this suffix from the package and the lint gate skips it. |
 | `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary or the evil package. |
 | `flake.lock` | Pinned flake inputs. |
@@ -57,6 +59,7 @@ emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helpers.el \
   -l gitlab-cli-tests.el -l gitlab-data-tests.el \
   -l gitlab-context-tests.el -l gitlab-mode-tests.el \
   -l gitlab-merge-request-tests.el \
+  -l gitlab-work-item-tests.el \
   -l gitlab-git-tests.el -l gitlab-pipeline-tests.el \
   -l gitlab-export-tests.el \
   -l gitlab-read-tests.el -l gitlab-evil-tests.el -l ol-gitlab-tests.el \
@@ -261,9 +264,10 @@ without evil.  The suite never opens a network connection.
   answer.
 - `gitlab-go-to-parent` walks one level up.  The buffer-local
   `gitlab--parent-function` names the command of each kind: a merge
-  request opens `gitlab-list-merge-requests`, a pipeline opens
-  `gitlab-list-pipelines` and a job log opens the pipeline that holds
-  the job.  A list buffer leaves the variable nil, so the command
+  request opens `gitlab-list-merge-requests`, a work item opens
+  `gitlab-list-work-items`, a pipeline opens `gitlab-list-pipelines`
+  and a job log opens the pipeline that holds the job.  A list buffer
+  leaves the variable nil, so the command
   signals `user-error` and `dired-jump` keeps its dired meaning there,
   because the directory of a list buffer is the project root.  The
   detail keymap and the job log keymap remap `dired-jump` and
@@ -397,12 +401,23 @@ without evil.  The suite never opens a network connection.
   so it starts no request.  The prompt declares the
   `gitlab-group` category.  The command keeps C-u for `--all` and adds
   no key.
+- The work item family follows the merge request family, because GitLab
+  renamed the issue object to work item and writes it in a
+  `/-/work_items/12` URL.  A work item is an issue: the data layer runs
+  `glab issue list` and `glab issue view`, and the web URL writes
+  `/-/work_items/12`.  Do not use the experimental `glab work-items`
+  command: it answers five fields and offers no view subcommand, so it
+  serves no detail buffer.  The identifier sigil is `%`, because `!`,
+  `#` and `&` already name other kinds.  `gitlab-list-work-items` and
+  `gitlab-list-group-work-items` mirror the two merge request list
+  commands, and the group table adds the same Project column.
 - A prompt binds `completion-extra-properties` to a `:category`, an
   `:annotation-function` and a `:display-sort-function`, so marginalia,
   embark, `completion-preview` and `completion-category-overrides`
   reach one kind of object as one kind of object.  The candidate of a
-  merge request is `!IID`, of a pipeline `#ID` and of a job the plain
-  job ID, and the object behind a candidate travels as the value of
+  merge request is `!IID`, of a work item `%IID`, of a pipeline `#ID`
+  and of a job the plain job ID, and the object behind a candidate
+  travels as the value of
   `gitlab-read--candidates`, so the annotation reads fields and not the
   candidate text.  `gitlab-read--selected` maps the candidate back to
   the ID string and falls back to the typed text without its sigil.
@@ -418,7 +433,8 @@ without evil.  The suite never opens a network connection.
 - `gitlab--update-list-buffers-directory` sets the buffer-local
   `list-buffers-directory` to `gitlab-data-identifier` of the project
   and the object ID, so `list-buffers` shows `group/project!12` for a
-  merge request, `#` for a pipeline and `&` for a job log.  A list
+  merge request, `group/project%12` for a work item, `#` for a
+  pipeline and `&` for a job log.  A list
   buffer has no object ID and gets the project context alone.  The
   project comes from the buffer-local `gitlab--context` that
   `gitlab--use-project-directory` set, so the helper reads no Git
@@ -462,6 +478,7 @@ without evil.  The suite never opens a network connection.
   while `auto-revert-mode` refreshes it.
 - The renderers attach text properties.  `gitlab-field` names a field
   line.  `gitlab-pipeline-id`, `gitlab-merge-request-iid`,
+  `gitlab-work-item-iid`,
   `gitlab-job-id`, `gitlab-commit-sha` and `gitlab-url` are navigation
   targets.  `gitlab-open-at-point` reads them.  A new object type adds
   one property and one branch there.
@@ -510,8 +527,8 @@ without evil.  The suite never opens a network connection.
   of the buffer context for a reference of another project, because a
   project path alone names no instance.  `goto-address-mode` covers a
   URL.  Both modes use jit-lock and an overlay, so `#` keeps the
-  identifier syntax of the package: `!` names a merge request, `#` a
-  pipeline and `&` a job.  The options `gitlab-bug-reference` and
+  identifier syntax of the package: `!` names a merge request, `%` a
+  work item, `#` a pipeline and `&` a job.  The options `gitlab-bug-reference` and
   `gitlab-goto-address` turn each mode off.  A list buffer gets
   neither, because a link there would take the left click of a row.
 - The merge request detail renders every top-level JSON field.  Nested
@@ -521,6 +538,11 @@ without evil.  The suite never opens a network connection.
   `ref` or `sha` carries `gitlab-pipeline-id`; any other keeps the
   plain text or a `gitlab-url` link.  Empty strings and nil render as
   `-`.
+- The work item detail renders every top-level JSON field of
+  `glab issue view --output json` with the same field table.  The
+  buffer title writes `%12`, and the `web_url` field points at
+  `/-/work_items/12`.  A work item is an issue, so a task or an epic
+  stays outside the list and the detail.
 - The pipeline detail uses a hand-written jobs table, not
   `tabulated-list-mode`, because the pipeline fields occupy the same
   buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`,
@@ -817,8 +839,8 @@ without evil.  The suite never opens a network connection.
   with the user, so the package adds nothing there.
   `gitlab--browse-url-regexp` reads the host, the project path, the
   object family and the number of
-  `https://HOST/PATH/-/merge_requests/ID`, `/-/pipelines/ID` and
-  `/-/jobs/ID`, with any suffix, query or anchor behind the number.
+  `https://HOST/PATH/-/merge_requests/ID`, `/-/pipelines/ID`,
+  `/-/jobs/ID`, `/-/work_items/ID` and the older `/-/issues/ID`, with any suffix, query or anchor behind the number.
   The shape carries everything that the display needs, so no list of
   private instances exists.  `gitlab-browse-url` normalizes host and
   path to the one context spelling and passes it as the REPOSITORY
@@ -858,7 +880,9 @@ without evil.  The suite never opens a network connection.
   `gitlab-pipeline--row-data` answers the job of a job row, so `w` and
   `thing-at-point 'url` reach the job page.
 - The list columns live in `gitlab-merge-request-list-format`,
-  `gitlab-merge-request-group-list-format` and
+  `gitlab-merge-request-group-list-format`,
+  `gitlab-work-item-list-format`,
+  `gitlab-work-item-group-list-format` and
   `gitlab-pipeline-list-format`.  A group list puts the Project column
   first, because one row alone names no project; a project list shows
   no such column.  The list mode chooses the format from
@@ -1043,13 +1067,13 @@ without evil.  The suite never opens a network connection.
   for every other backend.
 - `gitlab-xref.el` registers its backend through an autoloaded
   `add-hook` form.  It accepts text properties first, then a typed
-  `mr:`, `pipeline:` or `job:` identifier.  A merge request list cell
+  `mr:`, `work-item:`, `pipeline:` or `job:` identifier.  A merge request list cell
   shows `!IID`, so the backend strips the sigil before it names a
   buffer or a glab argument.
 - One identifier syntax names one object.  `gitlab-data-identifier`
   builds `REPOSITORY<SIGIL>ID` and `gitlab-data-identifier-split`
   parses it back; the sigils come from `gitlab-data-identifier-signs`
-  (`!` merge request, `#` pipeline, `&` job).  A GitLab project path
+  (`!` merge request, `%` work item, `#` pipeline, `&` job).  A GitLab project path
   holds letters, digits, dots, hyphens and underscores only, so a
   sigil never appears in a path.  A text without the sigil is a bare
   ID, so an older Org link or bookmark keeps its meaning, and

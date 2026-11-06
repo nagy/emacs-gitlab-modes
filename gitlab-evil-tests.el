@@ -38,6 +38,14 @@
      (gitlab-evil--maybe-enable)
      (should gitlab-evil-detail-mode))))
 
+(ert-deftest gitlab-evil-local-mode-work-item ()
+  "A work item buffer adopts the detail bindings."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-work-item-mode)
+     (gitlab-evil--maybe-enable)
+     (should gitlab-evil-detail-mode))))
+
 (ert-deftest gitlab-evil-local-mode-list ()
   "A list buffer adopts the list bindings."
   (gitlab-test-with-environment

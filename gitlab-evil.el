@@ -49,10 +49,10 @@
 ;; key keeps the GitLab behaviour on the new key.  A key with no evil
 ;; command, such as gr, stays a plain key binding.
 ;;
-;; Detail buffers: RET opens the pipeline, merge request, web page
-;; or commit at point; q quits the window; gr, r and R refresh; p pops back;
-;; C-x C-j opens the parent list; c copies the ID; w opens the web
-;; page.
+;; Detail buffers: RET opens the pipeline, merge request, work item,
+;; web page or commit at point; q quits the window; gr, r and R
+;; refresh; p pops back; C-x C-j opens the parent list; c copies the
+;; ID; w opens the web page.
 ;;
 ;; List buffers: RET opens the row; TAB expands a row into its child
 ;; rows; c or Y copies its ID; w opens its web page; S sorts the
@@ -73,6 +73,7 @@
 
 (require 'gitlab-mode)
 (require 'gitlab-merge-request)
+(require 'gitlab-work-item)
 (require 'gitlab-pipeline)
 
 (declare-function evil-define-minor-mode-key "evil" (state mode key def))
@@ -223,6 +224,8 @@ passes through unchanged."
    ((derived-mode-p 'gitlab-pipeline-mode)
     (gitlab-evil-detail-mode 1))
    ((derived-mode-p 'gitlab-merge-request-mode)
+    (gitlab-evil-detail-mode 1))
+   ((derived-mode-p 'gitlab-work-item-mode)
     (gitlab-evil-detail-mode 1))
    ((derived-mode-p 'gitlab-job-log-mode)
     (gitlab-evil-job-log-mode 1))

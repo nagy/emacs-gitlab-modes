@@ -1,11 +1,12 @@
-#+title: gitlab-modes - GitLab merge request and pipeline modes for Emacs
+#+title: gitlab-modes - GitLab merge request, work item and pipeline modes for Emacs
 #+author: Daniel Nagy
 #+language: en
 
-Read-only Emacs modes for GitLab merge requests and CI pipelines.
-One buffer shows one merge request or one pipeline.  A separate mode
-shows a collection as a sortable table.  Every display buffer refreshes
-itself through =auto-revert-mode= and never blocks Emacs.
+Read-only Emacs modes for GitLab merge requests, work items and CI
+pipelines.  One buffer shows one merge request, one work item or one
+pipeline.  A separate mode shows a collection as a sortable table.
+Every display buffer refreshes itself through =auto-revert-mode= and
+never blocks Emacs.
 
 The package reads GitLab through the =glab= command line program.  The
 Nix build bakes the store path of =glab= into =gitlab-program=, so an
@@ -24,6 +25,9 @@ installed package works without =glab= on =PATH=.
 |-------------------------------------+----------------------------------------------------|
 | =gitlab-list-merge-requests=          | Merge request list.  A prefix argument adds =--all=. |
 | =gitlab-display-merge-request=        | One merge request in its own buffer.               |
+| =gitlab-list-work-items=              | Work item list.  A prefix argument adds =--all=.    |
+| =gitlab-list-group-work-items=        | Work items of one group.                           |
+| =gitlab-display-work-item=            | One work item in its own buffer.                   |
 | =gitlab-list-pipelines=               | Pipeline list.  A prefix argument reads flags.     |
 | =gitlab-display-pipeline=             | Pipeline fields at the top and jobs below.         |
 | =gitlab-display-job-log=              | Live =glab ci trace= output for one job.             |
@@ -47,6 +51,7 @@ library:
 (require 'gitlab-modes)
 
 (keymap-set global-map "C-c g m" #'gitlab-list-merge-requests)
+(keymap-set global-map "C-c g w" #'gitlab-list-work-items)
 (keymap-set global-map "C-c g p" #'gitlab-list-pipelines)
 #+end_src
 
@@ -63,6 +68,12 @@ buffer never blocks.  The command =gitlab-merge-merge-request= merges
 it.  It asks for confirmation first, because a merge changes the
 target branch.  Both commands fetch the merge request again after the
 write, so the buffer shows the new state.
+
+A work item buffer shows every top-level field of
+=glab issue view --output json=.  GitLab renamed the issue object to
+work item and writes it in a =/-/work_items/12= URL, so the package
+names the family work item.  The stable transport is still the issue
+REST endpoint, and a task or an epic stays outside the list.
 
 Every command that acts on one object reads the object at point, so
 it works in a detail buffer, on a list row and on a GitLab web URL in
@@ -89,9 +100,10 @@ the face without its parent.
 
 A reference in the text of a detail buffer or of a job log becomes a
 link to the web page of the object.  The reference follows the
-identifier syntax of the package: =!12= names a merge request, =#34= a
-pipeline and =&56= a job, and a reference that starts with a project
-path, such as =group/project!12=, links that project.  A URL of a note
+identifier syntax of the package: =!12= names a merge request, =%12= a
+work item, =#34= a pipeline and =&56= a job, and a reference that
+starts with a project path, such as =group/project!12=, links that
+project.  A URL of a note
 or of a trace becomes a link too.  =RET= and =mouse-2= follow both.
 The option =gitlab-bug-reference= turns the references off, and
 =gitlab-goto-address= turns the URLs off.
@@ -269,6 +281,11 @@ row ID is the full identifier, so two projects of one group never mix.
 ==--all==.  Filters such as a label live in
 =gitlab-merge-request-list-arguments=.
 
+=gitlab-list-work-items= and =gitlab-list-group-work-items= follow the
+same shape for work items.  The IID cell writes =%12=, the Type column
+shows the issue type, and a group list puts the Project column first.
+Filters live in =gitlab-work-item-list-arguments=.
+
 A list buffer fits the width of every column to its rows.  A column
 takes the width of its longest cell, or the width of its header when
 that is wider.  When the columns are wider than the window, the widest
@@ -336,7 +353,8 @@ the merge request list, because no row there expands.
 
 A detail buffer name holds the project context in front of the sigil:
 =*GitLab MR group/project!12*=.  A list buffer name appends the context:
-=*GitLab Merge Requests group/project*=.  The name is a convenience.
+=*GitLab Merge Requests group/project*=.  A work item buffer writes
+=*GitLab Work Item group/project%12*=.  The name is a convenience.
 Every display buffer keeps its major mode, its object ID and its
 context, and the display commands find an open buffer by that identity.
 A renamed buffer therefore stays reachable, so a user can call it
@@ -346,6 +364,7 @@ The variable =list-buffers-directory= holds the identifier of the buffer,
 in the same syntax as a bookmark, an Org link and an xref definition:
 
 - =group/project!12= for a merge request,
+- =group/project%12= for a work item,
 - =group/project#12= for a pipeline,
 - =group/project&12= for a job log,
 - =group/project= for a list buffer.
@@ -367,10 +386,10 @@ it and not a second object.
 * Parent views
 
 =M-x gitlab-go-to-parent= opens the view one level above the current
-buffer.  A merge request opens the merge request list, a pipeline
-opens the pipeline list and a job log opens the pipeline that holds
-the job.  A list buffer is already the top level, so the command
-signals a user error there.
+buffer.  A merge request opens the merge request list, a work item
+opens the work item list, a pipeline opens the pipeline list and a
+job log opens the pipeline that holds the job.  A list buffer is
+already the top level, so the command signals a user error there.
 
 The detail modes and the job log mode remap =dired-jump= and
 =dired-up-directory= to the command, so =C-x C-j= walks up in a GitLab
@@ -538,10 +557,11 @@ mark in the completions buffer.
 Every prompt declares its completion category, an annotation function
 and a display sort function, so a completion package that reads that
 metadata works without a setting.  A merge request candidate is
-=!IID=, a pipeline candidate is =#ID= and a job candidate is the plain
-job ID, and the completions buffer shows the title of the merge
-request, the status and ref of the pipeline or the name, the stage and
-the status of the job beside it.  Marginalia, Embark,
+=!IID=, a work item candidate is =%IID=, a pipeline candidate is =#ID=
+and a job candidate is the plain job ID, and the completions buffer
+shows the title and the state of the merge request or work item, the
+status and ref of the pipeline or the name, the stage and the status
+of the job beside it.  Marginalia, Embark,
 =completion-preview= and =completion-category-overrides= therefore see
 one category per kind of object.  The identifier candidates sort by
 their number, so =#1000= follows =#999=.
@@ -554,6 +574,8 @@ share one buffer:
 *GitLab Merge Requests group/project@gitlab.example.com*
 *GitLab MR group/project!12*
 *GitLab MR group/project@gitlab.example.com!12*
+*GitLab Work Items group/project*
+*GitLab Work Item group/project%12*
 *GitLab Pipeline group/project#1001*
 *GitLab Job group/project&5001*
 #+end_example
@@ -624,17 +646,18 @@ less confirmation than =gr=.
 (require 'ol-gitlab)
 #+end_src
 
-The file registers =gitlab-mr:=, =gitlab-pipeline:= and =gitlab-job:=
-link types.  =org-store-link= in a display buffer produces the matching
-link.  HTML, markdown and LaTeX export write a web URL when the
-project is known.  Every other backend writes the URL after the
-description text.
+The file registers =gitlab-mr:=, =gitlab-work-item:=,
+=gitlab-pipeline:= and =gitlab-job:= link types.  =org-store-link= in a
+display buffer produces the matching link.  HTML, markdown and LaTeX
+export write a web URL when the project is known.  Every other backend
+writes the URL after the description text.
 
 A path names its project when it holds one, with the sigil of the
 bookmark identifier:
 
 #+begin_example
 [[gitlab-mr:group/project!12][Fix the dialog]]
+[[gitlab-work-item:group/project%12][Fix the dialog]]
 [[gitlab-pipeline:group/project#1001][Run]]
 [[gitlab-job:group/project&5001][Log]]
 #+end_example
@@ -651,13 +674,14 @@ a job row of a pipeline buffer stores a =gitlab-job:= link to that job.
 (require 'gitlab-xref)
 #+end_src
 
-=M-.= opens =mr:12=, =pipeline:1001= or =job:5001=.  In a
-display buffer the text properties win, so a job row opens its log
-without a typed prefix.
+=M-.= opens =mr:12=, =work-item:12=, =pipeline:1001= or =job:5001=.
+In a display buffer the text properties win, so a job row opens its
+log without a typed prefix.
 
 An identifier names its project when it holds one, for example
-=mr:group/project!12=, and its instance when the project carries a
-host.  Completion writes the project form when the project is known.
+=mr:group/project!12= or =work-item:group/project%12=, and its
+instance when the project carries a host.  Completion writes the
+project form when the project is known.
 
 * Nix
 
@@ -681,6 +705,7 @@ emacs --batch -L . -L test -L "$EVIL" \
   -l gitlab-context-tests.el \
   -l gitlab-mode-tests.el \
   -l gitlab-merge-request-tests.el \
+  -l gitlab-work-item-tests.el \
   -l gitlab-pipeline-tests.el \
   -l gitlab-export-tests.el \
   -l gitlab-read-tests.el \
