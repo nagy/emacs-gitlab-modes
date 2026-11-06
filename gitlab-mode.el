@@ -2116,6 +2116,14 @@ a cons of `group' and a group context, or nil for a project."
     (with-current-buffer target
       (let ((gitlab--pending-scope scope))
         (funcall mode))
+      ;; `define-derived-mode' runs `kill-all-local-variables', so a
+      ;; second display of a buffer that already holds rows drops the
+      ;; header line.  The old rows would then show without column
+      ;; names until the fetch returns.  Install the header again
+      ;; before the fetch starts.
+      (when (> (buffer-size) 0)
+        (tabulated-list-init-header)
+        (setq-local gitlab--header-line-format header-line-format))
       (setq-local gitlab--origin-buffer origin)
       (gitlab--use-project-directory directory repository scope)
       (setq-local gitlab--identity (list mode nil gitlab--context))

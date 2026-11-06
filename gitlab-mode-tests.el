@@ -457,6 +457,42 @@
      (gitlab--clear-error)
      (should (equal header-line-format gitlab--header-line-format)))))
 
+(defvar gitlab-mode-test--header-format
+  [("ID" 8 t) ("Title" 12 t)]
+  "Table format of `gitlab-mode-test-list-mode'.")
+
+(define-derived-mode gitlab-mode-test-list-mode gitlab-list-mode
+  "GitLab Test List"
+  "List mode that declares a table format.
+The test suite runs the mode of an open buffer again through
+`gitlab-list--show', so the mode body sets the format itself."
+  :group 'gitlab
+  (setq-local tabulated-list-format gitlab-mode-test--header-format)
+  (setq-local tabulated-list-sort-key '("ID" . t)))
+
+(ert-deftest gitlab-mode-list-second-display-keeps-header ()
+  "A second display of an open list buffer keeps its header line.
+`define-derived-mode' runs `kill-all-local-variables', which drops
+`header-line-format' while the rows of the last render stay in the
+buffer."
+  (gitlab-test-with-environment
+   (cl-letf (((symbol-function 'pop-to-buffer)
+              (lambda (buffer &rest _arguments) (set-buffer buffer)))
+             ((symbol-function 'gitlab-list--refresh) #'ignore))
+     (gitlab-list--show "*GitLab Test List*" #'gitlab-mode-test-list-mode)
+     (setq tabulated-list-entries '(("1" ["one" "alpha"])))
+     (gitlab-list--render nil nil)
+     (should header-line-format)
+     (gitlab-list--show "*GitLab Test List*" #'gitlab-mode-test-list-mode)
+     (should header-line-format)
+     (should (equal header-line-format gitlab--header-line-format))
+     (let ((text (apply #'concat
+                        (delq nil (mapcar (lambda (item)
+                                            (and (stringp item) item))
+                                          (flatten-list header-line-format))))))
+       (should (string-match-p "Title" text)))
+     (kill-buffer (current-buffer)))))
+
 (ert-deftest gitlab-mode-list-error ()
   "A list error goes to the mode line."
   (gitlab-test-with-environment

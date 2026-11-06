@@ -931,6 +931,15 @@ without evil.  The suite never opens a network connection.
   `mode-line-process`, because the header line belongs to the table.
   Do not set a `:eval' entry in `header-line-format` of a list mode:
   it replaces the column names.
+- `gitlab-list--show` runs the mode of the collection buffer again, and
+  `define-derived-mode` runs `kill-all-local-variables`.  A second
+  display therefore drops `header-line-format` and
+  `gitlab--header-line-format` while the rows of the last render stay
+  in the buffer, so the table would show its columns without names
+  until the fetch returns.  After the mode call, `gitlab-list--show`
+  therefore calls `tabulated-list-init-header` and stores the answer
+  again in `gitlab--header-line-format` whenever the buffer holds
+  text, so the header line never waits for a fetch.
 - `gitlab-export-json` exports the answer of the current display
   buffer.  The transport binds `gitlab-cli-response-text` around an
   asynchronous SUCCESS callback, and the refresh pipeline stores that
