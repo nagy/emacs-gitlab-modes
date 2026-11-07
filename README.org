@@ -21,24 +21,24 @@ installed package works without =glab= on =PATH=.
 
 * Commands
 
-| Command                             | What it shows                                      |
-|-------------------------------------+----------------------------------------------------|
-| =gitlab-list-merge-requests=          | Merge request list.  A prefix argument adds =--all=. |
-| =gitlab-display-merge-request=        | One merge request in its own buffer.               |
-| =gitlab-list-work-items=              | Work item list.  A prefix argument adds =--all=.    |
-| =gitlab-list-group-work-items=        | Work items of one group.                           |
-| =gitlab-display-work-item=            | One work item in its own buffer.                   |
-| =gitlab-list-pipelines=               | Pipeline list.  A prefix argument reads flags.     |
-| =gitlab-display-pipeline=             | Pipeline fields at the top and jobs below.         |
-| =gitlab-display-job-log=              | Live =glab ci trace= output for one job.             |
-| =gitlab-go-to-parent=                 | The list, or the pipeline, one level above.        |
-| =gitlab-next-sibling=                 | The next object of the parent view.                |
-| =gitlab-previous-sibling=             | The previous object of the parent view.            |
-| =gitlab-export-json=                  | The glab JSON answer of the buffer, in one buffer.  |
-| =gitlab-list-sort=                    | Sort a list by the column at point.                |
-| =gitlab-list-toggle-expansion=        | Expand a pipeline row into its jobs.               |
-| =gitlab-list-expand-all=              | Expand every row of a list.                        |
-| =gitlab-list-collapse-all=            | Collapse every row of a list.                      |
+| Command                      | What it shows                                      |
+|------------------------------+----------------------------------------------------|
+| =gitlab-list-merge-requests=   | Merge request list.  A prefix argument adds =--all=. |
+| =gitlab-display-merge-request= | One merge request in its own buffer.               |
+| =gitlab-list-work-items=       | Work item list.  A prefix argument adds =--all=.     |
+| =gitlab-list-group-work-items= | Work items of one group.                           |
+| =gitlab-display-work-item=     | One work item in its own buffer.                   |
+| =gitlab-list-pipelines=        | Pipeline list.  A prefix argument reads flags.     |
+| =gitlab-display-pipeline=      | Pipeline fields at the top and jobs below.         |
+| =gitlab-display-job-log=       | Live =glab ci trace= output for one job.             |
+| =gitlab-go-to-parent=          | The list, or the pipeline, one level above.        |
+| =gitlab-next-sibling=          | The next object of the parent view.                |
+| =gitlab-previous-sibling=      | The previous object of the parent view.            |
+| =gitlab-export-json=           | The glab JSON answer of the buffer, in one buffer. |
+| =gitlab-list-sort=             | Sort a list by the column at point.                |
+| =gitlab-list-toggle-expansion= | Expand a pipeline row into its jobs.               |
+| =gitlab-list-expand-all=       | Expand every row of a list.                        |
+| =gitlab-list-collapse-all=     | Collapse every row of a list.                      |
 
 The list commands prompt for the project when the current directory
 names none.  Each project and each instance gets its own buffer, so
@@ -489,8 +489,8 @@ snapshot.  =bookmark-bmenu= shows the GitLab type in its type column.
 A record stores the object as an identifier.  The identifier holds the
 project context and a sigil:
 
-| Kind          | Identifier           |
-|---------------+----------------------|
+| Kind          | Identifier         |
+|---------------+--------------------|
 | Merge request | =group/project!12=   |
 | Pipeline      | =group/project#1001= |
 | Job           | =group/project&5001= |
