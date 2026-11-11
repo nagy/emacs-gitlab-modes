@@ -331,7 +331,8 @@ jobs without a user action."
 (ert-deftest gitlab-pipeline-detail-render ()
   "The detail buffer shows the pipeline fields and the jobs table."
   (gitlab-test-with-environment
-   (let ((buffer (generate-new-buffer "*GitLab pipeline detail test*")))
+   (let ((gitlab-show-author-username t)
+         (buffer (generate-new-buffer "*GitLab pipeline detail test*")))
      (unwind-protect
          (progn
            (with-current-buffer buffer

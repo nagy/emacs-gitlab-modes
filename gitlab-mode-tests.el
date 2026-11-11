@@ -36,9 +36,13 @@
   (should (equal "no" (gitlab--format-value :false)))
   (should (equal "yes" (gitlab--format-value t)))
   (should (equal "UX, CLI" (gitlab--format-value '("UX" "CLI"))))
-  (should (equal "Alice (@alice)"
+  (should (equal "Alice"
                  (gitlab--format-value
-                  '((username . "alice") (name . "Alice"))))))
+                  '((username . "alice") (name . "Alice")))))
+  (let ((gitlab-show-author-username t))
+    (should (equal "Alice (@alice)"
+                   (gitlab--format-value
+                    '((username . "alice") (name . "Alice")))))))
 
 (ert-deftest gitlab-mode-format-object-pipeline ()
   "A nested pipeline becomes text with a navigation property."
@@ -77,8 +81,11 @@
 
 (ert-deftest gitlab-mode-author-face ()
   "An author field and a branch field carry their own face."
-  (let ((author (gitlab--format-author
-                 '((name . "Alice") (username . "alice")))))
+  (should (equal "Alice" (gitlab--format-author
+                           '((name . "Alice") (username . "alice")))))
+  (let ((author (let ((gitlab-show-author-username t))
+                  (gitlab--format-author
+                   '((name . "Alice") (username . "alice"))))))
     (should (equal "Alice (@alice)" author))
     (should (eq 'gitlab-author (get-text-property 0 'face author)))
     (should (eq 'gitlab-id (get-text-property 7 'face author))))
@@ -102,11 +109,15 @@
                0 'face (gitlab--format-field-value
                         'author '((name . "Alice"))))))
   (dolist (key '(merge_user merged_by))
-    (let ((text (gitlab--format-field-value
-                 key '((name . "Alice") (username . "alice")))))
+    (let ((text (let ((gitlab-show-author-username t))
+                  (gitlab--format-field-value
+                   key '((name . "Alice") (username . "alice"))))))
       (should (equal "Alice (@alice)" text))
       (should (eq 'gitlab-author (get-text-property 0 'face text)))
-      (should (eq 'gitlab-id (get-text-property 7 'face text))))))
+      (should (eq 'gitlab-id (get-text-property 7 'face text))))
+    (should (equal "Alice"
+                   (gitlab--format-field-value
+                    key '((name . "Alice") (username . "alice")))))))
 
 (ert-deftest gitlab-mode-tag-field-face ()
   "A ref that the tag flag marks a tag takes `gitlab-tag'."
@@ -125,23 +136,25 @@
 (ert-deftest gitlab-mode-author-list-face ()
   "A field that holds users takes the faces of every user."
   (let ((reviewers
-           (gitlab--format-field-value
-            'reviewers
-            '(((name . "Bob") (username . "bob"))
-              ((name . "Carol") (username . "carol"))))))
+           (let ((gitlab-show-author-username t))
+             (gitlab--format-field-value
+              'reviewers
+              '(((name . "Bob") (username . "bob"))
+                ((name . "Carol") (username . "carol")))))))
     (should (equal "Bob (@bob), Carol (@carol)" reviewers))
     (should (eq 'gitlab-author (get-text-property 0 'face reviewers)))
     (should (eq 'gitlab-id (get-text-property 5 'face reviewers))))
+  (should (equal "Bob, Carol"
+                 (gitlab--format-field-value
+                  'reviewers
+                  '(((name . "Bob") (username . "bob"))
+                    ((name . "Carol") (username . "carol"))))))
   (dolist (key '(author assignee assignees reviewers user))
-    (should (eq 'gitlab-author
-                (get-text-property
-                 0 'face (gitlab--format-field-value
-                          key '((name . "Alice") (username . "alice"))))))
-        (should (eq 'gitlab-id
-                    (get-text-property
-                     7 'face (gitlab--format-field-value
-                              key '((name . "Alice")
-                                    (username . "alice")))))))
+    (let ((text (let ((gitlab-show-author-username t))
+                  (gitlab--format-field-value
+                   key '((name . "Alice") (username . "alice"))))))
+      (should (eq 'gitlab-author (get-text-property 0 'face text)))
+      (should (eq 'gitlab-id (get-text-property 7 'face text)))))
   (should (equal "-"
                  (gitlab--format-field-value 'assignees nil))))
 
@@ -162,12 +175,23 @@
         (title . "Fix")
         (author (username . "alice") (name . "Alice"))))
      (should (string-match-p "Merge request !12" (buffer-string)))
-     (should (string-match-p "Alice (@alice)" (buffer-string)))
+     (should (string-match-p "Alice" (buffer-string)))
      (gitlab--goto-field 'title)
      (should (eq 'title (gitlab--field-at-point)))
      (should (string-match-p "Title:" (buffer-substring
                                         (line-beginning-position)
                                         (line-end-position)))))))
+
+(ert-deftest gitlab-mode-render-fields-author-username ()
+  "The author option adds the account name to a rendered field."
+  (gitlab-test-with-environment
+   (let ((gitlab-show-author-username t))
+     (with-temp-buffer
+       (gitlab--render-fields
+        "Merge request !12"
+        '((iid . 12)
+          (author (username . "alice") (name . "Alice"))))
+       (should (string-match-p "Alice (@alice)" (buffer-string)))))))
 
 (ert-deftest gitlab-mode-point-record-text ()
   "A plain line records its text and its ordinal among equal lines."

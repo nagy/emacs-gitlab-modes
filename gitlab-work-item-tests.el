@@ -112,7 +112,8 @@
   (with-temp-buffer
     (setq-local gitlab--scope 'group)
     (setq-local gitlab--context "group")
-    (let* ((item '((iid . 12)
+    (let* ((gitlab-show-author-username t)
+           (item '((iid . 12)
                    (title . "Group item")
                    (state . "opened")
                    (issue_type . "issue")

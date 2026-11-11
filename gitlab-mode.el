@@ -305,6 +305,14 @@ array of users takes the same faces on every entry."
   :type '(repeat string)
   :group 'gitlab)
 
+(defcustom gitlab-show-author-username nil
+  "When non-nil, show the account name beside an author name.
+An author then renders as `Alice (@alice)'.  A nil value renders
+the name alone, as `Alice'.  A user without a name keeps the
+account name either way, because no other text names it."
+  :type 'boolean
+  :group 'gitlab)
+
 (defcustom gitlab-branch-fields
   '("source_branch" "target_branch" "ref")
   "Field names that take `gitlab-branch'.
@@ -1302,7 +1310,7 @@ a value already."
 
 (defun gitlab--format-object (object)
   "Return a readable one-line form of the decoded OBJECT."
-  (declare (pure t) (side-effect-free t))
+  (declare (side-effect-free t))
   (let ((username (gitlab-data-field "username" object))
         (name (gitlab-data-field "name" object))
         (title (gitlab-data-field "title" object))
@@ -1314,7 +1322,9 @@ a value already."
         (label (gitlab-data-field "label" object)))
     (cond
      ((and username name)
-      (format "%s (@%s)" name username))
+      (if gitlab-show-author-username
+          (format "%s (@%s)" name username)
+        (format "%s" name)))
      (username
       (format "@%s" username))
      ((and id status)
@@ -1338,7 +1348,7 @@ a value already."
 
 (defun gitlab--format-value (value)
   "Return VALUE as display text."
-  (declare (pure t) (side-effect-free t))
+  (declare (side-effect-free t))
   (cond
    ((eq value :false) "no")
    ((eq value t) "yes")
@@ -1356,18 +1366,21 @@ a value already."
   "Return author VALUE as display text with the `gitlab-author' face.
 The name takes `gitlab-author' and the account name takes
 `gitlab-id'.  VALUE is a decoded user object, a plain name, or
-nil."
-  (declare (pure t) (side-effect-free t))
+nil.  `gitlab-show-author-username' decides whether the account
+name follows the name."
+  (declare (side-effect-free t))
   (cond
    ((gitlab-data-alist-p value)
     (let ((name (gitlab-data-field "name" value))
           (username (gitlab-data-field "username" value)))
       (cond
        ((and name username)
-        (concat (propertize (format "%s" name) 'face 'gitlab-author)
-                " ("
-                (propertize (format "@%s" username) 'face 'gitlab-id)
-                ")"))
+        (if gitlab-show-author-username
+            (concat (propertize (format "%s" name) 'face 'gitlab-author)
+                    " ("
+                    (propertize (format "@%s" username) 'face 'gitlab-id)
+                    ")")
+          (propertize (format "%s" name) 'face 'gitlab-author)))
        (username
         (propertize (format "@%s" username) 'face 'gitlab-id))
        (t (propertize (gitlab--format-object value)
@@ -1381,8 +1394,9 @@ nil."
 VALUE is a decoded user object, an array of user objects, a plain
 name or nil.  Every name takes `gitlab-author' and every account
 name takes `gitlab-id', so a detail field looks like a list
-column."
-  (declare (pure t) (side-effect-free t))
+column.  `gitlab-show-author-username' decides whether an account
+name follows its name."
+  (declare (side-effect-free t))
   (if (and (listp value)
            value
            (not (gitlab-data-alist-p value)))

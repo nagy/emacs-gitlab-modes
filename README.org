@@ -59,8 +59,10 @@ library:
 
 A merge request buffer shows every top-level field of
 =glab mr view --output json=.  Nested objects become one readable line.
-A user becomes =Name (@username)=, a milestone becomes its title and a
+A user becomes =Name=, a milestone becomes its title and a
 pipeline becomes =#ID status= with a link to the pipeline buffer.
+The option =gitlab-show-author-username= adds the account name, so a
+user then reads =Name (@username)=.
 =RET= opens the object at point.  =n= loads the notes below the fields.
 The command =gitlab-approve-merge-request= approves the merge request on
 behalf of the current user.  The request runs in the background, so the
@@ -87,6 +89,8 @@ A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 An author carries the =gitlab-author= face, which inherits the Magit
 =magit-log-author= face, and its account name carries =gitlab-id=.
+The option =gitlab-show-author-username=, nil by default, adds the
+account name to the name.
 An assignee, an assignee list, a reviewer list, the user of a
 pipeline, the merge user and the user who merged carry the same two
 faces, so a name looks the same in a detail buffer and in a list

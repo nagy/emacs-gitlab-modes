@@ -313,7 +313,8 @@
 (ert-deftest gitlab-merge-request-detail-render ()
   "The detail buffer shows fields and nested objects."
   (gitlab-test-with-environment
-   (let ((buffer (generate-new-buffer "*GitLab MR detail test*")))
+   (let ((gitlab-show-author-username t)
+         (buffer (generate-new-buffer "*GitLab MR detail test*")))
      (unwind-protect
          (progn
            (with-current-buffer buffer
@@ -377,7 +378,8 @@
 
 (ert-deftest gitlab-merge-request-entries-fields ()
   "A list row carries the IID, state and branch columns."
-  (let* ((data '(((iid . 7)
+  (let* ((gitlab-show-author-username t)
+         (data '(((iid . 7)
                   (title . "Seven")
                   (state . "opened")
                   (author (name . "Alice") (username . "alice"))
@@ -398,7 +400,12 @@
     (should (eq 'gitlab-branch (get-text-property 11 'face (aref row 4))))
     (should (equal "UX" (aref row 5)))
     (should (equal "2026-10-31 20:57:30" (aref row 6)))
-    (should (eq 'gitlab-date (get-text-property 0 'face (aref row 6))))))
+    (should (eq 'gitlab-date (get-text-property 0 'face (aref row 6))))
+    (let ((gitlab-show-author-username nil))
+      (should (equal "Alice"
+                     (substring-no-properties
+                      (aref (cadr (car (gitlab-merge-request--entries data)))
+                            3)))))))
 
 (ert-deftest gitlab-merge-request-commit-rows-faces ()
   "A commit row marks its SHA, its author and its date."
@@ -509,19 +516,20 @@ runs of the neighbour rows into one block."
 (ert-deftest gitlab-merge-request-notes-author-face ()
   "The notes header marks the author and the account name."
   (gitlab-test-with-environment
-   (with-temp-buffer
-     (setq-local gitlab-merge-request--notes
-                 (list '((author (name . "Alice") (username . "alice"))
-                         (created_at . "2026-10-31T20:57:30.763Z")
-                         (body . "Fine."))))
-     (setq-local gitlab-merge-request--notes-loaded t)
-     (gitlab-merge-request--insert-notes)
-     (goto-char (point-min))
-     (re-search-forward "Alice")
-     (should (eq 'gitlab-author (get-text-property (match-beginning 0) 'face)))
-     (re-search-forward "@alice")
-     (should (eq 'gitlab-id (get-text-property (match-beginning 0) 'face)))
-     (should (string-match-p "Fine." (buffer-string))))))
+   (let ((gitlab-show-author-username t))
+     (with-temp-buffer
+       (setq-local gitlab-merge-request--notes
+                   (list '((author (name . "Alice") (username . "alice"))
+                           (created_at . "2026-10-31T20:57:30.763Z")
+                           (body . "Fine."))))
+       (setq-local gitlab-merge-request--notes-loaded t)
+       (gitlab-merge-request--insert-notes)
+       (goto-char (point-min))
+       (re-search-forward "Alice")
+       (should (eq 'gitlab-author (get-text-property (match-beginning 0) 'face)))
+       (re-search-forward "@alice")
+       (should (eq 'gitlab-id (get-text-property (match-beginning 0) 'face)))
+       (should (string-match-p "Fine." (buffer-string)))))))
 
 (ert-deftest gitlab-merge-request-detail-parent ()
   "A merge request detail buffer opens the merge request list.

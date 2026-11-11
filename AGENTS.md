@@ -532,8 +532,9 @@ without evil.  The suite never opens a network connection.
   `gitlab-goto-address` turn each mode off.  A list buffer gets
   neither, because a link there would take the left click of a row.
 - The merge request detail renders every top-level JSON field.  Nested
-  objects go through `gitlab--format-object`: a user becomes
-  `Name (@username)`, a milestone its title, and an object with `id`
+  objects go through `gitlab--format-object`: a user becomes `Name`,
+  or `Name (@username)` with `gitlab-show-author-username`, a
+  milestone its title, and an object with `id`
   and `status` becomes `#ID status`.  Only an object that also has
   `ref` or `sha` carries `gitlab-pipeline-id`; any other keeps the
   plain text or a `gitlab-url` link.  Empty strings and nil render as
@@ -1001,7 +1002,12 @@ without evil.  The suite never opens a network connection.
   `gitlab--format-branch`, because `gitlab--format-value` adds no
   face.  `gitlab--format-author` gives the name `gitlab-author` and
   the account name `gitlab-id`, so `Alice (@alice)` shows two faces.
-  The merge request list uses both in its Author and Branches
+  The option `gitlab-show-author-username`, nil by default, decides
+  whether the account name follows the name, so a user then reads
+  `Alice`.  The option applies in `gitlab--format-author` and in
+  `gitlab--format-object`, so a user looks the same wherever it
+  appears.  A user without a name keeps the account name either way.
+  The merge request list uses both faces in its Author and Branches
   columns, the commit list and the notes header use the first, and
   the pipeline list uses the second in its Ref column.  The commit
   list gives the short SHA `gitlab-id`.  `gitlab--format-field-value`
