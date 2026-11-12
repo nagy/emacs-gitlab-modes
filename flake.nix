@@ -133,10 +133,22 @@
                 done
 
                 echo '=== ERT tests ==='
-                test_args=(-l gitlab-test-helper.el)
-                for file in test/*-test.el; do test_args+=(-l "$file"); done
+                # Glob every test file instead of listing them, so a new
+                # test/<unit>-test.el needs no flake edit.  printf repeats
+                # "-l %s" once per match.  failglob makes an empty glob a
+                # shell error, so the || guard fires even without `set -e';
+                # a loop over a zero-match glob would instead load the
+                # helper alone and pass with no test.  Restore the default
+                # right after: later globs must keep default semantics.
+                # The unquoted $test_args is intentional, the words must
+                # split back into -l <file> pairs.
+                shopt -s failglob
+                test_args=$(printf -- '-l %s ' test/*-test.el) \
+                  || { echo 'no tests matched test/*-test.el' >&2; exit 1; }
+                shopt -u failglob
                 emacs --batch -L . -L test -L "$evil_load_path" \
-                  "''${test_args[@]}" \
+                  -l gitlab-test-helper.el \
+                  $test_args \
                   -f ert-run-tests-batch-and-exit
 
                 runHook postCheck
