@@ -1,4 +1,4 @@
-;;; gitlab-test-helpers.el --- Shared helpers of the ERT suite -*- lexical-binding: t; -*-
+;;; gitlab-test-helper.el --- Shared helpers of the ERT suite -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -75,6 +75,6 @@ output, so an asynchronous glab request completes."
   (with-current-buffer buffer
     (buffer-substring-no-properties (point-min) (point-max))))
 
-(provide 'gitlab-test-helpers)
+(provide 'gitlab-test-helper)
 
-;;; gitlab-test-helpers.el ends here
+;;; gitlab-test-helper.el ends here

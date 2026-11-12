@@ -1,4 +1,4 @@
-;;; gitlab-merge-request-tests.el --- Tests of the merge request views -*- lexical-binding: t; -*-
+;;; gitlab-merge-request-test.el --- Tests of the merge request views -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -17,7 +17,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-merge-request)
 
 (defun gitlab-merge-request-tests--wait-for (buffer text)
@@ -687,4 +687,4 @@ request of another project opens the list of that project."
 
 (provide 'gitlab-merge-request-tests)
 
-;;; gitlab-merge-request-tests.el ends here
+;;; gitlab-merge-request-test.el ends here

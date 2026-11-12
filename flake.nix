@@ -111,10 +111,9 @@
               # The local Git tests build scratch repositories, so the
               # check phase needs git on PATH.
               nativeCheckInputs = [ git ];
-              # No file lists here: the phase globs the tree.  Test files
-              # carry the `-tests.el' suffix, which package-build excludes
-              # from the tarball and the lint gate excludes from the ELPA
-              # policy checks.
+              # No file lists here: the phase globs the tree.  The suite
+              # lives in test/, which no MELPA `files' spec descends into,
+              # so the tarball never carries a test file.
               checkPhase = ''
                 runHook preCheck
 
@@ -134,8 +133,8 @@
                 done
 
                 echo '=== ERT tests ==='
-                test_args=(-l gitlab-test-helpers.el)
-                for file in *-tests.el; do test_args+=(-l "$file"); done
+                test_args=(-l gitlab-test-helper.el)
+                for file in test/*-test.el; do test_args+=(-l "$file"); done
                 emacs --batch -L . -L test -L "$evil_load_path" \
                   "''${test_args[@]}" \
                   -f ert-run-tests-batch-and-exit

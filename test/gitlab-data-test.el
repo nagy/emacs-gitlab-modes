@@ -1,4 +1,4 @@
-;;; gitlab-data-tests.el --- Tests of the GitLab data layer -*- lexical-binding: t; -*-
+;;; gitlab-data-test.el --- Tests of the GitLab data layer -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -18,7 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-data)
 (require 'gitlab-error)
 
@@ -161,4 +161,4 @@ read, so the endpoints cap the request at 100 items instead."
 
 (provide 'gitlab-data-tests)
 
-;;; gitlab-data-tests.el ends here
+;;; gitlab-data-test.el ends here

@@ -1,4 +1,4 @@
-;;; gitlab-read-tests.el --- Tests of the GitLab ID prompts -*- lexical-binding: t; -*-
+;;; gitlab-read-test.el --- Tests of the GitLab ID prompts -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -17,7 +17,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-read)
 
 (ert-deftest gitlab-read-strip ()
@@ -170,4 +170,4 @@
 
 (provide 'gitlab-read-tests)
 
-;;; gitlab-read-tests.el ends here
+;;; gitlab-read-test.el ends here

@@ -1,4 +1,4 @@
-;;; gitlab-evil-tests.el --- Tests of the optional evil layer -*- lexical-binding: t; -*-
+;;; gitlab-evil-test.el --- Tests of the optional evil layer -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -18,7 +18,7 @@
 
 (require 'ert)
 (require 'evil)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-evil)
 
 (declare-function gitlab-export-json "gitlab-export" ())
@@ -206,4 +206,4 @@
 
 (provide 'gitlab-evil-tests)
 
-;;; gitlab-evil-tests.el ends here
+;;; gitlab-evil-test.el ends here

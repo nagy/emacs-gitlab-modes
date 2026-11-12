@@ -1,4 +1,4 @@
-;;; gitlab-context-tests.el --- Tests of the project context -*- lexical-binding: t; -*-
+;;; gitlab-context-test.el --- Tests of the project context -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -20,7 +20,7 @@
 
 (require 'cl-lib)
 (require 'ert)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-cli)
 (require 'gitlab-data)
 (require 'gitlab-git)
@@ -407,4 +407,4 @@ Kill every GitLab buffer that BODY opened."
 
 (provide 'gitlab-context-tests)
 
-;;; gitlab-context-tests.el ends here
+;;; gitlab-context-test.el ends here

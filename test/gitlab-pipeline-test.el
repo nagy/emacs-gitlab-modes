@@ -1,4 +1,4 @@
-;;; gitlab-pipeline-tests.el --- Tests of the pipeline views -*- lexical-binding: t; -*-
+;;; gitlab-pipeline-test.el --- Tests of the pipeline views -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -18,7 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-pipeline)
 
 (defvar gitlab-pipeline-tests--trace-text
@@ -1772,4 +1772,4 @@ the fold must not hide the newline above the next trace line."
 
 (provide 'gitlab-pipeline-tests)
 
-;;; gitlab-pipeline-tests.el ends here
+;;; gitlab-pipeline-test.el ends here

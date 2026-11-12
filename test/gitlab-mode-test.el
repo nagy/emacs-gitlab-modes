@@ -1,4 +1,4 @@
-;;; gitlab-mode-tests.el --- Tests of the GitLab display layer -*- lexical-binding: t; -*-
+;;; gitlab-mode-test.el --- Tests of the GitLab display layer -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -20,7 +20,7 @@
 (require 'cl-lib)
 (require 'outline)
 (require 'subr-x)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-mode)
 
 (declare-function gitlab-display-job-log "gitlab-pipeline"
@@ -1286,4 +1286,4 @@ alone and adds the child rows after the sort."
 
 (provide 'gitlab-mode-tests)
 
-;;; gitlab-mode-tests.el ends here
+;;; gitlab-mode-test.el ends here

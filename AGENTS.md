@@ -33,10 +33,10 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-work-item:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `work-item:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
-| `test/gitlab-test-helpers.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
+| `test/gitlab-test-helper.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
 | `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection.  `GITLAB_TEST_TRACE` selects another job trace fixture. |
 | `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections, a pipeline without a jobs array, two jobs fixtures (one for the pipeline detail and one for the row expansion of the pipeline list) and two work item fixtures (a list and a detail). |
-| `*-tests.el` | ERT suites.  `package-build` excludes this suffix from the package and the lint gate skips it. |
+| `test/*-test.el` | ERT suites, one file per source unit.  No MELPA `files` spec descends into a subdirectory, so the package tarball never carries them. |
 | `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary or the evil package. |
 | `flake.lock` | Pinned flake inputs. |
 | `README.org` | User documentation. |
@@ -55,15 +55,15 @@ nix develop        # emacs with evil, and glab
 Without Nix:
 
 ```sh
-emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helpers.el \
-  -l gitlab-cli-tests.el -l gitlab-data-tests.el \
-  -l gitlab-context-tests.el -l gitlab-mode-tests.el \
-  -l gitlab-merge-request-tests.el \
-  -l gitlab-work-item-tests.el \
-  -l gitlab-git-tests.el -l gitlab-pipeline-tests.el \
-  -l gitlab-export-tests.el \
-  -l gitlab-read-tests.el -l gitlab-evil-tests.el -l ol-gitlab-tests.el \
-  -l gitlab-xref-tests.el -l gitlab-bookmark-tests.el \
+emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helper.el \
+  -l gitlab-cli-test.el -l gitlab-data-test.el \
+  -l gitlab-context-test.el -l gitlab-mode-test.el \
+  -l gitlab-merge-request-test.el \
+  -l gitlab-work-item-test.el \
+  -l gitlab-git-test.el -l gitlab-pipeline-test.el \
+  -l gitlab-export-test.el \
+  -l gitlab-read-test.el -l gitlab-evil-test.el -l ol-gitlab-test.el \
+  -l gitlab-xref-test.el -l gitlab-bookmark-test.el \
   -f ert-run-tests-batch-and-exit
 ```
 
@@ -298,7 +298,7 @@ without evil.  The suite never opens a network connection.
   log keymap bind `C-c C-n` and `C-c C-p` and the forward and back
   buttons `[mouse-9]` and `[mouse-8]`.  Evil leaves `C-c` unbound in
   its states and binds no side button, so no evil key list needs the
-  commands; `gitlab-evil-tests.el` keeps that assumption checked.
+  commands; `test/gitlab-evil-test.el` keeps that assumption checked.
 - A job log stores its pipeline ID, so a sibling jump passes the
   pipeline and the job name of the new entry to `gitlab-display-job-log`
   and the new log can walk up without a request.  A pipeline detail

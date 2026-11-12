@@ -1,4 +1,4 @@
-;;; gitlab-work-item-tests.el --- Tests of the work item views -*- lexical-binding: t; -*-
+;;; gitlab-work-item-test.el --- Tests of the work item views -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -20,7 +20,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'bookmark)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-work-item)
 
 (defun gitlab-work-item-tests--wait-for (buffer text)
@@ -228,4 +228,4 @@
 
 (provide 'gitlab-work-item-tests)
 
-;;; gitlab-work-item-tests.el ends here
+;;; gitlab-work-item-test.el ends here

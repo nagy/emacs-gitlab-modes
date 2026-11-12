@@ -703,20 +703,20 @@ reads JSON from =test/fixtures=.  No test opens a network connection.
 
 #+begin_src sh
 emacs --batch -L . -L test -L "$EVIL" \
-  -l gitlab-test-helpers.el \
-  -l gitlab-cli-tests.el \
-  -l gitlab-data-tests.el \
-  -l gitlab-context-tests.el \
-  -l gitlab-mode-tests.el \
-  -l gitlab-merge-request-tests.el \
-  -l gitlab-work-item-tests.el \
-  -l gitlab-pipeline-tests.el \
-  -l gitlab-export-tests.el \
-  -l gitlab-read-tests.el \
-  -l gitlab-evil-tests.el \
-  -l ol-gitlab-tests.el \
-  -l gitlab-xref-tests.el \
-  -l gitlab-bookmark-tests.el \
+  -l gitlab-test-helper.el \
+  -l gitlab-cli-test.el \
+  -l gitlab-data-test.el \
+  -l gitlab-context-test.el \
+  -l gitlab-mode-test.el \
+  -l gitlab-merge-request-test.el \
+  -l gitlab-work-item-test.el \
+  -l gitlab-pipeline-test.el \
+  -l gitlab-export-test.el \
+  -l gitlab-read-test.el \
+  -l gitlab-evil-test.el \
+  -l ol-gitlab-test.el \
+  -l gitlab-xref-test.el \
+  -l gitlab-bookmark-test.el \
   -f ert-run-tests-batch-and-exit
 #+end_src
 

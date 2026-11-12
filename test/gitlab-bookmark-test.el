@@ -1,4 +1,4 @@
-;;; gitlab-bookmark-tests.el --- Tests of the GitLab bookmark records -*- lexical-binding: t; -*-
+;;; gitlab-bookmark-test.el --- Tests of the GitLab bookmark records -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -20,7 +20,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'bookmark)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-merge-request)
 (require 'gitlab-pipeline)
 
@@ -436,4 +436,4 @@ a later refresh."
 
 (provide 'gitlab-bookmark-tests)
 
-;;; gitlab-bookmark-tests.el ends here
+;;; gitlab-bookmark-test.el ends here

@@ -1,4 +1,4 @@
-;;; gitlab-export-tests.el --- Tests of the JSON export -*- lexical-binding: t; -*-
+;;; gitlab-export-test.el --- Tests of the JSON export -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -29,7 +29,7 @@
 ;;; Code:
 
 (require 'ert)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-export)
 (require 'gitlab-merge-request)
 (require 'gitlab-pipeline)
@@ -279,4 +279,4 @@
 
 (provide 'gitlab-export-tests)
 
-;;; gitlab-export-tests.el ends here
+;;; gitlab-export-test.el ends here

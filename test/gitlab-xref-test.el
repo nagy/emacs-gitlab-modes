@@ -1,4 +1,4 @@
-;;; gitlab-xref-tests.el --- Tests of the GitLab xref backend -*- lexical-binding: t; -*-
+;;; gitlab-xref-test.el --- Tests of the GitLab xref backend -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -18,7 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-xref)
 
 (ert-deftest gitlab-xref-property-identifier ()
@@ -142,4 +142,4 @@
 
 (provide 'gitlab-xref-tests)
 
-;;; gitlab-xref-tests.el ends here
+;;; gitlab-xref-test.el ends here

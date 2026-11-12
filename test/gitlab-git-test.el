@@ -1,4 +1,4 @@
-;;; gitlab-git-tests.el --- Tests of the local Git support -*- lexical-binding: t; -*-
+;;; gitlab-git-test.el --- Tests of the local Git support -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -395,4 +395,4 @@ buffer."
 
 (provide 'gitlab-git-tests)
 
-;;; gitlab-git-tests.el ends here
+;;; gitlab-git-test.el ends here

@@ -1,4 +1,4 @@
-;;; ol-gitlab-tests.el --- Tests of the Org link types -*- lexical-binding: t; -*-
+;;; ol-gitlab-test.el --- Tests of the Org link types -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -18,7 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'ol-gitlab)
 
 (ert-deftest ol-gitlab-parameters ()
@@ -160,4 +160,4 @@ so an error here would break `org-store-link' everywhere."
 
 (provide 'ol-gitlab-tests)
 
-;;; ol-gitlab-tests.el ends here
+;;; ol-gitlab-test.el ends here

@@ -1,4 +1,4 @@
-;;; gitlab-cli-tests.el --- Tests of the glab transport -*- lexical-binding: t; -*-
+;;; gitlab-cli-test.el --- Tests of the glab transport -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -17,7 +17,7 @@
 
 (require 'ert)
 (require 'seq)
-(require 'gitlab-test-helpers)
+(require 'gitlab-test-helper)
 (require 'gitlab-cli)
 (require 'gitlab-data)
 (require 'gitlab-error)
@@ -177,4 +177,4 @@
 
 (provide 'gitlab-cli-tests)
 
-;;; gitlab-cli-tests.el ends here
+;;; gitlab-cli-test.el ends here
