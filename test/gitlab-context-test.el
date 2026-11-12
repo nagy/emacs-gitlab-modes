@@ -38,13 +38,13 @@
   "Environment that keeps git away from the user configuration.")
 
 (defun gitlab-context-tests--git (directory &rest arguments)
-  "Run git with ARGUMENTS in DIRECTORY and return its output."
+  "Run git in DIRECTORY with ARGUMENTS and return its output."
   (let ((default-directory directory)
         (process-environment (append gitlab-context-tests--environment
                                      process-environment)))
     (with-temp-buffer
       (unless (eq 0 (apply #'process-file "git" nil t nil arguments))
-        (error "git %S failed: %s" arguments (buffer-string)))
+        (error "Git %S failed: %s" arguments (buffer-string)))
       (string-trim (buffer-string)))))
 
 (defun gitlab-context-tests--repo (&optional url)
@@ -81,7 +81,7 @@ directory and the base commit."
                   (start_sha . ,base)))))
 
 (defmacro gitlab-context-tests--with-repo (url &rest body)
-  "Run BODY with REPO bound to a scratch repository that has URL.
+  "Set up a scratch repository from URL and run BODY with REPO bound to it.
 Kill every GitLab buffer that BODY opened."
   (declare (indent 1))
   `(progn

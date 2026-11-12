@@ -109,8 +109,13 @@
 
               doCheck = true;
               # The local Git tests build scratch repositories, so the
-              # check phase needs git on PATH.
-              nativeCheckInputs = [ git ];
+              # check phase needs git on PATH.  The hook gives Emacs a
+              # writable HOME for the check alone, so the check phase
+              # writes no HOME line of its own.
+              nativeCheckInputs = [
+                git
+                pkgs.writableTmpDirAsHomeHook
+              ];
               # No file lists here: the phase globs the tree.  The suite
               # lives in test/, which no MELPA `files' spec descends into,
               # so the tarball never carries a test file.
@@ -191,17 +196,19 @@
           ) { inherit version; };
 
           # Shell snippet for the ELPA policy checks: copy the packaged
-          # Elisp sources into the build directory.  Test files carry the
-          # `-tests.el' suffix and stay out.
+          # sources and the test tree into the build directory, so the
+          # test files meet the same header, docstring and prefix rules
+          # as the code under test.
           lintFiles = ''
-            export HOME=$TMPDIR
             mode_files=()
             for file in "$src"/*.el; do
-              case "$file" in
-                *-tests.el) continue ;;
-              esac
               cp "$file" .
               mode_files+=("$(basename "$file")")
+            done
+            cp -r "$src"/test ./test
+            test_files=()
+            for file in test/*.el; do
+              test_files+=("$file")
             done
           '';
         in
@@ -228,6 +235,10 @@
               {
                 nativeBuildInputs = [
                   (pkgs.emacsPackages.emacsWithPackages (p: [ p.package-lint ]))
+                  # Emacs writes ~/.emacs.d, so the check needs a writable
+                  # home.  The hook owns it, and a shared $TMPDIR never
+                  # leaks state into another check.
+                  pkgs.writableTmpDirAsHomeHook
                 ];
                 src = ./.;
               }
@@ -244,6 +255,17 @@
                   -f package-lint-batch-and-exit \
                   "''${mode_files[@]}"
 
+                # A test file is a secondary file of the package, so
+                # package-lint needs the main file for the prefix and the
+                # dependency list.  The source files lint without it,
+                # because each one carries its own Package-Requires
+                # header and a secondary file must not.
+                emacs --batch -l package-lint \
+                  --eval '(setq package-lint-main-file "gitlab-modes.el")' \
+                  --eval '(setq package-lint--sane-prefixes (concat package-lint--sane-prefixes "\\|\\`gitlab\\|\\`ol-gitlab"))' \
+                  -f package-lint-batch-and-exit \
+                  "''${test_files[@]}"
+
                 touch $out
               '';
 
@@ -252,7 +274,10 @@
           checks.checkdoc =
             pkgs.runCommandLocal "gitlab-modes-checkdoc"
               {
-                nativeBuildInputs = [ pkgs.emacs ];
+                nativeBuildInputs = [
+                  pkgs.emacs
+                  pkgs.writableTmpDirAsHomeHook
+                ];
                 src = ./.;
               }
               ''
@@ -262,7 +287,7 @@
                 lint_log=$(emacs --batch -l checkdoc \
                   --eval '(setq checkdoc-arguments-in-order-flag t)' \
                   --eval "(mapc #'checkdoc-file command-line-args-left)" \
-                  "''${mode_files[@]}" 2>&1)
+                  "''${mode_files[@]}" "''${test_files[@]}" 2>&1)
                 if [ -n "$lint_log" ]; then printf '%s\n' "$lint_log"; exit 1; fi
                 touch $out
               '';

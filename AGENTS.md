@@ -1150,8 +1150,16 @@ without evil.  The suite never opens a network connection.
   buffer, a process or a file carries no such declaration.  The
   annotation goes after the docstring and before the body.
 - `checkdoc` and `package-lint` must pass through `checks.checkdoc` and
-  `checks.package-lint`.  The package-lint check whitelists `gitlab`
-  and `ol-gitlab` as shared prefixes.
+  `checks.package-lint`, and both checks cover the test tree: a test
+  file keeps the header, docstring and prefix rules of the code under
+  test.  The package-lint check whitelists `gitlab` and `ol-gitlab` as
+  shared prefixes, and it lints `test/*.el` in a second invocation with
+  `package-lint-main-file` set, because a test file is a secondary file
+  of the package.  The source files lint without that variable, because
+  each one carries its own `Package-Requires` header and package-lint
+  rejects that header in a secondary file.  Every check that runs Emacs
+  takes `pkgs.writableTmpDirAsHomeHook` in its inputs, so the hook owns
+  a private writable home and no check writes an `export HOME` line.
 - `nix fmt` formats `flake.nix`.  Do not run nixfmt standalone.
 - `gitlabModes` in `flake.nix` calls `lib.makeOverridable` with one
   argument set: `emacs`, `emacsPackages`, `melpaBuild`, `version`,

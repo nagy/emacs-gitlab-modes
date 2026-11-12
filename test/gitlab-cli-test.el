@@ -112,7 +112,7 @@
                           (gitlab-cli--environment)))))
 
 (ert-deftest gitlab-cli-directory ()
-  "glab runs in `gitlab-cli-directory' when it is set."
+  "The program runs in `gitlab-cli-directory' when it is set."
   (gitlab-test-with-environment
    (let ((gitlab-cli-directory temporary-file-directory))
      (let* ((data (gitlab-cli-request '("probe" "pwd")))

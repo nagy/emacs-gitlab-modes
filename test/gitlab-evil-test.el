@@ -77,7 +77,8 @@
        (should (equal '("1" "2") ids))))))
 
 (defun gitlab-evil-test--binding (mode key &optional visual)
-  "Return the command that KEY runs in a buffer with MODE and evil."
+  "Return the command that MODE binds to KEY with evil.
+VISUAL reads the binding in visual state instead of normal state."
   (with-temp-buffer
     (funcall mode)
     (gitlab-evil--maybe-enable)

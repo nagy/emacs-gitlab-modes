@@ -93,7 +93,7 @@ The caller kills the buffer."
     buffer))
 
 (defun gitlab-pipeline-tests--expand (buffer pipeline-id)
-  "Expand PIPELINE-ID in BUFFER and wait for the job rows."
+  "In BUFFER expand PIPELINE-ID and wait for the job rows."
   (with-current-buffer buffer
     (gitlab-list-toggle-expansion pipeline-id))
   (should (gitlab-test-wait
@@ -234,11 +234,11 @@ parent rows alone and adds the child rows after the sort."
            (with-current-buffer buffer
              (gitlab-list--set-expanded "1003" t)
              (gitlab-pipeline--jobs-set "1003"
-                                        :error '(error "boom"))
+                                        :error '(error "Boom"))
              (gitlab--render)
              (should (equal '("1004" "1003" (note . "1003"))
                             (gitlab-pipeline-tests--row-ids buffer)))
-             (should (string-match-p "Jobs: boom" (buffer-string)))))
+             (should (string-match-p "Jobs: Boom" (buffer-string)))))
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-pipeline-list-job-row-opens-log ()
@@ -1102,7 +1102,7 @@ The list belongs to the project of the pipeline."
     buffer))
 
 (defun gitlab-pipeline-tests--plain-job-log-buffer (job-id name pipeline-id)
-  "Return a job log buffer of JOB-ID without a trace process."
+  "Return a job log buffer for JOB-ID named NAME in PIPELINE-ID without a trace process."
   (let ((buffer (generate-new-buffer "*GitLab job log sibling test*")))
     (with-current-buffer buffer
       (gitlab-job-log-mode)

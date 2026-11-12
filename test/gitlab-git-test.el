@@ -31,17 +31,17 @@
   "Environment that keeps git away from the user configuration.")
 
 (defun gitlab-git-tests--git (directory &rest arguments)
-  "Run git with ARGUMENTS in DIRECTORY and return its output."
+  "Run git in DIRECTORY with ARGUMENTS and return its output."
   (let ((default-directory directory)
         (process-environment (append gitlab-git-tests--environment
                                      process-environment)))
     (with-temp-buffer
       (unless (eq 0 (apply #'process-file "git" nil t nil arguments))
-        (error "git %S failed: %s" arguments (buffer-string)))
+        (error "Git %S failed: %s" arguments (buffer-string)))
       (string-trim (buffer-string)))))
 
 (defun gitlab-git-tests--write (directory name text)
-  "Write TEXT to file NAME in DIRECTORY."
+  "Write into DIRECTORY the file NAME with the contents TEXT."
   (with-temp-file (expand-file-name name directory)
     (insert text)))
 
@@ -78,7 +78,7 @@ carries a fetched refs/remotes/origin/merge-requests/7/head ref."
                   (start_sha . ,base)))))
 
 (defmacro gitlab-git-tests--with-repo-commits (spec extra &rest body)
-  "Run BODY with SPEC bound to a scratch repository with EXTRA commits.
+  "Bind SPEC to a scratch repository with EXTRA commits and run BODY.
 The macro deletes the repository afterwards."
   (declare (indent 2))
   `(let ((,spec (gitlab-git-tests--repo ,extra)))
@@ -87,9 +87,8 @@ The macro deletes the repository afterwards."
        (delete-directory (car ,spec) t))))
 
 (defmacro gitlab-git-tests--with-repo (spec &rest body)
-  "Run BODY with SPEC bound to a scratch repository.
-SPEC receives the cons that `gitlab-git-tests--repo' returns.  The
-macro deletes the repository afterwards."
+  "Bind SPEC to the result of `gitlab-git-tests--repo' and run BODY.
+The macro deletes the repository afterwards."
   (declare (indent 1))
   `(let ((,spec (gitlab-git-tests--repo)))
      (unwind-protect

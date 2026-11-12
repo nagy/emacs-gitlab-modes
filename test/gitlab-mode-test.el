@@ -388,10 +388,10 @@
      (gitlab--refresh)
      (setq-local gitlab--fetch-function
                  (lambda (_id _success error)
-                   (funcall error '(gitlab-cli-error "boom"))))
+                   (funcall error '(gitlab-cli-error "Boom"))))
      (gitlab--refresh)
      (should (string-match-p "Good" (buffer-string)))
-     (should (string-match-p "boom" (or header-line-format ""))))))
+     (should (string-match-p "Boom" (or header-line-format ""))))))
 
 (ert-deftest gitlab-mode-refresh-after-write ()
   "A write drops the cache of its kind and fetches the buffer again."
@@ -476,8 +476,8 @@
        (should (string-match-p "ID" text))
        (should (string-match-p "Title" text)))
      (should (equal header-line-format gitlab--header-line-format))
-     (gitlab--set-error '(gitlab-cli-error "offline"))
-     (should (string-match-p "offline" (format "%s" mode-line-process)))
+     (gitlab--set-error '(gitlab-cli-error "Offline"))
+     (should (string-match-p "Offline" (format "%s" mode-line-process)))
      (gitlab--clear-error)
      (should (equal header-line-format gitlab--header-line-format)))))
 
@@ -525,9 +525,9 @@ buffer."
      (setq-local tabulated-list-format [("ID" 8 t)])
      (setq-local gitlab-list--fetch-function
                  (lambda (_success error)
-                   (funcall error '(gitlab-cli-error "offline"))))
+                   (funcall error '(gitlab-cli-error "Offline"))))
      (gitlab-list--refresh)
-     (should (string-match-p "offline" (format "%s" mode-line-process))))))
+     (should (string-match-p "Offline" (format "%s" mode-line-process))))))
 
 (ert-deftest gitlab-mode-navigation-property ()
   "RET opens the object that the text property names."
@@ -986,7 +986,7 @@ column stays right-aligned."
                     (command-remapping command)))))))
 
 (ert-deftest gitlab-mode-go-to-parent-list-keys ()
-  "A list buffer keeps the dired meaning of `dired-jump'."
+  "A list buffer keeps the Dired meaning of `dired-jump'."
   (with-temp-buffer
     (gitlab-list-mode)
     (should (eq #'dired-jump (key-binding (kbd "C-x C-j"))))))
@@ -1066,7 +1066,7 @@ The fake header line and the empty rows contribute nothing."
                  (command-modes #'gitlab-list-open-web))))
 
 (ert-deftest gitlab-mode-command-modes-filter-mx ()
-  "A mode-tagged command hides outside its mode in M-x completion."
+  "A mode-tagged command hides outside its mode in command completion."
   (with-temp-buffer
     (should-not (command-completion-default-include-p
                  #'gitlab-open-web (current-buffer)))
