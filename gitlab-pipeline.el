@@ -263,6 +263,7 @@ jobs: the job ID, the status, the name, the stage and the finish
 time or the time that the job runs.  A double click toggles the row
 as well, and one left click keeps the selection."
   :group 'gitlab
+  :interactive nil
   (setq-local tabulated-list-format gitlab-pipeline-list-format)
   (setq-local tabulated-list-sort-key '("Updated" . t))
   (setq-local gitlab-list--kind 'pipeline)
@@ -676,6 +677,7 @@ The pipeline fields occupy the top of the buffer and the jobs
 table the bottom.  RET on a job opens its log.  `g' refreshes the
 pipeline and its jobs."
   :group 'gitlab
+  :interactive nil
   (setq-local gitlab--kind 'pipeline)
   (setq-local gitlab--label "GitLab pipeline")
   (setq-local gitlab--parent-function #'gitlab-list-pipelines)
@@ -1686,6 +1688,7 @@ holds the job.  Killing the buffer deletes the process.  A copy of
 a region leaves out the timestamp prefix while it stays hidden, the
 text of a section header and the text of every end marker."
   :group 'gitlab
+  :interactive nil
   (gitlab--use-project-directory)
   (gitlab--init-text-links)
   (setq-local bookmark-make-record-function

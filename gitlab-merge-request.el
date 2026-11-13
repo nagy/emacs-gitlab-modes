@@ -220,6 +220,7 @@ and Updated, and a group list puts the Project column first.  RET
 opens the merge request at point; c copies its identifier and w
 opens its web page."
   :group 'gitlab
+  :interactive nil
   (setq-local tabulated-list-format
               (if (gitlab-merge-request--group-p)
                   gitlab-merge-request-group-list-format
@@ -488,6 +489,7 @@ active region over commit lines limits both to those commits.
 behalf of the user, and `gitlab-merge-merge-request' merges it.
 RET opens the pipeline, the commit or the web page at point."
   :group 'gitlab
+  :interactive nil
   (setq-local gitlab--kind 'merge-request)
   (setq-local gitlab--label "GitLab merge request")
   (setq-local gitlab--parent-function #'gitlab-list-merge-requests)

@@ -193,6 +193,7 @@ columns are IID, Type, Title, State, Author, Labels and Updated,
 and a group list puts the Project column first.  RET opens the work
 item at point; c copies its identifier and w opens its web page."
   :group 'gitlab
+  :interactive nil
   (setq-local tabulated-list-format
               (if (gitlab-work-item--group-p)
                   gitlab-work-item-group-list-format
@@ -268,6 +269,7 @@ A work item is an issue.  Every top-level field of the glab JSON
 answer appears in a field table.  RET opens the web page or the
 linked object at point."
   :group 'gitlab
+  :interactive nil
   (setq-local gitlab--kind 'work-item)
   (setq-local gitlab--label "GitLab work item")
   (setq-local gitlab--parent-function #'gitlab-list-work-items)

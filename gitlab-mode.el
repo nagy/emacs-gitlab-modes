@@ -2101,6 +2101,7 @@ and `gitlab--title-function', then the display command sets
 `revert-buffer-function', so the buffer keeps itself current
 without blocking Emacs."
   :group 'gitlab
+  :interactive nil
   (gitlab--init-display-buffer)
   (gitlab--init-text-links)
   (setq-local imenu-create-index-function #'gitlab--imenu-index)
@@ -2654,6 +2655,7 @@ and `gitlab-list--open-function'.  A mode whose rows expand sets
 a request.  The mode wires `auto-revert-mode' through
 `buffer-stale-function' and `revert-buffer-function'."
   :group 'gitlab
+  :interactive nil
   (gitlab--init-list-buffer)
   (setq-local thing-at-point-provider-alist
               (cons '(url . gitlab-list--thing-at-point-url)

@@ -1080,6 +1080,10 @@ without evil.  The suite never opens a network connection.
   `gitlab-merge-request-show-log` and `gitlab-copy-id` all carry a
   plain `(interactive)`.  `command-modes` returns the list, and the
   suites assert it.
+- Every display mode passes `:interactive nil` to
+  `define-derived-mode`, so the mode function is no command of its
+  own.  A display command enters a mode, and a bare call of the mode
+  would show an empty buffer that fetches nothing.
 - `gitlab-evil.el` binds every command key through
   `evil-define-minor-mode-key`, one key set per state and local minor
   mode.  A key that evil already binds becomes a `[remap

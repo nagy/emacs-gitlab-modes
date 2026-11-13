@@ -329,6 +329,7 @@ or the base object is absent."
 The buffer keeps the hunk commands of `diff-mode'.  It never loads a
 file."
   :group 'gitlab
+  :interactive nil
   (setq-local buffer-read-only t)
   (setq-local buffer-stale-function nil)
   (setq-local truncate-lines t))
@@ -340,7 +341,8 @@ file."
   "Display one Git commit in a read-only `diff-mode' buffer.
 The buffer shows the commit message and the patch that the commit
 introduced."
-  :group 'gitlab)
+  :group 'gitlab
+  :interactive nil)
 
 (define-key gitlab-git-commit-mode-map (kbd "q") #'quit-window)
 
