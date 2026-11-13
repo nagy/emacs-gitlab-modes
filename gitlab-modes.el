@@ -4,7 +4,7 @@
 
 ;; Author: Daniel Nagy
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "30.1") (magit-section "3.0.0"))
 ;; Keywords: tools, convenience
 ;; URL: https://github.com/nagy/emacs-gitlab-modes
 

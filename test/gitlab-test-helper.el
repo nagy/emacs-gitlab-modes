@@ -17,6 +17,7 @@
 
 ;;; Code:
 
+(require 'magit-section)
 (require 'subr-x)
 
 ;; The helper binds these variables even in a test that loads only one
@@ -74,6 +75,24 @@ output, so an asynchronous glab request completes."
   "Return the text of BUFFER."
   (with-current-buffer buffer
     (buffer-substring-no-properties (point-min) (point-max))))
+
+(defmacro gitlab-test-with-root (kind &rest body)
+  "Wrap the root section of KIND around BODY.
+The macro erases the buffer first and shows the tree, so a test
+renders a section without the fetch pipeline of the display layer."
+  (declare (indent 1))
+  `(progn
+     (let ((inhibit-read-only t))
+       (erase-buffer)
+       (magit-insert-section (gitlab-detail ,kind)
+         ,@body)
+       (let ((magit-section-cache-visibility nil))
+         (magit-section-show magit-root-section)))))
+
+(defun gitlab-test-section-children (section)
+  "Return the values of the children of SECTION, in display order."
+  (mapcar (lambda (child) (oref child value))
+          (oref section children)))
 
 (provide 'gitlab-test-helper)
 

@@ -421,7 +421,8 @@
                                 (author . "Bob")
                                 (date . "2026-10-31T20:57:30Z")))
                         :total 1))))
-       (gitlab-merge-request--insert-commits nil))
+       (gitlab-test-with-root 'merge-request
+         (gitlab-merge-request-insert-commits)))
      (goto-char (point-min))
      (re-search-forward "abc123d")
      (should (eq 'gitlab-id (get-text-property (match-beginning 0) 'face)))
@@ -454,7 +455,8 @@ runs of the neighbour rows into one block."
                                 (author . "Ann")
                                 (date . "2026-10-31T21:57:30Z")))
                         :total 2))))
-       (gitlab-merge-request--insert-commits nil))
+       (gitlab-test-with-root 'merge-request
+         (gitlab-merge-request-insert-commits)))
      (let ((position (point-min))
            runs)
        (while (< position (point-max))
@@ -477,10 +479,9 @@ runs of the neighbour rows into one block."
              (setq position (1+ position)))))))))
 
 (ert-deftest gitlab-merge-request-commits-section ()
-  "The commit list starts a foldable section of the detail buffer."
+  "The commit list is a group section with one child per commit."
   (gitlab-test-with-environment
    (with-temp-buffer
-     (gitlab-detail-mode)
      (setq-local gitlab--id "12")
      (cl-letf (((symbol-function 'gitlab-git-merge-request-commits)
                 (lambda (&rest _)
@@ -489,29 +490,38 @@ runs of the neighbour rows into one block."
                                 (subject . "Fix") (author . "Bob")
                                 (date . "2026-10-31T20:57:30Z")))
                         :total 1))))
-       (gitlab-merge-request--insert-commits nil))
-     (goto-char (point-min))
-     (should (search-forward "Commits (1)" nil t))
-     (should (equal "Commits (1)"
-                    (get-text-property (line-beginning-position)
-                                       'gitlab-section))))))
+       (gitlab-test-with-root 'merge-request
+         (gitlab-merge-request-insert-commits)))
+     (let ((group (seq-find (lambda (section)
+                              (and (eq 'gitlab-group (oref section type))
+                                   (equal "Commits" (oref section value))))
+                            (oref magit-root-section children))))
+       (should group)
+       (should (equal '("abc123def")
+                      (gitlab-test-section-children group)))
+       (should (string-match-p "Commits (1)"
+                               (buffer-substring-no-properties
+                                (oref group start) (oref group content))))))))
 
 (ert-deftest gitlab-merge-request-notes-section ()
-  "The notes start a foldable section of the detail buffer."
+  "The notes are a group section with one child per note."
   (gitlab-test-with-environment
    (with-temp-buffer
-     (gitlab-detail-mode)
      (setq-local gitlab-merge-request--notes
-                 (list '((author (name . "Alice") (username . "alice"))
+                 (list '((id . 31)
+                         (author (name . "Alice") (username . "alice"))
                          (created_at . "2026-10-31T20:57:30Z")
                          (body . "Looks good"))))
      (setq-local gitlab-merge-request--notes-loaded t)
-     (gitlab-merge-request--insert-notes)
-     (goto-char (point-min))
-     (should (search-forward "Notes" nil t))
-     (should (equal "Notes"
-                    (get-text-property (line-beginning-position)
-                                       'gitlab-section))))))
+     (gitlab-test-with-root 'merge-request
+       (gitlab-merge-request-insert-notes))
+     (let ((group (seq-find (lambda (section)
+                              (and (eq 'gitlab-group (oref section type))
+                                   (equal "Notes" (oref section value))))
+                            (oref magit-root-section children))))
+       (should group)
+       (should (equal '(31) (gitlab-test-section-children group)))
+       (should (string-match-p "Looks good" (buffer-string)))))))
 
 (ert-deftest gitlab-merge-request-notes-author-face ()
   "The notes header marks the author and the account name."
@@ -523,7 +533,8 @@ runs of the neighbour rows into one block."
                            (created_at . "2026-10-31T20:57:30.763Z")
                            (body . "Fine."))))
        (setq-local gitlab-merge-request--notes-loaded t)
-       (gitlab-merge-request--insert-notes)
+       (gitlab-test-with-root 'merge-request
+         (gitlab-merge-request-insert-notes))
        (goto-char (point-min))
        (re-search-forward "Alice")
        (should (eq 'gitlab-author (get-text-property (match-beginning 0) 'face)))

@@ -15,9 +15,11 @@ installed package works without =glab= on =PATH=.
 * Requirements
 
 - Emacs 30.1 or later
+- =magit-section=, the section library of Magit 4
 - =glab=, authenticated for the GitLab instance
 - Optional: evil, for =gitlab-evil.el=
 - Optional: Org, for =ol-gitlab.el=
+- Optional: Magit, for the commit and changes views of a merge request
 
 * Commands
 
@@ -224,18 +226,49 @@ point, and a left click follows a link in a detail buffer.  A left
 click on a list row keeps the row selection, so a double click still
 toggles a row and the middle button still opens it.
 
-A detail buffer folds its sections.  The top title, the commit list,
-the notes and the jobs table are sections, so =TAB= folds the one
-around point and the =C-c @= prefix of =outline-minor-mode= serves the
-rest.  With evil, =TAB= folds as well, and =zc=, =zo= and =za= reach the
-sections through =evil-fold-list=.  An automatic refresh keeps a fold
-closed.
+A detail buffer folds its sections.  The detail buffer is a tree of
+sections: the title, every field line, the commit list, the notes and
+the jobs table are sections, and one section covers one entry of a
+list.  =TAB= folds the section around point, =1= to =4= show that many
+levels, =^= goes to the parent section and =M-n= and =M-p= move between
+siblings.  A fold survives an automatic refresh.  Long lines wrap, so a
+description keeps its shape.
+
+The merge request buffer keeps =n= for its notes and every detail
+buffer keeps =p= for ~gitlab-pop~, so the inherited section motion of
+Magit answers on =M-n= and =M-p= there.  With evil, =TAB= folds as well,
+and =zc=, =zo= and =za= reach the sections through =evil-fold-list=.
+
+The sections of a buffer kind come from one hook, so a user can reorder
+them or drop one:
+
+#+begin_src emacs-lisp
+(setopt gitlab-merge-request-sections-hook
+        '(gitlab-insert-title
+          gitlab-insert-fields
+          gitlab-merge-request-insert-commits))
+#+end_src
+
+The other hooks are =gitlab-detail-sections-hook=,
+=gitlab-work-item-sections-hook= and =gitlab-pipeline-sections-hook=.
+A package that builds another GitLab view can add an inserter of its
+own to one of them.
+
+A detail buffer shows no text properties in a copy, because
+=magit-section-mode= strips them from a killed region.  The navigation
+commands read the text properties of the buffer, so a copied line
+loses only the links and keeps its text.
 
 Both detail modes provide these keys:
 
 | Key       | Command                  |
 |-----------+--------------------------|
 | =RET=       | =gitlab-open-at-point=     |
+| =TAB=       | =magit-section-toggle=     |
+| =M-n=       | =magit-section-forward-sibling= |
+| =M-p=       | =magit-section-backward-sibling= |
+| =^=         | =magit-section-up=         |
+| =1= to =4=  | =magit-section-show-level-N= |
 | =c=         | =gitlab-copy-id=           |
 | =w=         | =gitlab-open-web=          |
 | =p=         | =gitlab-pop=               |
@@ -693,7 +726,7 @@ project form when the project is known.
 nix build          # package; its check phase runs the tests
 nix flake check    # package, package-lint, checkdoc, treefmt
 nix fmt            # nixfmt via treefmt
-nix develop        # emacs with evil, and glab
+nix develop        # emacs with evil, magit-section, and glab
 #+end_src
 
 * Tests
@@ -704,24 +737,13 @@ reads JSON from =test/fixtures=.  No test opens a network connection.
 #+begin_src sh
 emacs --batch -L . -L test -L "$EVIL" \
   -l gitlab-test-helper.el \
-  -l gitlab-cli-test.el \
-  -l gitlab-data-test.el \
-  -l gitlab-context-test.el \
-  -l gitlab-mode-test.el \
-  -l gitlab-merge-request-test.el \
-  -l gitlab-work-item-test.el \
-  -l gitlab-pipeline-test.el \
-  -l gitlab-export-test.el \
-  -l gitlab-read-test.el \
-  -l gitlab-evil-test.el \
-  -l ol-gitlab-test.el \
-  -l gitlab-xref-test.el \
-  -l gitlab-bookmark-test.el \
+  $(printf -- '-l %s ' test/*-test.el) \
   -f ert-run-tests-batch-and-exit
 #+end_src
 
-Set =EVIL= to the directory that holds =evil.el=.  All other tests run
-without evil.
+Set =EVIL= to the directory that holds =evil.el=, and make sure that
+=magit-section= and the packages it requires are on the load path.  All
+other tests run without evil.
 
 * License
 

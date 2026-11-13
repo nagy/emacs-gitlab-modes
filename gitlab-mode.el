@@ -4,7 +4,7 @@
 
 ;; Author: Daniel Nagy
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "30.1") (magit-section "3.0.0"))
 ;; Keywords: tools, convenience
 ;; URL: https://github.com/nagy/emacs-gitlab-modes
 
@@ -27,8 +27,8 @@
 ;;; Commentary:
 
 ;; The display layer: a detail base mode and a list base mode.  The
-;; detail mode derives from `special-mode' and renders one GitLab
-;; object as a read-only field table.  The list mode derives from
+;; detail mode derives from `magit-section-mode' and renders one
+;; GitLab object as a tree of sections.  The list mode derives from
 ;; `tabulated-list-mode' and renders a collection as a table.
 ;;
 ;; A row of a list buffer expands into child rows through
@@ -52,15 +52,20 @@
 ;; decoded alists, so point, marks and the window start survive an
 ;; automatic refresh that found no change.
 ;;
-;; A render erases the buffer, so `gitlab--render' records the line
+;; A detail buffer is a tree of `magit-section' objects.  The root
+;; section names the buffer kind, one section covers each field line,
+;; and a list below the fields is a group section with one child
+;; section per entry.  A mode names its inserter hook, so a user drops
+;; or reorders a section through the option alone.  `magit-section'
+;; folds a section by the identity of its section, so a refresh keeps
+;; every fold without a line of bookkeeping here.
+;;
+;; A render erases the buffer, so `gitlab--render' records the section
 ;; of point before the render and restores it after the render.  The
-;; record names the line and not its buffer position: the field name,
-;; the job ID, the commit SHA, the list row ID or, for a line without
-;; such an identity, the text of the line and its ordinal among the
-;; equal lines above it.  A blank line leans on the nearest line above
-;; that has an identity, and the column of point travels with the
-;; line.  So a refresh keeps the reader on the same value even when
-;; the lines above changed their length.
+;; record names the section and the distance from its start, so a
+;; refresh keeps the reader even when lines above changed.  A list
+;; buffer records the identity of its row instead, and a buffer
+;; without a section falls back to the text of the line.
 ;;
 ;; Display buffers are views, not files: `default-directory' is the
 ;; project root of the buffer that opened the display, so project.el,
@@ -120,7 +125,7 @@
 (require 'cl-lib)
 (require 'goto-addr)
 (require 'json)
-(require 'outline)
+(require 'magit-section)
 (require 'seq)
 (require 'subr-x)
 (require 'tabulated-list)
@@ -574,8 +579,10 @@ It receives ID, SUCCESS and ERROR and returns a process object or
 nil.")
 
 (defvar-local gitlab--render-function nil
-  "Function that renders the data of the current detail buffer.
-It receives ID and DATA.")
+  "Function that renders the data of the current buffer.
+It receives ID and DATA.  A list buffer sets it, because a table
+is not a section tree.  A detail buffer leaves it nil and renders
+through `gitlab--render-default' and `gitlab--sections-hook'.")
 
 (defvar-local gitlab--last-data nil
   "Last decoded answer rendered in the current buffer.")
@@ -588,6 +595,26 @@ than one answer, so a JSON export encodes `gitlab--last-data'.")
 
 (defvar-local gitlab--rendered nil
   "Non-nil if the current buffer holds a rendered answer.")
+
+(defvar-local gitlab--buffer-data nil
+  "Decoded answer that the section inserters of the buffer read.
+`gitlab--render-default' binds this variable to the answer of the
+fetch, so an inserter reads the object without an argument.")
+
+(defvar-local gitlab--sections-hook 'gitlab-detail-sections-hook
+  "Hook variable that names the inserters of the current buffer.
+`gitlab--render-default' runs the entries through
+`magit-run-section-hook'.  A derived mode names the hook of its own
+buffer kind.")
+
+(defvar-local gitlab--title-function nil
+  "Function that returns the title line of the current detail buffer.
+It receives the object ID and the decoded answer.  A nil value
+gives the generic title of `gitlab--label'.")
+
+(defvar-local gitlab--field-keys-function nil
+  "Function that returns the field order of the current buffer.
+It receives the decoded answer.  A nil value keeps the JSON order.")
 
 (defvar-local gitlab--last-fetch-time nil
   "Float time of the last fetch of the current buffer.")
@@ -976,18 +1003,21 @@ buffer that sent it, and a dead buffer drops every cached list."
 (defun gitlab--render ()
   "Render `gitlab--last-data' in the current buffer.
 Keep point on the line that it was on before the render, by the
-identity of that line, and keep its column.  Every other window
-that shows the buffer keeps the line of its own point too, because
-the render erases the text that a window point marker points into.
-A buffer with a position target moves point to that target
-instead."
+section of a detail buffer or by the row of a list buffer, and
+keep the column.  Every other window that shows the buffer
+keeps the line of its own point too, because the render erases the
+text that a window point marker points into.  A buffer with a
+position target moves point to that target instead."
   (let ((record (gitlab--point-record))
-        (windows (gitlab--window-records))
-        (collapsed (gitlab--collapsed-sections)))
+        (windows (gitlab--window-records)))
     (let ((inhibit-read-only t))
       (funcall (or gitlab--render-function #'gitlab--render-default)
                gitlab--id gitlab--last-data))
-    (gitlab--restore-sections collapsed)
+    (when (derived-mode-p 'gitlab-detail-mode)
+      ;; Show the fresh tree once, with the visibility cache off, so
+      ;; the cache keeps only the sections that a reader folded.
+      (let ((magit-section-cache-visibility nil))
+        (magit-section-show magit-root-section)))
     (unless (gitlab--apply-target)
       (gitlab--restore-point record))
     (gitlab--restore-window-points windows)
@@ -1031,44 +1061,60 @@ front of the first cell."
         (unless value (forward-char 1)))
       value)))
 
+(defun gitlab--section-at (position)
+  "Return the detail section at POSITION, or nil.
+A buffer that does not derive from `gitlab-detail-mode' answers nil,
+because it holds no section tree."
+  (and (derived-mode-p 'gitlab-detail-mode)
+       (magit-section-at position)))
+
 (defun gitlab--line-identity ()
   "Return the identity of the line of point, or nil.
-The identity is a cons of a kind and a value: `job' and the job
-ID, `sha' and the commit SHA, `field' and the field name, `row'
-and the list row ID, or `text' and a cons of the text of the line
-and its ordinal among the equal lines above it.  A child row of an
-expanded list row answers with the parent row, so a render that
-replaces the child row keeps the place through the parent.  A line
-of whitespace alone has no identity, because its text would match
-every blank line."
-  (let ((start (line-beginning-position)))
-    (or (when-let* ((id (get-text-property start 'gitlab-job-id)))
-          (cons 'job id))
-        (when-let* ((sha (get-text-property start 'gitlab-commit-sha)))
-          (cons 'sha sha))
-        (when-let* ((field (get-text-property start 'gitlab-field)))
-          (cons 'field field))
-        (when-let* ((id (tabulated-list-get-id)))
-          (cons 'row (or (gitlab--line-property 'gitlab-list-parent-id)
-                         id)))
-        (let ((text (gitlab--line-text)))
-          (unless (string-empty-p text)
-            (cons 'text (cons text (gitlab--line-occurrence text))))))))
+The identity is a cons of a kind and a value: `row' and the list row
+ID, or `text' and a cons of the text of the line and its ordinal
+among the equal lines above it.  A detail buffer keeps point
+through the section at point instead, which `gitlab--point-record'
+reads.  A child row of an expanded list row answers with the parent
+row, so a render that replaces the child row keeps the place
+through the parent.  A line of whitespace alone has no identity,
+because its text would match every blank line."
+  (or (when-let* ((id (tabulated-list-get-id)))
+        (cons 'row (or (gitlab--line-property 'gitlab-list-parent-id)
+                       id)))
+      (let ((text (gitlab--line-text)))
+        (unless (string-empty-p text)
+          (cons 'text (cons text (gitlab--line-occurrence text)))))))
 
 (defun gitlab--point-record (&optional position)
-  "Return a semantic record of the line at POSITION, or nil.
-POSITION defaults to point.  The record holds the identity of the
-line, the number of lines from the line that the identity names to
-the line of POSITION, and the column of POSITION.  A line of
-whitespace alone leans on the nearest line above that has an
-identity, so the record keeps the distance from that line.  Return
-nil when no line of the buffer has an identity, because then there
-is no place to keep."
+  "Return a record of the line at POSITION, or nil.
+POSITION defaults to point.  A detail buffer records the section of
+the line, the number of lines from the start of that section to the
+line, and the column of POSITION.  A list buffer records the
+identity of its row.  A buffer without a section falls back to the
+identity of the line and to the distance from it, so a buffer that
+holds no tree keeps point the same way."
+  (let ((position (or position (point))))
+    (or (when-let* ((section (gitlab--section-at position)))
+          (list :section section
+                :line (- (line-number-at-pos position)
+                         (line-number-at-pos (oref section start)))
+                :column (- position
+                           (save-excursion
+                             (goto-char position)
+                             (line-beginning-position)))))
+        (gitlab--identity-record position))))
+
+(defun gitlab--identity-record (position)
+  "Return a record of the line identity at POSITION, or nil.
+The record holds the identity of the nearest line above that has
+one, the number of lines from that line to POSITION and the column
+of POSITION.  Return nil when no line of the buffer has an
+identity, because then there is no place to keep."
   (let ((offset 0)
         column
         identity)
     (save-excursion
-      (goto-char (or position (point)))
+      (goto-char position)
       (setq column (- (point) (line-beginning-position)))
       (beginning-of-line)
       (let ((done nil))
@@ -1111,28 +1157,32 @@ one down, and the reader stays in the same part of the buffer."
 Return non-nil when the function found that line.  It leaves
 point at `point-min' when it found none."
   (pcase identity
-    (`(job . ,id) (gitlab--goto-property 'gitlab-job-id id))
-    (`(sha . ,sha) (gitlab--goto-property 'gitlab-commit-sha sha))
-    (`(field . ,key) (gitlab--goto-property 'gitlab-field key))
     (`(row . ,id) (gitlab-list--goto-id id))
     (`(text . ,line) (gitlab--goto-text line))
     (_ nil)))
 
 (defun gitlab--record-position (record)
   "Return the buffer position that RECORD names, or nil.
-The position is the start of the line that the identity of RECORD
-names, moved down by the recorded number of lines and set to the
-recorded column.  A shorter line clips the column to its end."
+A record of a detail buffer names a section, so the position is the
+start of the section of the same identity, moved down by the
+recorded number of lines and set to the recorded column.  A record
+of a list buffer or of a buffer without a section names the line
+instead, and a shorter line clips the column to its end."
   (when record
     (save-excursion
-      (goto-char (point-min))
-      (when (gitlab--goto-identity (plist-get record :identity))
-        (forward-line (plist-get record :offset))
-        (let ((column (plist-get record :column)))
-          (unless (zerop column)
-            (goto-char (min (+ (line-beginning-position) column)
-                            (line-end-position)))))
-        (point)))))
+      (if-let* ((section (plist-get record :section)))
+          (when (magit-section-goto-successor section
+                                              (plist-get record :line)
+                                              (plist-get record :column))
+            (point))
+        (goto-char (point-min))
+        (when (gitlab--goto-identity (plist-get record :identity))
+          (forward-line (plist-get record :offset))
+          (let ((column (plist-get record :column)))
+            (unless (zerop column)
+              (goto-char (min (+ (line-beginning-position) column)
+                              (line-end-position)))))
+          (point))))))
 
 (defun gitlab--restore-point (record)
   "Move point to the position that RECORD describes.
@@ -1583,151 +1633,137 @@ can name a field line or a job row instead of a buffer position."
 
 ;;; Sections
 
-;; A detail buffer folds its sections through `outline-minor-mode'.  A
-;; heading is a title line that carries the text property
-;; `gitlab-section' with the name of the section, and
-;; `outline-search-function' finds it, so no heading needs a special
-;; character in the text.  Every section is a top level section, so
-;; `outline-level' answers one for each of them.
+;; A detail buffer is a tree of `magit-section' objects, so folding,
+;; point keeping and imenu all key on a section and not on a text
+;; property.  The root section names the buffer kind, so two kinds
+;; never share a section identity and a fold of one buffer never
+;; reaches another.  One section covers each field line, and a list
+;; below the fields is a group section with one child per entry.
 
-(defun gitlab--insert-section-title (title)
-  "Insert TITLE as the heading line of a foldable section.
-The line keeps `gitlab-title' and carries `gitlab-section' with
-TITLE, so the outline search of the detail mode finds it and a
-render restores a fold by name."
-  (insert (propertize title
-                      'face 'gitlab-title
-                      'gitlab-section title)
-          "\n"))
+(defcustom gitlab-detail-sections-hook
+  '(gitlab-insert-title gitlab-insert-fields)
+  "Functions that insert the sections of a detail buffer.
+`gitlab--render-default' runs the entries in order through
+`magit-run-section-hook'.  Remove an entry to drop a section, or
+move an entry to change the order of the sections.
 
-(defun gitlab--outline-search (&optional bound move backward looking-at)
-  "Search for the next text property `gitlab-section'.
-BOUND, MOVE, BACKWARD and LOOKING-AT have the meaning that
-`outline-search-function' documents."
-  (outline-search-text-property 'gitlab-section nil bound move backward
-                                looking-at))
+An entry takes no arguments and inserts through
+`magit-insert-section'.  It reads the decoded answer of the buffer
+from `gitlab--buffer-data'."
+  :type '(repeat function)
+  :group 'gitlab)
 
-(defun gitlab--section-headings ()
-  "Return the start of every section heading of the current buffer.
-The positions come in buffer order."
-  (let (headings
-        (position (point-min)))
-    (save-excursion
-      (while (< position (point-max))
-        (when (get-text-property position 'gitlab-section)
-          (push position headings))
-        (setq position (or (next-single-property-change
-                            position 'gitlab-section nil (point-max))
-                           (point-max)))))
-    (nreverse headings)))
+(defun gitlab--insert-title (title)
+  "Insert TITLE as the title section of the current buffer.
+The heading carries `gitlab-title', and a blank line follows the
+section, so a reader sees the title above the field table."
+  (magit-insert-section (gitlab-title 'title)
+    (magit-insert-heading (propertize title 'face 'gitlab-title)))
+  (insert "\n"))
 
-(defun gitlab--collapsed-sections ()
-  "Return the names of the folded sections of the current buffer.
-`gitlab--render' reads this before it erases the buffer, so a
-refresh keeps the fold of a reader."
-  (when (bound-and-true-p outline-minor-mode)
-    (let (names)
-      (dolist (heading (gitlab--section-headings))
-        (save-excursion
-          (goto-char heading)
-          (when (outline-invisible-p (line-end-position))
-            (push (get-text-property heading 'gitlab-section) names))))
-      names)))
+(defun gitlab-insert-title ()
+  "Insert the title section of the current detail buffer.
+The buffer-local `gitlab--title-function' builds the heading.  The
+generic title names `gitlab--label' when that function is nil."
+  (gitlab--insert-title
+   (if gitlab--title-function
+       (funcall gitlab--title-function gitlab--id gitlab--buffer-data)
+     (format "%s %s" gitlab--label (or gitlab--id "")))))
 
-(defun gitlab--hide-section (name)
-  "Fold the section NAME of the current buffer when it is present."
-  (when-let* ((heading (seq-find
-                        (lambda (position)
-                          (equal (get-text-property position 'gitlab-section)
-                                 name))
-                        (gitlab--section-headings)))
-              (inhibit-read-only t))
-    (save-excursion
-      (goto-char heading)
-      (outline-hide-subtree))))
-
-(defun gitlab--restore-sections (names)
-  "Fold the sections of NAMES in the current buffer."
-  (dolist (name names)
-    (gitlab--hide-section name)))
-
-(defun gitlab--enclosing-section ()
-  "Return the start of the heading line of the section around point.
-Return nil when point sits above the first section."
-  (save-excursion
-    (beginning-of-line)
-    (if (get-text-property (point) 'gitlab-section)
-        (point)
-      (when (outline-previous-heading)
-        (point)))))
-
-(defun gitlab-detail-toggle-section ()
-  "Fold or unfold the GitLab section around point.
-The command works on every line of a section, not only on the line
-that shows its heading, so a reader folds a long field table from
-the middle of it."
-  (interactive nil gitlab-detail-mode)
-  (let ((heading (gitlab--enclosing-section)))
-    (unless heading
-      (user-error "No GitLab section at point"))
-    (save-excursion
-      (goto-char heading)
-      (outline-toggle-children))))
+(defun gitlab--insert-group-heading (heading)
+  "Insert HEADING as the heading line of the current group section.
+The heading carries `gitlab-title', and a blank line follows it, so
+the rows of the group start below the name."
+  (magit-insert-heading (propertize heading 'face 'gitlab-title))
+  (insert "\n"))
 
 (defun gitlab--insert-fields (data &optional keys)
-  "Insert the field table of DATA into the current buffer.
-KEYS selects and orders the fields; nil uses the JSON order.
-Return the position before the first field."
+  "Insert the field table of DATA as one section per field line.
+KEYS selects and orders the fields, and nil keeps the JSON order.
+The whole line carries `gitlab-field' with the JSON key, so a
+command or a bookmark reaches the field from any column of it."
   (let* ((keys (or keys (mapcar #'car data)))
          (labels (mapcar (lambda (key)
                            (concat (gitlab--field-label key) ":"))
                          keys))
          (width (apply #'max 0 (mapcar #'length labels))))
     (dolist (key keys)
-      (let ((label (concat (gitlab--field-label key) ":"))
-            (value (gitlab-data-field key data)))
-        (insert (propertize (format (format "%%-%ds " width) label)
-                            'gitlab-field key
-                            'face 'gitlab-field-name))
-        (insert (gitlab--format-field-value key value data))
-        (insert "\n")))))
+      (magit-insert-section (gitlab-field key)
+        (let ((start (point)))
+          (insert (propertize (format (format "%%-%ds " width)
+                                      (concat (gitlab--field-label key) ":"))
+                              'face 'gitlab-field-name))
+          (insert (gitlab--format-field-value
+                   key (gitlab-data-field key data) data))
+          (add-text-properties start (point) (list 'gitlab-field key))
+          (insert "\n"))))))
+
+(defun gitlab-insert-fields ()
+  "Insert the field table of the current detail buffer.
+The buffer-local `gitlab--field-keys-function' selects and orders
+the fields, and the JSON order serves when it is nil."
+  (gitlab--insert-fields gitlab--buffer-data
+                         (and gitlab--field-keys-function
+                              (funcall gitlab--field-keys-function
+                                       gitlab--buffer-data))))
+
+(defun gitlab--render-sections (kind)
+  "Render the sections of KIND in the current buffer from `gitlab--last-data'.
+The root section carries KIND, so two buffer kinds never share a
+section identity."
+  (let ((inhibit-read-only t)
+        (gitlab--buffer-data gitlab--last-data))
+    (erase-buffer)
+    (magit-insert-section (gitlab-detail (or kind 'detail))
+      (magit-run-section-hook gitlab--sections-hook))))
 
 (defun gitlab--render-fields (title data &optional keys)
   "Render TITLE and the field table of DATA in the current buffer.
-KEYS selects and orders the fields.  The function erases the
-buffer first, so `gitlab--render' records the line of point before
-the render and restores it after the render."
-  (let ((inhibit-read-only t))
+KEYS selects and orders the fields.  The function erases the buffer
+and opens the root section, so a caller without a fetch renders a
+detail buffer on its own."
+  (let ((inhibit-read-only t)
+        (gitlab--buffer-data data))
     (erase-buffer)
-    (gitlab--insert-section-title title)
-    (insert "\n")
-    (gitlab--insert-fields data keys)))
+    (magit-insert-section (gitlab-detail (or gitlab--kind 'detail))
+      (gitlab--insert-title title)
+      (gitlab--insert-fields data keys))
+    (let ((magit-section-cache-visibility nil))
+      (magit-section-show magit-root-section))))
 
 (defun gitlab--render-default (_id data)
-  "Render DATA with the generic field table of the current buffer."
-  (gitlab--render-fields
-   (format "%s %s" gitlab--label (or gitlab--id ""))
-   data))
+  "Render DATA as the section tree of the current detail buffer.
+The buffer-local `gitlab--sections-hook' names the inserters, and
+`gitlab--render' shows the fresh tree."
+  (let ((gitlab--last-data (or data gitlab--last-data)))
+    (gitlab--render-sections gitlab--kind)))
 
 ;;; Imenu
 
+(defun gitlab--section-name (section)
+  "Return the imenu name of SECTION.
+A section with a heading answers the text of that heading, because
+the heading carries the count or the status of the object.  A field
+section answers the label of its JSON key."
+  (pcase (oref section type)
+    ((or 'gitlab-title 'gitlab-group)
+     (string-trim
+      (buffer-substring-no-properties (oref section start)
+                                      (oref section content))))
+    (_ (gitlab--field-label (oref section value)))))
+
 (defun gitlab--imenu-index ()
-  "Return an imenu index of the sections and the field lines."
+  "Return an imenu index of the title, the groups and the field lines.
+The index walks the section tree, so a renderer adds no imenu entry
+of its own."
   (let (index)
-    (save-excursion
-      (goto-char (point-min))
-      (while (not (eobp))
-        (cond
-         ((get-text-property (point) 'gitlab-section)
-          (push (cons (get-text-property (point) 'gitlab-section) (point))
-                index))
-         ((get-text-property (point) 'gitlab-field)
-          (push (cons (gitlab--field-label (get-text-property (point)
-                                                              'gitlab-field))
-                      (point))
-                index)))
-        (forward-line 1)))
-    (nreverse index)))
+    (magit-map-sections
+     (lambda (section)
+       (when (memq (oref section type)
+                   '(gitlab-title gitlab-group gitlab-field))
+         (push (cons (gitlab--section-name section) (oref section start))
+               index))))
+    (sort index (lambda (a b) (< (cdr a) (cdr b))))))
 
 ;;; Navigation
 
@@ -2050,14 +2086,16 @@ buffer and on a list row."
     (setq-local auto-revert-verbose nil)
     (auto-revert-mode 1)))
 
-(define-derived-mode gitlab-detail-mode special-mode "GitLab"
+(define-derived-mode gitlab-detail-mode magit-section-mode "GitLab"
   "Display one GitLab object in the current buffer.
-This is the base mode for merge request, pipeline and other
-detail buffers.  It derives from `special-mode', so the buffer
-is read-only and `q' buries it.
+This is the base mode for merge request, work item and pipeline
+detail buffers.  It derives from `magit-section-mode', so the buffer
+is read-only, `q' buries it, `TAB' folds the section at point, `n'
+and `p' move between sections, `^' goes to the parent section and
+`1' to `4' show that many levels.
 
-A derived mode sets `gitlab--fetch-function' and
-`gitlab--render-function', then the display command sets
+A derived mode sets `gitlab--fetch-function', `gitlab--sections-hook'
+and `gitlab--title-function', then the display command sets
 `gitlab--id' and calls `gitlab--refresh'.  The mode wires
 `auto-revert-mode' through `buffer-stale-function' and
 `revert-buffer-function', so the buffer keeps itself current
@@ -2066,18 +2104,20 @@ without blocking Emacs."
   (gitlab--init-display-buffer)
   (gitlab--init-text-links)
   (setq-local imenu-create-index-function #'gitlab--imenu-index)
-  (setq-local gitlab--render-function #'gitlab--render-default)
-  ;; A title line carries `gitlab-section', so the outline search finds
-  ;; it and no heading needs a special character.  Every section is a
-  ;; top level section, so the level answers one.  The faces of the
-  ;; renderer stay, because the title already carries `gitlab-title'.
-  (setq-local outline-search-function #'gitlab--outline-search)
-  (setq-local outline-level (lambda () 1))
-  (setq-local outline-minor-mode-highlight nil)
-  (outline-minor-mode 1)
-  (setq-local truncate-lines nil))
+  (setq-local gitlab--sections-hook 'gitlab-detail-sections-hook)
+  ;; A section records its start and its end as plain integers instead
+  ;; of markers: the render inserts the tree once and then only reads
+  ;; it, and a marker costs a render more than it saves.
+  (setq-local magit-section-inhibit-markers t)
+  ;; A child count rewrites a heading after its children recorded
+  ;; their positions, so the count stays in the heading text.
+  (setq-local magit-section-show-child-count nil)
+  ;; The parent mode truncates long lines and points
+  ;; `list-buffers-directory' at the directory of the buffer.  A
+  ;; description wraps, and the identifier helper names the buffer.
+  (setq-local truncate-lines nil)
+  (setq-local list-buffers-directory nil))
 
-(define-key gitlab-detail-mode-map (kbd "TAB") #'gitlab-detail-toggle-section)
 (define-key gitlab-detail-mode-map (kbd "RET") #'gitlab-open-at-point)
 (define-key gitlab-detail-mode-map [mouse-2] #'gitlab-mouse-open-at-point)
 (define-key gitlab-detail-mode-map (kbd "C-c C-n") #'gitlab-next-sibling)

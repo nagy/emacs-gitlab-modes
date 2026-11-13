@@ -50,9 +50,11 @@
 ;; command, such as gr, stays a plain key binding.
 ;;
 ;; Detail buffers: RET opens the pipeline, merge request, work item,
-;; web page or commit at point; q quits the window; gr, r and R
-;; refresh; p pops back; C-x C-j opens the parent list; c copies the
-;; ID; w opens the web page.
+;; web page or commit at point; TAB folds the section at point; q
+;; quits the window; gr, r and R refresh; p pops back; C-x C-j opens
+;; the parent list; c copies the ID; w opens the web page.  The evil
+;; fold keys zc, zo and za reach the sections through
+;; `evil-fold-list'.
 ;;
 ;; List buffers: RET opens the row; TAB expands a row into its child
 ;; rows; c or Y copies its ID; w opens its web page; S sorts the
@@ -78,6 +80,15 @@
 
 (declare-function evil-define-minor-mode-key "evil" (state mode key def))
 (declare-function gitlab-export-json "gitlab-export" ())
+(declare-function magit-section-toggle "magit-section" (section))
+(declare-function magit-section-show "magit-section" (section))
+(declare-function magit-section-hide "magit-section" (section))
+(declare-function magit-section-show-children "magit-section"
+                  (section &optional depth))
+(declare-function magit-section-show-level-1-all "magit-section" ())
+(declare-function magit-current-section "magit-section" ())
+(defvar magit-root-section)
+(defvar evil-fold-list)
 
 ;; Evil defines `evil-define-minor-mode-key' before it provides its
 ;; feature, and `evil-after-load-hook' runs between the two, so a plain
@@ -100,7 +111,7 @@ bindings off until a user calls `gitlab-evil-mode'."
     ;; TAB is C-i, the jump of the evil jump list, in the normal state.
     ;; A detail buffer folds a section instead, and `p' returns to the
     ;; buffer that opened it.
-    ("TAB" . gitlab-detail-toggle-section)
+    ("TAB" . magit-section-toggle)
     ([remap evil-record-macro] . quit-window)
     ("gr" . revert-buffer)
     ([remap evil-replace] . revert-buffer-quick)
@@ -192,6 +203,23 @@ passes through unchanged."
 (gitlab-evil--bind 'normal 'gitlab-evil-list-mode gitlab-evil-list-keys)
 (gitlab-evil--bind 'visual 'gitlab-evil-list-mode gitlab-evil-list-visual-keys)
 (gitlab-evil--bind 'normal 'gitlab-evil-job-log-mode gitlab-evil-job-log-keys)
+
+;;; Folds
+
+;; `evil-fold-list' holds no entry for a Magit section buffer, so a
+;; detail buffer adds its own.  Evil calls a fold action with no
+;; argument and demotes its error, so every action wraps the section
+;; command in a lambda of no argument.
+(add-to-list
+ 'evil-fold-list
+ `((gitlab-detail-mode)
+   :open-all   (lambda () (magit-section-show magit-root-section))
+   :close-all  magit-section-show-level-1-all
+   :toggle     (lambda () (magit-section-toggle (magit-current-section)))
+   :open       (lambda () (magit-section-show (magit-current-section)))
+   :open-rec   (lambda () (magit-section-show-children
+                           (magit-current-section)))
+   :close      (lambda () (magit-section-hide (magit-current-section)))))
 
 ;;; Selection
 

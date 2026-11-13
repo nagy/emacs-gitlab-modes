@@ -78,6 +78,22 @@ A project without the ref shows no commit section."
   :type 'boolean
   :group 'gitlab)
 
+(defcustom gitlab-merge-request-sections-hook
+  '(gitlab-insert-title
+    gitlab-insert-fields
+    gitlab-merge-request-insert-commits
+    gitlab-merge-request-insert-notes)
+  "Functions that insert the sections of a merge request buffer.
+`gitlab-detail-mode' runs the entries in order through
+`magit-run-section-hook'.  Remove an entry to drop a section, or
+move an entry to change the order of the sections.
+
+An entry takes no arguments and inserts through
+`magit-insert-section'.  It reads the decoded answer of the buffer
+from `gitlab--buffer-data'."
+  :type '(repeat function)
+  :group 'gitlab)
+
 (defcustom gitlab-merge-request-list-arguments nil
   "Extra glab arguments for the merge request list.
 The value is a list of strings, for example (\"--all\").  A
@@ -263,79 +279,97 @@ merged requests by adding --all to the glab arguments."
 Call SUCCESS with the decoded answer, or ERROR with a condition."
   (gitlab-merge-request-show-async iid success error))
 
-(defun gitlab-merge-request--render (iid data)
-  "Render merge request IID with DATA in the current buffer."
+(defun gitlab-merge-request--title (id data)
+  "Return the title line of merge request ID with DATA.
+ID is the object ID and DATA the decoded answer."
+  (declare (side-effect-free t))
   (let ((title (gitlab-data-field-string "title" data)))
-    (gitlab--render-fields
-     (format "!%s %s" iid (if (string-empty-p title)
-                              "(no title)"
-                            title))
-     data))
-  (gitlab-merge-request--insert-commits data)
-  (gitlab-merge-request--insert-notes))
+    (format "!%s %s" (gitlab-data-id-string id)
+            (if (string-empty-p title) "(no title)" title))))
 
-(defun gitlab-merge-request--insert-commits (data)
-  "Insert the local commits of DATA below the merge request fields.
-Every line carries `gitlab-commit-sha', so RET opens the commit.
-Every line is also one text button, so the mouse face covers the
-line without joining the lines above and below, and the tooltip
-names the action.
+(defun gitlab-merge-request--render (iid data)
+  "Render merge request IID with DATA in the current buffer.
+The function serves a caller that already holds the answer, so the
+Git views and their tests render without a fetch.  `iid' is unused,
+because the title reads the buffer-local `gitlab--id'."
+  (ignore iid)
+  (let ((gitlab--last-data data)
+        (gitlab--sections-hook 'gitlab-merge-request-sections-hook))
+    (gitlab--render-sections 'merge-request)
+    (let ((magit-section-cache-visibility nil))
+      (magit-section-show magit-root-section))))
+
+(defun gitlab-merge-request-insert-commits ()
+  "Insert the local commits of the merge request as a group section.
+Every commit is a child section, so a render keeps the place of the
+reader on a commit.  Every line carries `gitlab-commit-sha', so RET
+opens the commit.  Every line is also one text button, so the mouse
+face covers the line without joining the lines above and below.
 The function inserts nothing without a local merge request ref, and
 nothing for a buffer whose project is not the local checkout,
 because a ref of another project would be wrong."
   (when (and gitlab-merge-request-show-commits
              (gitlab--local-checkout-p))
-    (when-let* ((info (gitlab-git-merge-request-commits gitlab--id data)))
-      (let ((inhibit-read-only t)
-            (commits (plist-get info :commits))
+    (when-let* ((info (gitlab-git-merge-request-commits
+                       gitlab--id gitlab--buffer-data)))
+      (let ((commits (plist-get info :commits))
             (total (plist-get info :total)))
-        (goto-char (point-max))
         (insert "\n")
-        (gitlab--insert-section-title (format "Commits (%d)" total))
-        (insert "\n")
-        (if (null commits)
-            (insert "No commits.\n")
-          (dolist (commit commits)
-            (let ((start (point)))
-              (insert
-               (format "%s %s  (%s, %s)"
-                       (propertize (alist-get 'short commit)
-                                   'face 'gitlab-id)
-                       (alist-get 'subject commit)
-                       (gitlab--format-author (alist-get 'author commit))
-                       (gitlab--format-date (alist-get 'date commit))))
-              (add-text-properties
-               start (point)
-               (list 'gitlab-commit-sha (alist-get 'sha commit)))
-              (gitlab--buttonize start (point) "Open the commit")
-              (insert "\n"))))
-        (when (< (length commits) total)
-          (insert (format "\n%d more commits.\n"
-                          (- total (length commits)))))))))
+        (magit-insert-section (gitlab-group "Commits")
+          (gitlab--insert-group-heading (format "Commits (%d)" total))
+          (if (null commits)
+              (insert "No commits.\n")
+            (dolist (commit commits)
+              (magit-insert-section (gitlab-commit (alist-get 'sha commit))
+                (let ((start (point)))
+                  (insert
+                   (format "%s %s  (%s, %s)"
+                           (propertize (alist-get 'short commit)
+                                       'face 'gitlab-id)
+                           (alist-get 'subject commit)
+                           (gitlab--format-author (alist-get 'author commit))
+                           (gitlab--format-date (alist-get 'date commit))))
+                  (add-text-properties
+                   start (point)
+                   (list 'gitlab-commit-sha (alist-get 'sha commit)))
+                  (gitlab--buttonize start (point) "Open the commit")
+                  (insert "\n")))))
+          (when (< (length commits) total)
+            (insert (format "\n%d more commits.\n"
+                            (- total (length commits))))))))))
 
-(defun gitlab-merge-request--insert-notes ()
-  "Insert the fetched notes below the merge request fields."
+(defun gitlab-merge-request--note-heading (note)
+  "Return the heading line of NOTE with its author and its date."
+  (let ((created (gitlab--format-date (gitlab-data-field "created_at" note)))
+        (system (gitlab-data-field "system" note)))
+    (concat (gitlab--format-author (gitlab-data-field "author" note))
+            "  "
+            (propertize (format "%s%s" created (if system "  (system)" ""))
+                        'face 'gitlab-field-name))))
+
+(defun gitlab-merge-request-insert-notes ()
+  "Insert the fetched notes as a group section.
+Every note is a child section with its author line as the heading,
+so TAB folds the text of one note and a render keeps the place of
+the reader inside it.  The section of a note keys on the note ID,
+and on the position of the note when the answer carries no ID."
   (when gitlab-merge-request--notes-loaded
-    (let ((inhibit-read-only t))
-      (goto-char (point-max))
+    (let ((notes gitlab-merge-request--notes)
+          (index 0))
       (insert "\n")
-      (gitlab--insert-section-title "Notes")
-      (insert "\n")
-      (if (null gitlab-merge-request--notes)
-          (insert "No notes.\n")
-        (dolist (note gitlab-merge-request--notes)
-          (let ((author (gitlab--format-author
-                         (gitlab-data-field "author" note)))
-                (created (gitlab--format-date
-                          (gitlab-data-field "created_at" note)))
-                (body (gitlab-data-field-string "body" note))
-                (system (gitlab-data-field "system" note)))
-            (insert author "  "
-                    (propertize
-                     (format "%s%s\n" created (if system "  (system)" ""))
-                     'face 'gitlab-field-name))
-            (insert (if (string-empty-p body) "(no text)" body)
-                    "\n\n")))))))
+      (magit-insert-section (gitlab-group "Notes")
+        (gitlab--insert-group-heading "Notes")
+        (if (null notes)
+            (insert "No notes.\n")
+          (dolist (note notes)
+            (setq index (1+ index))
+            (magit-insert-section
+                (gitlab-note (or (gitlab-data-field "id" note) index))
+              (magit-insert-heading
+               (gitlab-merge-request--note-heading note))
+              (let ((body (gitlab-data-field-string "body" note)))
+                (insert (if (string-empty-p body) "(no text)" body)
+                        "\n\n")))))))))
 
 (defun gitlab-merge-request--notes-done (buffer notes)
   "Store the notes in BUFFER and render the merge request again.
@@ -463,7 +497,8 @@ RET opens the pipeline, the commit or the web page at point."
   (setq-local gitlab--sibling-open-function
               (lambda (id _name) (gitlab-display-merge-request id)))
   (setq-local gitlab--fetch-function #'gitlab-merge-request--fetch)
-  (setq-local gitlab--render-function #'gitlab-merge-request--render)
+  (setq-local gitlab--sections-hook 'gitlab-merge-request-sections-hook)
+  (setq-local gitlab--title-function #'gitlab-merge-request--title)
   (setq-local gitlab-merge-request--notes nil)
   (setq-local gitlab-merge-request--notes-loaded nil))
 

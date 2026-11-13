@@ -171,7 +171,7 @@ The caller kills the buffer."
            (gitlab-pipeline-tests--expand buffer "1003")
            (with-current-buffer buffer
              (should (gitlab--goto-property 'gitlab-job-id "6002"))
-             (should (equal '(job . "6002") (gitlab--line-identity)))
+             (should (equal '(row . "1003") (gitlab--line-identity)))
              (should (equal "https://gitlab.example/group/project/-/jobs/6002"
                             (gitlab-list--thing-at-point-url)))
              (should (equal '(job-row "6002" "1003")
@@ -401,17 +401,37 @@ runs of the neighbour rows into one block."
   (should (eq 'gitlab-list--number-sort
               (nth 2 (aref gitlab-pipeline-list-format 0)))))
 
+(ert-deftest gitlab-pipeline-detail-job-row-tab-folds ()
+  "TAB on a job row folds the section and does not follow the button.
+The button type carries no keymap, so the mode keymap answers."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (let ((gitlab--buffer-data
+            (list (cons 'jobs
+                        (list '((id . 5001) (status . "success")
+                                (stage . "test") (name . "unit-tests")
+                                (duration . 100)))))))
+       (gitlab-test-with-root 'pipeline
+         (gitlab-pipeline-insert-jobs)))
+     (goto-char (point-min))
+     (should (search-forward "unit-tests" nil t))
+     (should (eq 'magit-section-toggle (key-binding (kbd "TAB"))))
+     (should (button-at (point))))))
+
 (ert-deftest gitlab-pipeline-detail-table-right-aligns-numbers ()
   "The duration column of the jobs table ends on one edge.
 The header and every value take the same width and align to the
 right, so a reader compares two durations by their last digit."
   (with-temp-buffer
-    (gitlab-pipeline--insert-jobs
-     (list (cons 'jobs
-                 (list '((id . 5001) (status . "success") (stage . "test")
-                         (name . "unit-tests") (duration . 100))
-                       '((id . 5002) (status . "failed") (stage . "build")
-                         (name . "package") (duration . 3))))))
+    (let ((gitlab--buffer-data
+           (list (cons 'jobs
+                       (list '((id . 5001) (status . "success") (stage . "test")
+                               (name . "unit-tests") (duration . 100))
+                             '((id . 5002) (status . "failed") (stage . "build")
+                               (name . "package") (duration . 3)))))))
+      (gitlab-test-with-root 'pipeline
+        (gitlab-pipeline-insert-jobs)))
     (goto-char (point-min))
     (should (search-forward "Duration" nil t))
     (let ((edge (current-column)))
@@ -436,20 +456,24 @@ right, so a reader compares two durations by their last digit."
        (kill-buffer buffer)))))
 
 (ert-deftest gitlab-pipeline-detail-jobs-section ()
-  "The jobs table starts a foldable section of the detail buffer."
+  "The jobs table is a group section with one child per job."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-detail-mode)
-     (let ((inhibit-read-only t))
-       (gitlab-pipeline--insert-jobs
-        (list (cons 'jobs
-                    (list '((id . 5001) (status . "success") (stage . "test")
-                            (name . "unit-tests") (duration . 100)))))))
-     (goto-char (point-min))
-     (should (search-forward "Jobs" nil t))
-     (should (equal "Jobs"
-                    (get-text-property (line-beginning-position)
-                                       'gitlab-section))))))
+     (let ((gitlab--buffer-data
+            (list (cons 'jobs
+                        (list '((id . 5001) (status . "success")
+                                (stage . "test") (name . "unit-tests")
+                                (duration . 100)))))))
+       (gitlab-test-with-root 'pipeline
+         (gitlab-pipeline-insert-jobs)))
+     (let ((group (seq-find (lambda (section)
+                              (and (eq 'gitlab-group (oref section type))
+                                   (equal "Jobs" (oref section value))))
+                            (oref magit-root-section children))))
+       (should group)
+       (should (equal '("5001") (gitlab-test-section-children group)))
+       (should (string-match-p "unit-tests" (buffer-string)))))))
 
 (ert-deftest gitlab-pipeline-detail-job-row-is-a-button ()
   "A job row is one text button of the type `gitlab-object'.

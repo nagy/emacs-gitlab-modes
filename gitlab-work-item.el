@@ -70,6 +70,19 @@ only."
   :type '(repeat string)
   :group 'gitlab)
 
+(defcustom gitlab-work-item-sections-hook
+  '(gitlab-insert-title gitlab-insert-fields)
+  "Functions that insert the sections of a work item buffer.
+`gitlab-detail-mode' runs the entries in order through
+`magit-run-section-hook'.  Remove an entry to drop a section, or
+move an entry to change the order of the sections.
+
+An entry takes no arguments and inserts through
+`magit-insert-section'.  It reads the decoded answer of the buffer
+from `gitlab--buffer-data'."
+  :type '(repeat function)
+  :group 'gitlab)
+
 ;;; List
 
 (defvar gitlab-work-item-list-format
@@ -240,14 +253,13 @@ to the glab arguments."
 Call SUCCESS with the decoded answer, or ERROR with a condition."
   (gitlab-work-item-show-async iid success error))
 
-(defun gitlab-work-item--render (iid data)
-  "Render work item IID with DATA in the current buffer."
+(defun gitlab-work-item--title (id data)
+  "Return the title line of work item ID with DATA.
+ID is the object ID and DATA the decoded answer."
+  (declare (side-effect-free t))
   (let ((title (gitlab-data-field-string "title" data)))
-    (gitlab--render-fields
-     (format "%%%s %s" iid (if (string-empty-p title)
-                               "(no title)"
-                             title))
-     data)))
+    (format "%%%s %s" (gitlab-data-id-string id)
+            (if (string-empty-p title) "(no title)" title))))
 
 (define-derived-mode gitlab-work-item-mode gitlab-detail-mode
   "GitLab Work Item"
@@ -265,7 +277,8 @@ linked object at point."
   (setq-local gitlab--sibling-open-function
               (lambda (id _name) (gitlab-display-work-item id)))
   (setq-local gitlab--fetch-function #'gitlab-work-item--fetch)
-  (setq-local gitlab--render-function #'gitlab-work-item--render))
+  (setq-local gitlab--sections-hook 'gitlab-work-item-sections-hook)
+  (setq-local gitlab--title-function #'gitlab-work-item--title))
 
 (defun gitlab-work-item--buffer-name (iid &optional context)
   "Return the detail buffer name for work item IID.

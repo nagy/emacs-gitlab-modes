@@ -24,20 +24,20 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its foldable sections, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-work-item.el` | Work item list mode for a project and for a group, the Project column of a group list, detail mode, display commands and the work item list as the parent view of a detail buffer.  GitLab renamed the issue object to work item, so the transport is `glab issue` and the web URL uses `/-/work_items/`.  The family lists and displays issues.
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
-| `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable` and three local minor modes.  The package does not depend on evil. |
+| `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable`, three local minor modes and the `evil-fold-list` entry of a detail buffer.  The package does not depend on evil. |
 | `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-work-item:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
 | `gitlab-xref.el` | Optional xref backend: `mr:`, `work-item:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
 | `test/gitlab-test-helper.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
 | `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection.  `GITLAB_TEST_TRACE` selects another job trace fixture. |
 | `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections, a pipeline without a jobs array, two jobs fixtures (one for the pipeline detail and one for the row expansion of the pipeline list) and two work item fixtures (a list and a detail). |
 | `test/*-test.el` | ERT suites, one file per source unit.  No MELPA `files` spec descends into a subdirectory, so the package tarball never carries them. |
-| `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, the evil load path for the install compile, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary or the evil package. |
+| `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, one `emacsWithPackages` wrapper that carries magit-section and evil on the load path of the build, the install compile and the check phase, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary, the evil package or the magit-section package. |
 | `flake.lock` | Pinned flake inputs. |
 | `README.org` | User documentation. |
 | `AGENTS.md` | This file. |
@@ -56,18 +56,14 @@ Without Nix:
 
 ```sh
 emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helper.el \
-  -l gitlab-cli-test.el -l gitlab-data-test.el \
-  -l gitlab-context-test.el -l gitlab-mode-test.el \
-  -l gitlab-merge-request-test.el \
-  -l gitlab-work-item-test.el \
-  -l gitlab-git-test.el -l gitlab-pipeline-test.el \
-  -l gitlab-export-test.el \
-  -l gitlab-read-test.el -l gitlab-evil-test.el -l ol-gitlab-test.el \
-  -l gitlab-xref-test.el -l gitlab-bookmark-test.el \
+  $(printf -- '-l %s ' test/*-test.el) \
   -f ert-run-tests-batch-and-exit
 ```
 
-`EVIL` is the directory that holds `evil.el`.  All other tests run
+`EVIL` is the directory that holds `evil.el`.  The display layer also
+needs `magit-section` on the load path, together with the packages that
+it requires, so the dev shell or an Emacs that carries the package
+supplies it.  All other tests run
 without evil.  The suite never opens a network connection.
 
 ## Conventions
@@ -112,8 +108,10 @@ without evil.  The suite never opens a network connection.
   code path.  Without Magit they open a read-only
   `gitlab-git-patch-mode` buffer, which derives from `diff-mode`, and
   `q` closes it.  Magit stays out of `Package-Requires` and out of the
-  melpaBuild inputs.  Declare every Magit function with
-  `declare-function`.
+  melpaBuild inputs.  The display layer declares `magit-section`, the
+  section library that Magit 4 ships as its own package, and the
+  flake puts it on the load path of the build.  Declare every Magit
+  function that the Git views call with `declare-function`.
 - `gitlab-merge-request-show-changes` on `d` and
   `gitlab-merge-request-show-log` on `l` pass `gitlab--id`,
   `gitlab--last-data` and the active commit selection to the Git
@@ -451,53 +449,104 @@ without evil.  The suite never opens a network connection.
   context of the caller.  A display command passes the argument
   through, and the identity lookup uses the same context, so one
   project never meets a buffer of another.
-- Every render keeps point by the identity of its line, never by a
-  buffer position.  `gitlab--render` records `gitlab--point-record`
-  before it calls the render function and `gitlab--restore-point`
+- Every render keeps point by the identity of a line, never by a
+  buffer position.  `gitlab--render' records `gitlab--point-record'
+  before it calls the render function and `gitlab--restore-point'
   after it, because a render function erases the buffer and may move
-  point anywhere.  The record holds the identity of the line, the
-  number of lines from the line that the identity names to the line
-  of point, and the column of point.  `gitlab--line-identity` answers
-  with the text property of the line (`job` and the job ID, `sha` and
-  the commit SHA, `field` and the field name, `row` and the list row
-  ID), else with the text of the line and its ordinal among the equal
-  lines above it.  A line of whitespace alone has no identity, so the
-  record leans on the nearest line above and keeps its distance from
-  that line.  `gitlab--restore-point` keeps the column, clips it to
-  the end of a shorter line and moves point to `point-min` when the
-  line is gone or when the record is nil, because the first render of
-  a fresh buffer has no place to keep.  A renderer therefore moves
-  point without a care: `gitlab--render-fields` keeps no field and
-  `gitlab-pipeline--render` keeps no job row.  The render also keeps
-  the point of every other window that shows the buffer, because
-  `erase-buffer` pulls the window point marker of such a window to
-  `point-min` and the window would then show the start of the buffer.
-  `gitlab--window-records` records the line of each such window and
-  `gitlab--restore-window-points` moves each one back, so a visible
-  buffer stays readable even when the user sits in another window
-  while `auto-revert-mode` refreshes it.
+  point anywhere.  A detail buffer records the section of the line,
+  the number of lines from the start of that section to the line, and
+  the column of point.  `gitlab--record-position` calls
+  `magit-section-goto-successor`, which finds the section of the same
+  identity in the new tree, moves down the recorded lines and sets the
+  recorded column.  A vanished section leaves point on a neighbour
+  section, and a buffer without a section leaves it at `point-min`.
+  A list buffer and a buffer without a section record
+  `gitlab--line-identity` instead, through `gitlab--identity-record`:
+  the list row ID, else the text of the line and its ordinal among the
+  equal lines above it.  A line of whitespace alone has no identity,
+  so the record leans on the nearest line above and keeps its distance
+  from that line.  `gitlab--restore-point` clips the column to the end
+  of a shorter line and moves point to `point-min` when no line has an
+  identity, because the first render of a fresh buffer has no place to
+  keep.  A renderer therefore moves point without a care.  The render
+  also keeps the point of every other window that shows the buffer,
+  because `erase-buffer` pulls the window point marker of such a
+  window to `point-min` and the window would then show the start of
+  the buffer.  `gitlab--window-records` records the line of each such
+  window and `gitlab--restore-window-points` moves each one back, so a
+  visible buffer stays readable even when the user sits in another
+  window while `auto-revert-mode` refreshes it.
 - The renderers attach text properties.  `gitlab-field` names a field
   line.  `gitlab-pipeline-id`, `gitlab-merge-request-iid`,
   `gitlab-work-item-iid`,
   `gitlab-job-id`, `gitlab-commit-sha` and `gitlab-url` are navigation
   targets.  `gitlab-open-at-point` reads them.  A new object type adds
   one property and one branch there.
-- A detail buffer folds its sections through `outline-minor-mode`.  A
-  renderer starts a section with `gitlab--insert-section-title`, which
-  inserts the title line with the face `gitlab-title` and the text
-  property `gitlab-section`, whose value is the name of the section.
-  `gitlab--outline-search` wraps `outline-search-text-property`, so no
-  heading needs a special character in the text, and `outline-level`
-  answers one for every buffer, because the sections are flat.  Set
-  `outline-minor-mode-highlight` to nil, because the title carries its
-  own face.  A new renderer that starts a section calls the helper and
-  adds no `gitlab-title` of its own.  `gitlab-detail-toggle-section` on
-  `TAB` folds the section around point, and the evil layer binds the
-  same key, which yields the `evil-jump-forward` of `C-i` in a detail
-  buffer alone.  `gitlab--collapsed-sections` reads the folded names
-  before `gitlab--render` erases the buffer and `gitlab--restore-sections`
-  folds them again, so an automatic refresh never opens a fold under
-  the reader.  The imenu index names the sections as well.
+- A detail buffer is a tree of `magit-section' objects, and
+  `gitlab-detail-mode' derives from `magit-section-mode'.  The parent
+  mode supplies the read-only buffer, `q', the section highlight and
+  the section keymap: `TAB' folds the section at point, `n' and `p'
+  move between sections, `^' goes to the parent section and `1' to
+  `4' show that many levels.  The detail keymap keeps `p' for
+  `gitlab-pop', and a merge request buffer keeps `n' for
+  `gitlab-merge-request-show-notes', so the inherited motion commands
+  answer on `M-n' and `M-p' in those buffers.  Do not bind `TAB': the
+  inherited keymap carries `magit-section-toggle', and the button type
+  keeps `keymap' nil, so no button shadows it.  The mode body sets
+  `magit-section-inhibit-markers' to t, because the render inserts the
+  tree once and then only reads it, and
+  `magit-section-show-child-count' to nil, because a child count
+  rewrites a heading after the children recorded their positions.  A
+  heading that needs a count writes it in its text.  The body also
+  sets `truncate-lines' to nil, because a description wraps, and
+  `list-buffers-directory' to nil, because the identifier helper
+  names the buffer.
+- The root section names the buffer kind, as `gitlab-detail' with the
+  value of `gitlab--kind', so two kinds never share a section identity
+  and a fold of one buffer never reaches the visibility cache of
+  another.  A type and a value give the identity, so a value stays
+  stable across renders and unique among its siblings: a title is
+  `gitlab-title' with the value `title', a field line is
+  `gitlab-field' with the JSON key, a group is `gitlab-group' with the
+  label alone, a commit is `gitlab-commit' with the SHA, a note is
+  `gitlab-note' with the note ID and a job row is `gitlab-job' with
+  the job ID.  A count, a status and a duration belong to the heading
+  text and never to the value.
+- One hook per buffer kind names its inserters in display order:
+  `gitlab-detail-sections-hook',
+  `gitlab-merge-request-sections-hook',
+  `gitlab-work-item-sections-hook' and
+  `gitlab-pipeline-sections-hook'.  `gitlab--sections-hook' names the
+  hook of the current buffer, and `gitlab--render-default' runs its
+  entries through `magit-run-section-hook'.  Add no second option that
+  lists sections.  An inserter takes no argument and reads the decoded
+  answer from `gitlab--buffer-data'.  `gitlab-insert-title' builds the
+  heading from `gitlab--title-function', `gitlab-insert-fields' takes
+  the field order from `gitlab--field-keys-function', and a group
+  inserter owns its own section through `gitlab--insert-group-heading'.
+  A family sets those buffer locals in its mode body, so a display
+  command sets `gitlab--id' alone.
+- `gitlab--render-default' erases the buffer, opens the root section
+  and runs the hook, and `gitlab--render' then shows the fresh tree
+  with `magit-section-cache-visibility' bound to nil, so the cache
+  keeps only the sections that a reader folded.  A fold survives a
+  render, because the cache keys on the identity.
+  `gitlab--render-fields' renders a title and a field table without a
+  fetch, and `gitlab-merge-request--render' renders a merge request
+  answer that a caller already holds.  The mode never calls
+  `font-lock-ensure': that call drops a `face' property from text that
+  no keyword matches.
+- The imenu index walks the section tree with `magit-map-sections' and
+  keeps the title, the group and the field sections, so a renderer
+  adds no imenu entry of its own and the names come out in buffer
+  order.
+- `magit-section-mode` filters `buffer-substring` and strips every
+  text property from a killed region, so a copy of a detail line holds
+  plain text.  A command that needs the data of a line reads a buffer
+  variable or a section slot and never the text properties of a copy.
+  The job log stays on `outline-minor-mode` and keeps its own
+  `filter-buffer-substring-function`, because a copy of a trace must
+  drop a hidden timestamp and a hidden section marker.
 - A link and a row are text buttons of the type `gitlab-object`, and
   `button.el` carries the mouse face, the tooltip and the action.
   `gitlab--button-string` makes one from a string,
@@ -1043,7 +1092,12 @@ without evil.  The suite never opens a network connection.
   in normal state.  `gitlab-job-log-toggle-section` takes the plain
   `TAB` key, because evil binds no fold command to it, and the evil
   fold keys `zc`, `zo` and `za` reach the same sections through
-  `evil-fold-list` and `outline-minor-mode`.  `gitlab-list-toggle-expansion`
+  `evil-fold-list` and `outline-minor-mode`.
+  `gitlab-evil-detail-keys` binds `TAB` to `magit-section-toggle`, and
+  the file adds an `evil-fold-list` entry for `gitlab-detail-mode`
+  whose actions wrap the section command in a lambda of no argument,
+  because evil calls a fold action with no argument and demotes its
+  error.  `gitlab-list-toggle-expansion`
   takes the same plain `TAB` key in a list buffer, and
   `gitlab-list-sort` takes the `evil-change-whole-line` remap, so
   `S` sorts the table through the command that keeps a child row
@@ -1133,6 +1187,9 @@ without evil.  The suite never opens a network connection.
 - Tests run offline.  Mock at the process level with `test/mock-glab`;
   never call a real GitLab.  A new command needs an ERT test and, when
   it adds a file, a line in `checkPhase` only if the glob misses it.
+  `gitlab-test-with-root` renders a section tree without the fetch
+  pipeline, so a test of one inserter asserts the section type, the
+  value and the children instead of the text of the buffer.
   The export tests compare the export buffer with the fixture text, so
   a raw answer must survive the fetch unchanged.
 - Byte-compilation runs with warnings as errors.  Declare a function
@@ -1163,12 +1220,16 @@ without evil.  The suite never opens a network connection.
 - `nix fmt` formats `flake.nix`.  Do not run nixfmt standalone.
 - `gitlabModes` in `flake.nix` calls `lib.makeOverridable` with one
   argument set: `emacs`, `emacsPackages`, `melpaBuild`, `version`,
-  `glab`, `git` and `evil`.  The flake passes the commit-derived
-  `version`, and
+  `glab`, `git`, `evil` and `magitSection`.  The flake passes the
+  commit-derived `version`, and
   the argument defaults to `"0.1.0"` for a plain import.  Every other
   dependency derives from `emacs`, so one override moves them all.  A
   new build input becomes a new named argument, not a hard-coded
-  binding.
+  binding.  `melpaBuild` keeps `packageRequires` off the load path of
+  its own build, so `preBuild` puts one `emacsWithPackages` wrapper on
+  PATH and the build phase, the install compile and the check phase
+  all find the dependency there.  The package-lint check and the dev
+  shell carry the same package in their Emacs pack.
 
 ## TODO
 

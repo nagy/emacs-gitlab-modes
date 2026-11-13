@@ -18,7 +18,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'outline)
+(require 'magit-section)
 (require 'subr-x)
 (require 'gitlab-test-helper)
 (require 'gitlab-mode)
@@ -215,17 +215,20 @@
       (should (= 1 (plist-get record :offset))))))
 
 (ert-deftest gitlab-mode-point-record-property ()
-  "A line with a text property records that property."
-  (with-temp-buffer
-    (insert "Header\n"
-            (propertize "Status: success" 'gitlab-field 'status)
-            "\n")
-    (goto-char (point-max))
-    (forward-line -1)
-    (forward-char 10)
-    (let ((record (gitlab--point-record)))
-      (should (equal '(field . status) (plist-get record :identity)))
-      (should (= 10 (plist-get record :column))))))
+  "A field line records its section and its column."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (gitlab--render-fields "Merge request !12"
+                            '((iid . 12) (status . "success")))
+     (gitlab--goto-field 'status)
+     (forward-char 10)
+     (let ((record (gitlab--point-record)))
+       (should (eq 'gitlab-field
+                   (oref (plist-get record :section) type)))
+       (should (equal 'status (oref (plist-get record :section) value)))
+       (should (= 0 (plist-get record :line)))
+       (should (= 10 (plist-get record :column)))))))
 
 (ert-deftest gitlab-mode-point-restore-shifted ()
   "A restore finds the same line after the lines above changed."
@@ -267,23 +270,32 @@
     (should (= (point-min) (point)))))
 
 (ert-deftest gitlab-mode-render-keeps-point ()
-  "A render keeps the line and the column of point."
+  "A render keeps the section line and the column of point."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-detail-mode)
-     (setq-local gitlab--render-function
-                 (lambda (_id _data)
-                   (let ((inhibit-read-only t))
-                     (erase-buffer)
-                     (insert "Title\n\nStatus: failed\n\nJobs\n\njob row\n"))))
+     (setq-local gitlab--last-data '((one . 1) (two . 2) (three . 3)))
      (gitlab--render)
-     (goto-char (point-min))
-     (search-forward "job row")
-     (backward-char 3)
+     (gitlab--goto-field 'three)
+     (forward-char 8)
      (let ((column (- (point) (line-beginning-position))))
        (gitlab--render)
-       (should (equal "job row" (gitlab--line-text)))
+       (should (eq 'three (oref (magit-current-section) value)))
        (should (= column (- (point) (line-beginning-position))))))))
+
+(ert-deftest gitlab-mode-render-keeps-section-line ()
+  "A new field above the reader keeps the line of the reader.
+The record names the section, so a line that arrives above the
+section moves the section and not the reader."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab--last-data '((one . 1) (two . 2)))
+     (gitlab--render)
+     (gitlab--goto-field 'two)
+     (setq-local gitlab--last-data '((zero . 0) (one . 1) (two . 2)))
+     (gitlab--render)
+     (should (eq 'two (oref (magit-current-section) value))))))
 
 (ert-deftest gitlab-mode-render-keeps-other-window-point ()
   "A render keeps the point of a window that shows the buffer."
@@ -294,25 +306,21 @@
          (progn
            (with-current-buffer buffer
              (gitlab-detail-mode)
-             (setq-local gitlab--render-function
-                         (lambda (_id _data)
-                           (let ((inhibit-read-only t))
-                             (erase-buffer)
-                             (insert "Title\n\nrow one\nrow two\nrow three\n"))))
+             (setq-local gitlab--last-data
+                         '((one . 1) (two . 2) (three . 3)))
              (gitlab--render))
            (switch-to-buffer buffer)
            (let ((window (display-buffer buffer
                                          '(display-buffer-below-selected))))
              (set-window-point window
                                (with-current-buffer buffer
-                                 (goto-char (point-min))
-                                 (search-forward "row two")
+                                 (gitlab--goto-field 'two)
                                  (point)))
              (select-window (next-window window))
              (with-current-buffer buffer
                (gitlab--render))
              (with-selected-window window
-               (should (equal "row two" (gitlab--line-text))))))
+               (should (eq 'two (oref (magit-current-section) value))))))
        (set-window-configuration configuration)
        (kill-buffer buffer)))))
 
@@ -682,82 +690,137 @@ visits JSON with tree-sitter keeps the export key."
       (should (eq 'gitlab-export-json
                   (lookup-key map (vector 'remap mode)))))))
 
-(defun gitlab-mode-test--render-sections (_id _data)
-  "Render two sections into the current buffer."
-  (let ((inhibit-read-only t))
-    (erase-buffer)
-    (gitlab--insert-section-title "First")
-    (insert "\nfirst body\n")
-    (gitlab--insert-section-title "Second")
-    (insert "\nsecond body\n")))
+(defun gitlab-mode-test--insert-title ()
+  "Insert the title section of the test detail buffer."
+  (gitlab--insert-title "Test detail"))
 
-(defun gitlab-mode-test--invisible-p (heading)
-  "Return non-nil when the body of the section of HEADING is folded."
-  (save-excursion
-    (goto-char heading)
-    (outline-invisible-p (line-end-position))))
+(defun gitlab-mode-test--insert-first ()
+  "Insert the first group section of the test detail buffer."
+  (insert "\n")
+  (magit-insert-section (gitlab-group "First")
+    (gitlab--insert-group-heading "First")
+    (insert "first body one\nfirst body two\n")))
+
+(defun gitlab-mode-test--insert-second ()
+  "Insert the second group section of the test detail buffer."
+  (insert "\n")
+  (magit-insert-section (gitlab-group "Second")
+    (gitlab--insert-group-heading "Second")
+    (insert "second body one\nsecond body two\n")))
+
+(defvar gitlab-mode-test-sections-hook
+  '(gitlab-mode-test--insert-title
+    gitlab-mode-test--insert-first
+    gitlab-mode-test--insert-second)
+  "Sections of the test detail buffer.")
+
+(defun gitlab-mode-test--group (value)
+  "Return the group section of VALUE in the current buffer, or nil."
+  (magit-get-section `((gitlab-group . ,value)
+                       (gitlab-detail . ,(oref magit-root-section value)))))
 
 (ert-deftest gitlab-mode-detail-sections ()
-  "A detail buffer folds its sections through `outline-minor-mode'.
-A title line carries `gitlab-section', so no heading needs a special
-character, and every section sits at the same level."
+  "A detail buffer is a tree of Magit sections.
+The root section names the buffer kind, one section covers each
+field line, and a group section holds its rows."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-detail-mode)
-     (should outline-minor-mode)
-     (should (eq outline-search-function #'gitlab--outline-search))
+     (should (eq major-mode 'gitlab-detail-mode))
+     (should (derived-mode-p 'magit-section-mode))
+     (should (eq 'magit-section-toggle
+                 (lookup-key gitlab-detail-mode-map (kbd "TAB"))))
      (gitlab--render-fields "Merge request !12" '((iid . 12) (title . "Fix")))
-     (should (equal '(1) (gitlab--section-headings)))
-     (should (equal "Merge request !12"
-                    (get-text-property (point-min) 'gitlab-section)))
-     (should (eq 'gitlab-title (get-text-property (point-min) 'face)))
-     (goto-char (point-min))
-     (should (outline-on-heading-p))
-     ;; The outline machinery calls the variable, not the function of
-     ;; the same name.
-     (should (= 1 (funcall outline-level))))))
+     (should magit-root-section)
+     (should (equal '(gitlab-title gitlab-field gitlab-field)
+                    (mapcar (lambda (section) (oref section type))
+                            (oref magit-root-section children))))
+     (should (eq 'gitlab-title
+                 (get-text-property (point-min) 'face)))
+     (should (equal '(iid title)
+                    (mapcar (lambda (section) (oref section value))
+                            (seq-filter (lambda (section)
+                                          (eq 'gitlab-field
+                                              (oref section type)))
+                                        (oref magit-root-section children))))))))
 
 (ert-deftest gitlab-mode-detail-fold-section ()
-  "TAB folds the section around point and TAB folds it open again."
+  "TAB folds the section at point and TAB folds it open again.
+The command works from any line of a section, not only from its
+heading."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-detail-mode)
-     (gitlab-mode-test--render-sections nil nil)
-     (let ((first (nth 0 (gitlab--section-headings)))
-           (second (nth 1 (gitlab--section-headings))))
-       (goto-char second)
-       (forward-line 1)
-       (gitlab-detail-toggle-section)
-       (should (equal '("Second") (gitlab--collapsed-sections)))
-       (should (gitlab-mode-test--invisible-p second))
-       (should-not (gitlab-mode-test--invisible-p first))
-       (gitlab-detail-toggle-section)
-       (should-not (gitlab--collapsed-sections))))))
+     (setq-local gitlab--sections-hook 'gitlab-mode-test-sections-hook)
+     (gitlab--render)
+     (goto-char (point-min))
+     (search-forward "second body two")
+     (beginning-of-line)
+     (let ((section (magit-current-section)))
+       (should (eq 'gitlab-group (oref section type)))
+       (should (equal "Second" (oref section value)))
+       (call-interactively #'magit-section-toggle)
+       (should (oref section hidden))
+       (should (invisible-p (oref section content)))
+       (should-not (oref (gitlab-mode-test--group "First") hidden)))
+     (goto-char (point-min))
+     (search-forward "Second")
+     (beginning-of-line)
+     (call-interactively #'magit-section-toggle)
+     (should-not (oref (gitlab-mode-test--group "Second") hidden)))))
 
 (ert-deftest gitlab-mode-detail-fold-survives-render ()
-  "A render keeps the folded sections of a detail buffer."
+  "A render keeps the folded sections of a detail buffer.
+The visibility cache keys on the section identity, so a fold
+survives a second tree."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-detail-mode)
-     (setq-local gitlab--render-function #'gitlab-mode-test--render-sections
-                 gitlab--rendered t)
+     (setq-local gitlab--sections-hook 'gitlab-mode-test-sections-hook)
      (gitlab--render)
      (goto-char (point-min))
-     (gitlab-detail-toggle-section)
-     (should (equal '("First") (gitlab--collapsed-sections)))
+     (search-forward "First")
+     (beginning-of-line)
+     (call-interactively #'magit-section-toggle)
+     (should (oref (gitlab-mode-test--group "First") hidden))
      (gitlab--render)
-     (should (equal '("First") (gitlab--collapsed-sections)))
-     (should (gitlab-mode-test--invisible-p (point-min))))))
+     (should (oref (gitlab-mode-test--group "First") hidden))
+     (should-not (oref (gitlab-mode-test--group "Second") hidden)))))
 
-(ert-deftest gitlab-mode-detail-toggle-section-without-section ()
-  "A buffer without a section at point signals a `user-error'."
+(ert-deftest gitlab-mode-detail-section-ident-names-the-kind ()
+  "Two buffer kinds never share a section identity.
+A fold of one buffer would otherwise reach the buffer of another
+kind through the identity keyed visibility cache."
   (gitlab-test-with-environment
    (with-temp-buffer
      (gitlab-detail-mode)
-     (let ((inhibit-read-only t))
-       (insert "plain text\n"))
-     (goto-char (point-min))
-     (should-error (gitlab-detail-toggle-section) :type 'user-error))))
+     (setq-local gitlab--kind 'merge-request
+                 gitlab--sections-hook 'gitlab-mode-test-sections-hook)
+     (gitlab--render)
+     (let ((merge-request (magit-section-ident
+                           (gitlab-mode-test--group "First"))))
+       (setq-local gitlab--kind 'pipeline)
+       (gitlab--render)
+       (should-not (equal merge-request
+                          (magit-section-ident
+                           (gitlab-mode-test--group "First"))))))))
+
+(ert-deftest gitlab-mode-render-dropped-section ()
+  "A render that drops the recorded section keeps the reader near it.
+`magit-section-goto-successor' falls back to a neighbour section of
+the vanished one, and to the root section when nothing is left."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (setq-local gitlab--last-data '((one . 1) (two . 2)))
+     (gitlab--render)
+     (gitlab--goto-field 'two)
+     (setq-local gitlab--last-data '((one . 1)))
+     (gitlab--render)
+     (should (eq 'one (oref (magit-current-section) value)))
+     (setq-local gitlab--last-data nil)
+     (gitlab--render)
+     (should (= (point-min) (point))))))
 
 (ert-deftest gitlab-mode-imenu-index-with-sections ()
   "The imenu index names the sections and the field lines."
@@ -1049,8 +1112,6 @@ The fake header line and the empty rows contribute nothing."
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-open-web)))
   (should (equal '(gitlab-detail-mode) (command-modes #'gitlab-pop)))
   (should-not (command-modes #'gitlab-copy-id))
-  (should (equal '(gitlab-detail-mode)
-                 (command-modes #'gitlab-detail-toggle-section)))
   (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
                  (command-modes #'gitlab-go-to-parent)))
   (should (equal '(gitlab-detail-mode gitlab-job-log-mode)

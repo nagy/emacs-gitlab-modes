@@ -120,7 +120,30 @@ VISUAL reads the binding in visual state instead of normal state."
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "y")
                #'gitlab-export-json))
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "TAB")
-               #'gitlab-detail-toggle-section))))
+               #'magit-section-toggle))))
+
+(ert-deftest gitlab-evil-detail-fold-list ()
+  "The evil fold keys fold a detail section.
+`evil-fold-list' holds no entry for a Magit section buffer, so the
+package adds one, and every action wraps the section command in a
+lambda of no argument because evil calls a fold action with none."
+  (gitlab-test-with-environment
+   (should (seq-find (lambda (entry)
+                       (memq 'gitlab-detail-mode (car entry)))
+                     evil-fold-list))
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (let ((inhibit-read-only t))
+       (erase-buffer)
+       (magit-insert-section (gitlab-detail 'test)
+         (magit-insert-section (gitlab-group "Group")
+           (gitlab--insert-group-heading "Group")
+           (insert "body line\n"))))
+     (goto-char (point-min))
+     (evil-close-fold)
+     (should (oref (magit-current-section) hidden))
+     (evil-open-fold)
+     (should-not (oref (magit-current-section) hidden)))))
 
 (ert-deftest gitlab-evil-job-log-keys-remap ()
   "The job log bindings reach the GitLab commands through a remap."

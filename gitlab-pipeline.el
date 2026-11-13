@@ -130,6 +130,21 @@ A longer name is truncated by the table layout, not by the data."
   :type 'natnum
   :group 'gitlab)
 
+(defcustom gitlab-pipeline-sections-hook
+  '(gitlab-insert-title
+    gitlab-insert-fields
+    gitlab-pipeline-insert-jobs)
+  "Functions that insert the sections of a pipeline buffer.
+`gitlab-detail-mode' runs the entries in order through
+`magit-run-section-hook'.  Remove an entry to drop a section, or
+move an entry to change the order of the sections.
+
+An entry takes no arguments and inserts through
+`magit-insert-section'.  It reads the decoded answer of the buffer
+from `gitlab--buffer-data'."
+  :type '(repeat function)
+  :group 'gitlab)
+
 (defconst gitlab-pipeline-job-duration-width 12
   "Width of the duration column in the pipeline detail buffer.
 A numeric column aligns its values to the right, so a reader
@@ -547,17 +562,12 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
   "Return the pipeline detail field order of DATA without jobs."
   (delq 'jobs (mapcar #'car data)))
 
-(defun gitlab-pipeline--render (pipeline-id data)
-  "Render pipeline PIPELINE-ID with DATA in the current buffer.
-`gitlab--render' keeps point on the line that it was on before the
-render, so the renderer moves point without a care."
-  (gitlab--render-fields
-   (format "Pipeline #%s %s" pipeline-id
-           (gitlab-data-field-string "status" data))
-   data
-   (gitlab-pipeline--fields data))
-  (let ((inhibit-read-only t))
-    (gitlab-pipeline--insert-jobs data)))
+(defun gitlab-pipeline--title (id data)
+  "Return the title line of pipeline ID with DATA.
+ID is the object ID and DATA the decoded answer."
+  (declare (side-effect-free t))
+  (format "Pipeline #%s %s" (gitlab-data-id-string id)
+          (gitlab-data-field-string "status" data)))
 
 (defun gitlab-pipeline--sort-jobs (jobs)
   "Return JOBS in creation order.
@@ -573,35 +583,37 @@ on a copy, because a caller may still hold the answered array."
              (string-to-number
               (gitlab-data-id-string (gitlab-data-field "id" b)))))))
 
-(defun gitlab-pipeline--insert-jobs (data)
-  "Insert the jobs table of pipeline DATA at the end of the buffer.
-The oldest job comes first, because GitLab answers the jobs array
-newest first.  The duration column and the identifier column align
-their values to the right, as a printed table does."
-  (goto-char (point-max))
-  (insert "\n")
-  (gitlab--insert-section-title "Jobs")
-  (insert "\n")
+(defun gitlab-pipeline-insert-jobs ()
+  "Insert the jobs of the current pipeline as a group section.
+Every job is a child section, so a render keeps the place of the
+reader on a job row.  The oldest job comes first, because GitLab
+answers the jobs array newest first.  The duration column and the
+identifier column align their values to the right, as a printed
+table does."
   (let ((jobs (gitlab-pipeline--sort-jobs
-               (gitlab-data-field "jobs" data))))
-    (if (null jobs)
-        (insert "No jobs.\n")
-      (let* ((name-width (max 12 gitlab-pipeline-job-name-width))
-             (header (format (format "%%-12s %%-12s %%-%ds %%%ds %%14s\n"
-                                     name-width
-                                     gitlab-pipeline-job-duration-width)
-                             "Status" "Stage" "Name"
-                             "Duration" "ID")))
-        (insert (propertize header 'face 'gitlab-table-header))
-        (dolist (job jobs)
-          (gitlab-pipeline--insert-job job name-width))))))
+               (gitlab-data-field "jobs" gitlab--buffer-data))))
+    (insert "\n")
+    (magit-insert-section (gitlab-group "Jobs")
+      (gitlab--insert-group-heading "Jobs")
+      (if (null jobs)
+          (insert "No jobs.\n")
+        (let* ((name-width (max 12 gitlab-pipeline-job-name-width))
+               (header (format (format "%%-12s %%-12s %%-%ds %%%ds %%14s\n"
+                                       name-width
+                                       gitlab-pipeline-job-duration-width)
+                               "Status" "Stage" "Name"
+                               "Duration" "ID")))
+          (insert (propertize header 'face 'gitlab-table-header))
+          (dolist (job jobs)
+            (gitlab-pipeline--insert-job job name-width)))))))
 
 (defun gitlab-pipeline--insert-job (job name-width)
   "Insert one JOB row with NAME-WIDTH for the name column.
-The row is one text button, so the mouse face covers the row
-without joining the rows above and below, and a click or a tooltip
-reaches the job from any cell.  The navigation properties stay on
-the whole row, so RET offers the job from any cell too."
+The row is one child section of the jobs group, and it is one text
+button, so the mouse face covers the row without joining the rows
+above and below, and a click or a tooltip reaches the job from any
+cell.  The navigation properties stay on the whole row, so RET
+offers the job from any cell too."
   (let* ((id (gitlab-data-id-string (gitlab-data-field "id" job)))
          (status (gitlab-data-field-string "status" job))
          (stage (gitlab-data-field-string "stage" job))
@@ -609,19 +621,20 @@ the whole row, so RET offers the job from any cell too."
          (duration (gitlab--format-duration
                     (gitlab-data-field "duration" job)))
          (help (format "Job %s (%s)" name id))
-         (start (point))
          (status-cell (propertize (format "%-12s" status)
                                   'face (or (gitlab--status-face status)
                                             'default))))
-    (insert (format (format "%%s %%-12s %%-%ds %%%ds %%14s"
-                            name-width
-                            gitlab-pipeline-job-duration-width)
-                    status-cell stage name duration id))
-    (add-text-properties start (point)
-                         (list 'gitlab-job-id id
-                               'gitlab-job-name name))
-    (gitlab--buttonize start (point) help)
-    (insert "\n")))
+    (magit-insert-section (gitlab-job id)
+      (let ((start (point)))
+        (insert (format (format "%%s %%-12s %%-%ds %%%ds %%14s"
+                                name-width
+                                gitlab-pipeline-job-duration-width)
+                        status-cell stage name duration id))
+        (add-text-properties start (point)
+                             (list 'gitlab-job-id id
+                                   'gitlab-job-name name))
+        (gitlab--buttonize start (point) help)
+        (insert "\n")))))
 
 (defun gitlab-pipeline--children ()
   "Return the job rows of the current pipeline buffer in display order.
@@ -673,7 +686,9 @@ pipeline and its jobs."
   (setq-local gitlab--sibling-open-function
               (lambda (id _name) (gitlab-display-pipeline id)))
   (setq-local gitlab--fetch-function #'gitlab-pipeline--fetch)
-  (setq-local gitlab--render-function #'gitlab-pipeline--render))
+  (setq-local gitlab--sections-hook 'gitlab-pipeline-sections-hook)
+  (setq-local gitlab--title-function #'gitlab-pipeline--title)
+  (setq-local gitlab--field-keys-function #'gitlab-pipeline--fields))
 
 (define-key gitlab-pipeline-mode-map (kbd "C-c C-j")
   #'gitlab-pipeline-open-job-at-point)

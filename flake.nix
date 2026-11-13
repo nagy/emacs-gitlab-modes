@@ -75,7 +75,21 @@
               # test, but the package must not depend on it.  The check
               # phase supplies the elisp directory on the load path only.
               evil ? emacsPackages.evil,
+              # The detail modes derive from `magit-section-mode'.  The
+              # dependency stays a build input: melpaBuild ignores
+              # `packageRequires' for its own load path, so the build runs
+              # through an Emacs wrapper that carries the package.
+              magitSection ? emacsPackages.magit-section,
             }:
+            let
+              # One Emacs wrapper carries every build-only dependency, so
+              # the build phase, the install compile and the check phase
+              # find evil and magit-section on the load path.
+              buildEmacs = emacsPackages.emacsWithPackages (_: [
+                magitSection
+                evil
+              ]);
+            in
             melpaBuild {
               # The package name matches its entry library, gitlab-modes.el,
               # so `(use-package gitlab-modes :ensure t)' resolves it.
@@ -91,12 +105,17 @@
                   --replace-fail 'gitlab-program "glab"' 'gitlab-program "${lib.getExe' glab "glab"}"'
               '';
 
+              # The build and install phases run `emacs -Q' from PATH, so
+              # the wrapper supplies magit-section and evil on the load
+              # path.  `packageRequires' never reaches that path.
+              preBuild = ''
+                export PATH="${buildEmacs}/bin:$PATH"
+              '';
+
               # The optional gitlab-evil.el layer needs evil to compile, but
-              # the package must not depend on it.  The default install phase
-              # compiles the packaged files with -Q, so preInstall puts the
-              # evil elisp directory on EMACSLOADPATH for that compile.
-              # Users without evil only see one "Cannot open load file" line
-              # during their own package compile.
+              # the package must not depend on it.  The wrapper on PATH
+              # already carries evil, and the explicit entry keeps the
+              # compile working when a consumer swaps the wrapper.
               preInstall = ''
                 evil_dir=$(find ${evil}/share/emacs/site-lisp/elpa \
                   -mindepth 1 -maxdepth 1 -type d -name 'evil-*' -print -quit)
@@ -234,7 +253,10 @@
             pkgs.runCommandLocal "gitlab-modes-package-lint"
               {
                 nativeBuildInputs = [
-                  (pkgs.emacsPackages.emacsWithPackages (p: [ p.package-lint ]))
+                  (pkgs.emacsPackages.emacsWithPackages (p: [
+                    p.package-lint
+                    p.magit-section
+                  ]))
                   # Emacs writes ~/.emacs.d, so the check needs a writable
                   # home.  The hook owns it, and a shared $TMPDIR never
                   # leaks state into another check.
@@ -305,6 +327,7 @@
               (pkgs.emacsPackages.emacsWithPackages (p: [
                 p.evil
                 p.magit
+                p.magit-section
               ]))
             ];
           };
