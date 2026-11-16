@@ -1046,6 +1046,11 @@ without evil.  The suite never opens a network connection.
   takes the object as an optional third argument for that answer,
   so a caller without the object passes the flag to
   `gitlab--format-branch` itself.
+- A draft merge request carries the `draft` flag and writes `Draft:`
+  in front of its title.  The Title cell of a merge request list row
+  takes the `gitlab-draft` face, which inherits `shadow`, when
+  `gitlab--draft-p` answers non-nil.  It reads the flag through
+  `gitlab--tag-flag-p`.
 - A renderer that prints an author calls `gitlab--format-author`, and
   a renderer that prints a branch or a ref calls
   `gitlab--format-branch`, because `gitlab--format-value` adds no

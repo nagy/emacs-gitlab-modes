@@ -175,7 +175,11 @@ the IID cell keeps the full identifier as its navigation target."
      (lambda (merge-request)
        (let* ((iid (gitlab-data-field "iid" merge-request))
               (id (gitlab-merge-request--row-id merge-request))
-              (title (gitlab-data-field-string "title" merge-request))
+              (title (let ((title (gitlab-data-field-string
+                                  "title" merge-request)))
+                       (if (gitlab--draft-p merge-request)
+                           (propertize title 'face 'gitlab-draft)
+                         title)))
               (state (gitlab-data-field-string "state" merge-request))
               (author (gitlab--format-author
                        (gitlab-data-field "author" merge-request)))

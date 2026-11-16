@@ -432,6 +432,13 @@ same as in a Magit buffer.  Magit stays optional, because Emacs
 ignores an undefined parent face."
   :group 'gitlab)
 
+(defface gitlab-draft
+  '((t :inherit shadow))
+  "Face of a draft merge request.
+The face inherits `shadow', so a draft reads as a title that waits
+for work."
+  :group 'gitlab)
+
 (defface gitlab-tag
   '((t :inherit magit-tag))
   "Face of a tag name.
@@ -1556,6 +1563,11 @@ false flag as true."
   "Return non-nil when the `tag' flag of DATA marks a tag."
   (declare (side-effect-free t))
   (gitlab--tag-flag-p (gitlab-data-field "tag" data)))
+
+(defun gitlab--draft-p (data)
+  "Return non-nil when DATA is a draft merge request."
+  (declare (side-effect-free t))
+  (gitlab--tag-flag-p (gitlab-data-field "draft" data)))
 
 (defun gitlab--field-value-face (key value &optional data)
   "Return the face for the value of field KEY holding VALUE.

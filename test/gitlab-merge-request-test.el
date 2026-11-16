@@ -407,6 +407,20 @@
                       (aref (cadr (car (gitlab-merge-request--entries data)))
                             3)))))))
 
+(ert-deftest gitlab-merge-request-entries-draft-title ()
+  "A draft merge request prints its title with the draft face."
+  (let* ((data '(((iid . 7) (title . "Seven") (draft . nil))
+                 ((iid . 8) (title . "Draft: Eight") (draft . t))
+                 ((iid . 9) (title . "Nine") (draft . :false))))
+         (entries (gitlab-merge-request--entries data))
+         (draft (aref (cadr (nth 1 entries)) 1))
+         (open (aref (cadr (nth 0 entries)) 1))
+         (false (aref (cadr (nth 2 entries)) 1)))
+    (should (equal "Draft: Eight" draft))
+    (should (eq 'gitlab-draft (get-text-property 0 'face draft)))
+    (should-not (get-text-property 0 'face open))
+    (should-not (get-text-property 0 'face false))))
+
 (ert-deftest gitlab-merge-request-commit-rows-faces ()
   "A commit row marks its SHA, its author and its date."
   (gitlab-test-with-environment
