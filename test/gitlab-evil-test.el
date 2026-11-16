@@ -91,6 +91,8 @@ VISUAL reads the binding in visual state instead of normal state."
   (gitlab-test-with-environment
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "RET")
                #'gitlab-list-open))
+   (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "o")
+               #'gitlab-open-other-window))
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "S")
                #'gitlab-list-sort))
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "TAB")
@@ -111,6 +113,8 @@ VISUAL reads the binding in visual state instead of normal state."
   (gitlab-test-with-environment
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "RET")
                #'gitlab-open-at-point))
+   (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "o")
+               #'gitlab-open-other-window))
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "q")
                #'quit-window))
    (should (eq (gitlab-evil-test--binding #'gitlab-merge-request-mode "r")
@@ -155,7 +159,11 @@ lambda of no argument because evil calls a fold action with none."
    (should (eq (gitlab-evil-test--binding #'gitlab-job-log-mode "r")
                #'revert-buffer-quick))
    (should (eq (gitlab-evil-test--binding #'gitlab-job-log-mode "R")
-               #'revert-buffer-quick))))
+               #'revert-buffer-quick))
+   ;; A job log holds no object that a second window could show, so the
+   ;; key keeps the evil command.
+   (should (eq (gitlab-evil-test--binding #'gitlab-job-log-mode "o")
+               #'evil-open-below))))
 
 (ert-deftest gitlab-evil-remap-follows-command ()
   "A remap keeps the GitLab command on a new key of the evil command."

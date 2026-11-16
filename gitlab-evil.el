@@ -50,20 +50,21 @@
 ;; command, such as gr, stays a plain key binding.
 ;;
 ;; Detail buffers: RET opens the pipeline, merge request, work item,
-;; web page or commit at point; TAB folds the section at point; q
-;; quits the window; gr, r and R refresh; p pops back; C-x C-j opens
-;; the parent list; c copies the ID; w opens the web page.  The evil
-;; fold keys zc, zo and za reach the sections through
-;; `evil-fold-list'.
+;; web page or commit at point; o opens it in another window; TAB
+;; folds the section at point; q quits the window; gr, r and R
+;; refresh; p pops back; C-x C-j opens the parent list; c copies the
+;; ID; w opens the web page.  The evil fold keys zc, zo and za reach
+;; the sections through `evil-fold-list'.
 ;;
-;; List buffers: RET opens the row; TAB expands a row into its child
-;; rows; c or Y copies its ID; w opens its web page; S sorts the
-;; current column.  A visual line selection followed by y copies every
-;; selected row ID, one per line.
+;; List buffers: RET opens the row; o opens it in another window; TAB
+;; expands a row into its child rows; c or Y copies its ID; w opens
+;; its web page; S sorts the current column.  A visual line selection
+;; followed by y copies every selected row ID, one per line.
 ;;
 ;; Job log buffers: q quits; gr, r and R restart the trace; ~ toggles the
 ;; timestamps; C-x C-j opens the pipeline; c copies the job ID; G and
-;; gg reach the end and the start.
+;; gg reach the end and the start.  A log holds no object that o opens,
+;; so o keeps its evil meaning there.
 ;;
 ;; Every buffer binds the two replace commands, `evil-replace' and
 ;; `evil-enter-replace-state', through a remap to
@@ -107,6 +108,9 @@ bindings off until a user calls `gitlab-evil-mode'."
 
 (defvar gitlab-evil-detail-keys
   '(([remap evil-ret] . gitlab-open-at-point)
+    ;; `o' opens below in evil, a text edit that a display buffer
+    ;; takes not, so the key opens the object in another window.
+    ([remap evil-open-below] . gitlab-open-other-window)
     ("<mouse-2>" . gitlab-mouse-open-at-point)
     ;; TAB is C-i, the jump of the evil jump list, in the normal state.
     ;; A detail buffer folds a section instead, and `p' returns to the
@@ -128,6 +132,7 @@ that evil already binds.")
 
 (defvar gitlab-evil-list-keys
   '(([remap evil-ret] . gitlab-list-open)
+    ([remap evil-open-below] . gitlab-open-other-window)
     ("<mouse-2>" . gitlab-list-mouse-open)
     ("TAB" . gitlab-list-toggle-expansion)
     ([remap evil-record-macro] . quit-window)

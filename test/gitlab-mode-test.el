@@ -1103,6 +1103,53 @@ The fake header line and the empty rows contribute nothing."
     (should (equal '(("5001" . "build") ("5002" . "test"))
                    (gitlab--children)))))
 
+(ert-deftest gitlab-mode-open-other-window-dispatch ()
+  "`gitlab-open-other-window' runs the RET command of the buffer.
+A list buffer runs `gitlab-list-open' and every other buffer runs
+`gitlab-open-at-point', and both run under one display action."
+  (with-temp-buffer
+    (gitlab-list-mode)
+    (let ((opened nil)
+          (action nil))
+      (cl-letf (((symbol-function 'gitlab-list-open)
+                 (lambda ()
+                   (setq opened 'list
+                         action display-buffer-overriding-action))))
+        (gitlab-open-other-window))
+      (should (eq 'list opened))
+      (should (equal '((display-buffer-reuse-window
+                        display-buffer-pop-up-window)
+                       (inhibit-same-window . t))
+                     action))))
+  (with-temp-buffer
+    (gitlab-detail-mode)
+    (let ((opened nil))
+      (cl-letf (((symbol-function 'gitlab-open-at-point)
+                 (lambda () (setq opened 'detail))))
+        (gitlab-open-other-window))
+      (should (eq 'detail opened)))))
+
+(ert-deftest gitlab-mode-open-other-window-selects-other-window ()
+  "The command selects a window other than the caller window."
+  (save-window-excursion
+    (let ((origin (get-buffer-create " *gitlab-other-window-origin*"))
+          (target (get-buffer-create " *gitlab-other-window-target*"))
+          start)
+      (unwind-protect
+          (progn
+            (switch-to-buffer origin)
+            (setq start (selected-window))
+            (cl-letf (((symbol-function 'gitlab-open-at-point)
+                       (lambda () (pop-to-buffer target))))
+              (with-temp-buffer
+                (gitlab-detail-mode)
+                (gitlab-open-other-window)))
+            (should-not (eq start (selected-window)))
+            (should (eq target (window-buffer (selected-window))))
+            (should (= 2 (length (window-list)))))
+        (kill-buffer origin)
+        (kill-buffer target)))))
+
 (ert-deftest gitlab-mode-command-modes ()
   "Every display command names the modes in which it works."
   (should (equal '(gitlab-detail-mode)
@@ -1119,6 +1166,7 @@ The fake header line and the empty rows contribute nothing."
   (should (equal '(gitlab-detail-mode gitlab-job-log-mode)
                  (command-modes #'gitlab-previous-sibling)))
   (should (equal '(gitlab-list-mode) (command-modes #'gitlab-list-open)))
+  (should-not (command-modes #'gitlab-open-other-window))
   (should (equal '(gitlab-list-mode)
                  (command-modes #'gitlab-list-mouse-open)))
   (should (equal '(gitlab-list-mode)

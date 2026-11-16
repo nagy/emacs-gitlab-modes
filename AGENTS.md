@@ -489,6 +489,18 @@ without evil.  The suite never opens a network connection.
   `gitlab-job-id`, `gitlab-commit-sha` and `gitlab-url` are navigation
   targets.  `gitlab-open-at-point` reads them.  A new object type adds
   one property and one branch there.
+- `gitlab-open-other-window` on `o` does what RET does in another
+  window: `gitlab-list-open' in a list buffer and
+  `gitlab-open-at-point' in a detail buffer.  It binds
+  `display-buffer-overriding-action' to a reuse of a window of the
+  buffer and, else, a new window, with `inhibit-same-window', because
+  every display path ends in `pop-to-buffer': the detail buffer, the
+  list buffer, the job log and the plain commit view.  The command
+  names no mode, because it serves both base modes, and it keeps the
+  two RET commands as the one definition of opening.  Magit owns the
+  display of a commit when `gitlab-git-use-magit' is non-nil, so that
+  view may ignore the action.  A job log holds no object that a
+  second window could show, so its evil keys leave `o' alone.
 - A detail buffer is a tree of `magit-section' objects, and
   `gitlab-detail-mode' derives from `magit-section-mode'.  The parent
   mode supplies the read-only buffer, `q', the section highlight and
@@ -1178,7 +1190,10 @@ without evil.  The suite never opens a network connection.
   the file adds an `evil-fold-list` entry for `gitlab-detail-mode`
   whose actions wrap the section command in a lambda of no argument,
   because evil calls a fold action with no argument and demotes its
-  error.  `gitlab-list-toggle-expansion`
+  error.  `gitlab-open-other-window` takes the `evil-open-below`
+  remap of `o` in a detail buffer and in a list buffer, because evil
+  binds `o` to a text edit that a read-only view cannot use, and a
+  job log keeps `o`.  `gitlab-list-toggle-expansion`
   takes the same plain `TAB` key in a list buffer, and
   `gitlab-list-sort` takes the `evil-change-whole-line` remap, so
   `S` sorts the table through the command that keeps a child row

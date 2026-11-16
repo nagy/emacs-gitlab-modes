@@ -2157,6 +2157,7 @@ without blocking Emacs."
   (setq-local list-buffers-directory nil))
 
 (define-key gitlab-detail-mode-map (kbd "RET") #'gitlab-open-at-point)
+(define-key gitlab-detail-mode-map (kbd "o") #'gitlab-open-other-window)
 (define-key gitlab-detail-mode-map [mouse-2] #'gitlab-mouse-open-at-point)
 (define-key gitlab-detail-mode-map (kbd "C-c C-n") #'gitlab-next-sibling)
 (define-key gitlab-detail-mode-map (kbd "C-c C-p") #'gitlab-previous-sibling)
@@ -2786,6 +2787,26 @@ that reads a URL work on a table row."
         (browse-url url)
       (user-error "The row has no web URL"))))
 
+(defun gitlab-open-other-window ()
+  "Open the GitLab object at point in another window.
+Do what RET does: `gitlab-list-open' in a list buffer and
+`gitlab-open-at-point' in a detail buffer.  Show the result in a
+window other than the selected one, as
+`dired-find-file-other-window' does.  A window that shows the
+buffer already is reused, else a new window is split off.  The
+commit view of Magit stays the plain RET view, because Magit owns
+the display of its buffers."
+  (interactive)
+  ;; Every display path ends in `pop-to-buffer', so one overriding
+  ;; action reaches a detail buffer, a list buffer, a job log and the
+  ;; plain commit view.
+  (let ((display-buffer-overriding-action
+         '((display-buffer-reuse-window display-buffer-pop-up-window)
+           (inhibit-same-window . t))))
+    (if (derived-mode-p 'gitlab-list-mode)
+        (gitlab-list-open)
+      (gitlab-open-at-point))))
+
 (defun gitlab-list--number-sort (a b)
   "Compare entries A and B by the number in the sort column.
 `tabulated-list-mode' passes whole `tabulated-list-entries'
@@ -2836,6 +2857,7 @@ separates a row from the rows that it holds."
 ;; The commands are defined above the keymap bindings, so the
 ;; byte-compiler knows every key target.
 (define-key gitlab-list-mode-map (kbd "RET") #'gitlab-list-open)
+(define-key gitlab-list-mode-map (kbd "o") #'gitlab-open-other-window)
 (define-key gitlab-list-mode-map [mouse-2] #'gitlab-list-mouse-open)
 (define-key gitlab-list-mode-map (kbd "TAB") #'gitlab-list-toggle-expansion)
 (define-key gitlab-list-mode-map (kbd "S") #'gitlab-list-sort)
