@@ -51,6 +51,7 @@
 
 ;;; Code:
 
+(require 'seq)
 (require 'subr-x)
 (require 'gitlab-data)
 (require 'gitlab-git)
@@ -92,6 +93,22 @@ An entry takes no arguments and inserts through
 `magit-insert-section'.  It reads the decoded answer of the buffer
 from `gitlab--buffer-data'."
   :type '(repeat function)
+  :group 'gitlab)
+
+(defcustom gitlab-merge-request-show-behind t
+  "Non-nil if the list marks a merge request that sits behind its target.
+The check reads the local merge request refs and compares them
+with the target branch, so it needs the fetch refspec that the
+GitLab documentation names:
+
+  +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
+
+The package reads the destination of the refspec, so any prefix
+works.  A row whose local ref does not hold the head commit of the
+answer stays unmarked, because a stale ref would answer about
+another head.  A merge request behind its target cannot merge with
+a fast-forward merge, and it merges cleanly with a merge commit."
+  :type 'boolean
   :group 'gitlab)
 
 (defcustom gitlab-merge-request-list-arguments nil
@@ -165,17 +182,88 @@ identifier, so two projects that both hold !12 stay apart."
 The marker follows the state text, so the column grows by the
 width of the marker only while the table holds a conflicted row.")
 
+(defconst gitlab-merge-request-behind-marker "↓"
+  "Marker that the State cell of a merge request behind its target shows.
+The marker follows the conflict marker, so a row that holds both
+reads \"opened ⚠ ↓\".")
+
+(defvar-local gitlab-merge-request--behind nil
+  "Hash of the rows whose place behind the target branch is known.
+The key is a cons of the row ID and the `sha' field, and the value
+is the answer.  The key holds the head commit, so a refreshed
+answer with a new head commits again, and an unchanged table reads
+no Git ref twice.")
+
+(defun gitlab-merge-request--behind-key (merge-request)
+  "Return the cache key of MERGE-REQUEST."
+  (declare (side-effect-free t))
+  (cons (gitlab-merge-request--row-id merge-request)
+        (gitlab-data-field-string "sha" merge-request)))
+
+(defun gitlab-merge-request--behind-table ()
+  "Return the behind cache of the current buffer."
+  (or gitlab-merge-request--behind
+      (setq-local gitlab-merge-request--behind
+                  (make-hash-table :test #'equal))))
+
+(defun gitlab-merge-request--behind-state (merge-request)
+  "Return non-nil when MERGE-REQUEST is known to sit behind its target."
+  (eq t (gethash (gitlab-merge-request--behind-key merge-request)
+                 (gitlab-merge-request--behind-table))))
+
+(defun gitlab-merge-request--check-behind (data)
+  "Fill the behind cache of the current buffer from DATA.
+The check reads the local merge request refs once and answers every
+row that the cache does not hold yet, so an unchanged table runs no
+Git command on a later render.  It stays away from a buffer of
+another project, and from a row that is no longer open."
+  (when (and gitlab-merge-request-show-behind
+             (gitlab--local-checkout-p))
+    (let ((table (gitlab-merge-request--behind-table)))
+      (when (> (hash-table-count table) 2048)
+        (setq table (setq-local gitlab-merge-request--behind
+                                (make-hash-table :test #'equal))))
+      (let ((pending (seq-filter
+                      (lambda (merge-request)
+                        (and (equal "opened"
+                                    (gitlab-data-field-string
+                                     "state" merge-request))
+                             (not (gethash
+                                   (gitlab-merge-request--behind-key
+                                    merge-request)
+                                   table))))
+                      data)))
+        (when pending
+          (let ((answer (gitlab-git-merge-requests-behind pending)))
+            (dolist (merge-request pending)
+              (puthash (gitlab-merge-request--behind-key merge-request)
+                       (and (gethash (gitlab-data-id-string
+                                      (gitlab-data-field "iid"
+                                                         merge-request))
+                                     answer)
+                            t)
+                       table))))))))
+
+(defun gitlab-merge-request--marker (glyph face)
+  "Return GLYPH as a State cell marker that carries FACE."
+  (declare (pure t) (side-effect-free t))
+  (concat " " (propertize glyph 'face face)))
+
 (defun gitlab-merge-request--state-cell (merge-request)
   "Return the State cell of MERGE-REQUEST.
 A merge request with a merge conflict carries
-`gitlab-merge-request-conflict-marker' behind its state text."
+`gitlab-merge-request-conflict-marker' behind its state text, and a
+merge request that sits behind its target branch carries
+`gitlab-merge-request-behind-marker' behind that."
   (let ((state (gitlab-data-field-string "state" merge-request)))
     (concat (propertize state 'face (or (gitlab--status-face state)
                                         'default))
             (when (gitlab--conflict-p merge-request)
-              (concat " "
-                      (propertize gitlab-merge-request-conflict-marker
-                                  'face 'gitlab-conflict))))))
+              (gitlab-merge-request--marker
+               gitlab-merge-request-conflict-marker 'gitlab-conflict))
+            (when (gitlab-merge-request--behind-state merge-request)
+              (gitlab-merge-request--marker
+               gitlab-merge-request-behind-marker 'gitlab-behind)))))
 
 (defun gitlab-merge-request--rows (data)
   "Return an alist of merge request row ID to row for DATA."
@@ -188,6 +276,7 @@ A merge request with a merge conflict carries
 A group list puts the project of the row in the leftmost cell, and
 the IID cell keeps the full identifier as its navigation target."
   (let ((group-p (gitlab-merge-request--group-p)))
+    (gitlab-merge-request--check-behind data)
     (mapcar
      (lambda (merge-request)
        (let* ((iid (gitlab-data-field "iid" merge-request))

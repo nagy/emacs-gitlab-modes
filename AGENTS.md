@@ -23,7 +23,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
-| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
+| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
@@ -86,9 +86,16 @@ without evil.  The suite never opens a network connection.
   built-in `alist-get` setter does not mutate a non-empty list for a
   missing key.
 - `gitlab-git.el` reads the merge request refs that the user already
-  fetched.  It finds a ref by suffix, so both
-  `refs/remotes/origin/merge-requests/IID/head` and
-  `refs/merge-requests/IID/head` work.  The merge request IID must be
+  fetched.  `gitlab-git-merge-request-refs` names the refs in one
+  `git for-each-ref` call and answers an alist of IID to a cons of ref
+  name and commit.  It reads the destination of every merge request
+  fetch refspec of `gitlab-git--remote', so the standard
+  `+refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*`
+  and a user prefix such as `refs/mr/*` both answer, and it also
+  matches `/merge-requests/IID/head` anywhere under `refs/remotes` and
+  `refs/merge-requests`, so a ref that the user fetched by hand still
+  answers.  Do not add a customization for the ref spelling: the
+  refspec of the repository holds it.  The merge request IID must be
   digits only, because it becomes part of a ref name and a git
   argument.  A missing ref, a missing object or a failed command
   returns nil, so a display buffer shows no section instead of a
@@ -1064,6 +1071,32 @@ without evil.  The suite never opens a network connection.
   `gitlab-merge-request--state-cell` builds the cell, and the column
   fitting measures its text, so the State column grows by the marker
   only while a conflicted row shows.
+- A merge request that sits behind its target branch marks its State
+  cell with `gitlab-merge-request-behind-marker`, so a row reads
+  `opened ↓`, and a conflicted row that is also behind reads
+  `opened ⚠ ↓`.  The marker carries the `gitlab-behind` face, which
+  inherits `warning`.  The fact comes from the local Git refs and not
+  from the answer, because `detailed_merge_status` holds one blocker
+  only: `not_approved` hides `need_rebase`.  GitLab itself asks
+  `project.repository.ancestor?(target_branch_sha, diff_head_sha)` and
+  calls a merge request behind only when
+  `ff_merge_must_be_possible?` holds, so the marker states "behind
+  target" and not "must rebase", because a merge commit project
+  merges a behind branch.  `gitlab-git-merge-requests-behind` answers
+  the whole table in one round: one `for-each-ref` for the refs, one
+  `for-each-ref --contains` per distinct target branch for the refs
+  that hold the target tip, and one `gitlab-git--ancestor-p` per row
+  for a git that cannot answer `--contains`.  `gitlab-git--ancestor-p`
+  calls `magit-rev-ancestor-p` when the user already loaded Magit, and
+  `git merge-base --is-ancestor` otherwise.  A row counts only when
+  its local ref holds the `sha` field, so a stale fetch answers
+  nothing.  The rows that are no longer open stay out, because a
+  closed row has no place behind a branch.
+  `gitlab-merge-request--behind` caches the answer per row ID and head
+  commit, so an unchanged table runs no Git command on a later render,
+  and `gitlab-merge-request-show-behind` turns the whole check off.
+  The check needs `gitlab--local-checkout-p`, so a group list and a
+  list of another project read no ref.
 - A renderer that prints an author calls `gitlab--format-author`, and
   a renderer that prints a branch or a ref calls
   `gitlab--format-branch`, because `gitlab--format-value` adds no

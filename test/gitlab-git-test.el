@@ -144,6 +144,71 @@ The macro deletes the repository afterwards."
       (let ((data (gitlab-git-tests--data (cdr repo))))
         (should-not (gitlab-git-merge-request-commits "8" data))))))
 
+(ert-deftest gitlab-git-merge-request-head-ref-refspec ()
+  "The fetch refspec of the repository names the merge request ref.
+A user who fetches the refs under another prefix still gets the
+local reads."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (let ((directory (car repo)))
+      (gitlab-git-tests--git directory "remote" "add" "origin"
+                             "git@gitlab.example.com:group/project.git")
+      (gitlab-git-tests--git directory "config" "--add"
+                             "remote.origin.fetch"
+                             "+refs/merge-requests/*/head:refs/mr/*")
+      (gitlab-git-tests--git directory "update-ref" "refs/mr/9"
+                             "refs/remotes/origin/merge-requests/7/head")
+      (gitlab-git-tests--git directory "update-ref" "-d"
+                             "refs/remotes/origin/merge-requests/7/head")
+      (with-temp-buffer
+        (setq-local gitlab-cli-directory directory)
+        (should (equal "refs/mr/9" (gitlab-git-merge-request-head-ref "9")))
+        (should (equal "9"
+                       (car (assoc "9" (gitlab-git-merge-request-refs)))))
+        (should-not (gitlab-git-merge-request-head-ref "7"))))))
+
+(ert-deftest gitlab-git-merge-requests-behind-up-to-date ()
+  "A merge request whose target holds its head is not behind."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (let* ((sha (gitlab-git-tests--git
+                   (car repo) "rev-parse"
+                   "refs/remotes/origin/merge-requests/7/head"))
+             (data (append (gitlab-git-tests--data (cdr repo))
+                           (list (cons 'sha sha))))
+             (behind (gitlab-git-merge-requests-behind (list data))))
+        (should (equal 0 (hash-table-count behind)))))))
+
+(ert-deftest gitlab-git-merge-requests-behind-target-ahead ()
+  "A merge request that lacks a commit of the target is behind."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (let ((directory (car repo))
+          (gitlab-cli-directory (car repo))
+          (sha nil))
+      (setq sha (gitlab-git-tests--git
+                 directory "rev-parse"
+                 "refs/remotes/origin/merge-requests/7/head"))
+      (gitlab-git-tests--write directory "file.txt" "three\n")
+      (gitlab-git-tests--git directory "commit" "-q" "-am" "third")
+      (let* ((data (append (gitlab-git-tests--data (cdr repo))
+                           (list (cons 'sha sha))))
+             (behind (gitlab-git-merge-requests-behind (list data))))
+        (should (gethash "7" behind))))))
+
+(ert-deftest gitlab-git-merge-requests-behind-stale-ref ()
+  "A local ref that holds another head answers nothing."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (let* ((data (append (gitlab-git-tests--data (cdr repo))
+                           (list (cons 'sha (cdr repo)))))
+             (behind (gitlab-git-merge-requests-behind (list data))))
+        (should (equal 0 (hash-table-count behind)))))))
+
 (ert-deftest gitlab-merge-request-render-commits ()
   "The merge request buffer lists the local commits with a property."
   (skip-unless (executable-find "git"))

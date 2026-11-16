@@ -60,6 +60,7 @@
 (declare-function magit-get-all "magit-git" (&rest keys))
 (declare-function magit-list-remotes "magit-git" ())
 (declare-function magit-log-other "magit-log" (revs &optional args files))
+(declare-function magit-rev-ancestor-p "magit-git" (rev1 rev2))
 (declare-function magit-show-commit "magit-diff" (rev &optional args files module))
 
 (defcustom gitlab-git-program "git"
@@ -182,6 +183,15 @@ nothing but one process."
        (or (string-match-p "\\`[[:alpha:]][[:alnum:]+.-]*://" url)
            (string-match-p "\\`[^/]+:" url))))
 
+(defun gitlab-git--remote (&optional directory)
+  "Return the name of the remote that names the project of DIRECTORY.
+`gitlab-git-preferred-remote' wins, and the first remote answers
+when the preferred one is absent."
+  (let ((names (gitlab-git-remotes directory)))
+    (if (member gitlab-git-preferred-remote names)
+        gitlab-git-preferred-remote
+      (car names))))
+
 (defun gitlab-git-remote-context (&optional directory)
   "Return the project context of the checkout of DIRECTORY.
 The value comes from the URL of `gitlab-git-preferred-remote', or
@@ -191,10 +201,7 @@ the PATH or PATH@HOST spelling of
 repository, without a remote, and for a remote that names a local
 path."
   (let* ((directory (or directory (gitlab-cli-directory-of)))
-         (names (gitlab-git-remotes directory))
-         (remote (if (member gitlab-git-preferred-remote names)
-                     gitlab-git-preferred-remote
-                   (car names)))
+         (remote (gitlab-git--remote directory))
          (url (and remote (gitlab-git-remote-url remote directory))))
     (when (gitlab-git--remote-url-p url)
       (gitlab-cli-repository-normalize url))))
@@ -211,20 +218,167 @@ spelling, so buffer names, bookmarks and Org links agree."
 
 ;;; Merge request refs
 
+(defun gitlab-git--fetch-refspecs (remote &optional directory)
+  "Return the fetch refspecs of REMOTE in DIRECTORY."
+  (let ((directory (file-name-as-directory
+                    (or directory (gitlab-cli-directory-of)))))
+    (when (member remote (gitlab-git-remotes directory))
+      (if (gitlab-git--magit-p)
+          (let ((default-directory directory))
+            (ignore-errors (magit-get-all "remote" remote "fetch")))
+        (gitlab-git--lines
+         (list "config" "--get-all" (format "remote.%s.fetch" remote))
+         directory)))))
+
+(defun gitlab-git--merge-request-refspec (refspec)
+  "Return the destination pattern of a merge request REFSPEC, or nil.
+The value is a cons of the text before the `*' of the destination
+and the text after it, so a caller names one merge request ref
+from an IID.  A refspec that fetches something else answers nil."
+  (when (string-match "\\`\\+?\\([^:]+\\):\\(.+\\)\\'" refspec)
+    (let* ((source (match-string 1 refspec))
+           (destination (match-string 2 refspec))
+           (index (string-search "*" destination)))
+      (when (and index (string-prefix-p "refs/merge-requests/" source))
+        (cons (substring destination 0 index)
+              (substring destination (1+ index)))))))
+
+(defun gitlab-git--merge-request-ref-matchers (pairs)
+  "Return the regexps that name a merge request ref.
+PAIRS holds the destination patterns of
+`gitlab-git--merge-request-refspec'.  The last regexp accepts the
+standard spellings of the GitLab documentation, so a repository
+without the fetch refspec still finds a ref that the user fetched
+by hand."
+  (append (mapcar (lambda (pair)
+                    (concat "\\`" (regexp-quote (car pair))
+                            "\\([0-9]+\\)"
+                            (regexp-quote (cdr pair)) "\\'"))
+                  pairs)
+          '("/merge-requests/\\([0-9]+\\)/head\\'")))
+
+(defun gitlab-git--merge-request-ref-iid (ref matchers)
+  "Return the merge request IID that REF names, or nil.
+MATCHERS holds the regexps of
+`gitlab-git--merge-request-ref-matchers'."
+  (seq-some (lambda (matcher)
+              (when (string-match matcher ref)
+                (match-string 1 ref)))
+            matchers))
+
+(defun gitlab-git-merge-request-refs (&optional directory)
+  "Return an alist of merge request IID to a cons of ref name and commit.
+The function reads the destination of every merge request refspec
+of the remote of DIRECTORY, so a repository that fetches the refs
+under any prefix answers, and it also reads the standard
+refs/remotes/REMOTE/merge-requests/IID/head and
+refs/merge-requests/IID/head spellings.  Return nil outside a Git
+repository.  When two refs name the same IID, the first ref in name
+order answers."
+  (let* ((remote (gitlab-git--remote directory))
+         (pairs (delq nil (mapcar #'gitlab-git--merge-request-refspec
+                                  (and remote
+                                       (gitlab-git--fetch-refspecs
+                                        remote directory)))))
+         (matchers (gitlab-git--merge-request-ref-matchers pairs))
+         (patterns (append (mapcar (lambda (pair)
+                                     (concat (car pair) "*" (cdr pair)))
+                                   pairs)
+                           '("refs/remotes" "refs/merge-requests")))
+         (result nil))
+    (dolist (line (gitlab-git--lines
+                   (append (list "for-each-ref"
+                                 "--format=%(refname)%00%(objectname)")
+                           patterns)
+                   directory))
+      (pcase-let ((`(,ref ,commit) (split-string line "\0")))
+        (when-let* ((iid (gitlab-git--merge-request-ref-iid ref matchers))
+                    ((not (assoc iid result))))
+          (push (cons iid (cons ref commit)) result))))
+    (nreverse result)))
+
 (defun gitlab-git-merge-request-head-ref (iid)
   "Return the local head ref of merge request IID, or nil.
 Accept a remote-tracking ref such as
-refs/remotes/origin/merge-requests/12/head and a direct ref such as
-refs/merge-requests/12/head."
-  (let* ((iid (gitlab-git--iid iid))
-         (suffix (format "/merge-requests/%s/head" iid))
-         (direct (format "refs/merge-requests/%s/head" iid)))
-    (seq-find (lambda (ref)
-                (or (string= ref direct)
-                    (string-suffix-p suffix ref)))
-              (gitlab-git--lines
-               (list "for-each-ref" "--format=%(refname)"
-                     "refs/remotes" "refs/merge-requests")))))
+refs/remotes/origin/merge-requests/12/head, a direct ref such as
+refs/merge-requests/12/head, and the destination of the fetch
+refspec of the repository."
+  (car (cdr (assoc-string (gitlab-git--iid iid)
+                          (gitlab-git-merge-request-refs)))))
+
+(defun gitlab-git--ancestor-p (ancestor descendant)
+  "Return non-nil when commit ANCESTOR is an ancestor of DESCENDANT.
+The function prefers Magit when the user already loaded it, because
+`magit-rev-ancestor-p' runs the same command."
+  (if (gitlab-git--magit-p)
+      (let ((default-directory (file-name-as-directory
+                                (gitlab-cli-directory-of))))
+        (ignore-errors (magit-rev-ancestor-p ancestor descendant)))
+    (and (gitlab-git--run (list "merge-base" "--is-ancestor"
+                                ancestor descendant))
+         t)))
+
+(defun gitlab-git--holding-refs (commit &optional directory)
+  "Return a hash of the ref names that hold COMMIT.
+The function reads the repository of DIRECTORY.  Return nil when git
+cannot answer, so a caller falls back to one ancestry check per
+ref."
+  (let ((output (gitlab-git--run
+                 (list "for-each-ref" "--format=%(refname)"
+                       (format "--contains=%s" commit))
+                 directory)))
+    (when output
+      (let ((table (make-hash-table :test #'equal)))
+        (dolist (ref (split-string output "\n" t))
+          (puthash ref t table))
+        table))))
+
+(defun gitlab-git--target-tip (target remote)
+  "Return the commit of branch TARGET on REMOTE, or nil.
+The remote-tracking branch wins over a local branch of the same
+name, because a local branch of the user answers no fetch."
+  (or (and remote
+           (not (string-empty-p target))
+           (gitlab-git--rev (format "%s/%s" remote target)))
+      (gitlab-git--rev target)))
+
+(defun gitlab-git-merge-requests-behind (requests &optional directory)
+  "Return a hash of the merge request IIDs that sit behind their target.
+REQUESTS is a list of decoded merge request answers, and the
+function reads the refs of DIRECTORY.  A request
+counts when its local merge request ref holds the `sha' field of the
+answer, so a stale ref never answers about another head.  A request
+without that ref, without a `sha' field, and with a `target_branch'
+that no local ref names gets no entry either.  The target branch
+counts as its remote-tracking branch, then as the branch of the same
+name."
+  (let* ((refs (gitlab-git-merge-request-refs directory))
+         (remote (gitlab-git--remote directory))
+         (holdings (make-hash-table :test #'equal))
+         (behind (make-hash-table :test #'equal)))
+    (dolist (request requests)
+      (let* ((iid (gitlab-data-id-string
+                   (gitlab-data-field "iid" request)))
+             (entry (cdr (assoc iid refs)))
+             (head (cdr entry))
+             (sha (gitlab-data-field-string "sha" request))
+             (target (gitlab-data-field-string "target_branch" request)))
+        (when (and entry
+                   (not (string-empty-p sha))
+                   (equal sha head)
+                   (not (string-empty-p target)))
+          (when-let* ((tip (gitlab-git--target-tip target remote)))
+            (let ((holding (or (gethash tip holdings)
+                               (puthash tip
+                                        (gitlab-git--holding-refs
+                                         tip directory)
+                                        holdings))))
+              (if holding
+                  (unless (gethash (car entry) holding)
+                    (puthash iid t behind))
+                (unless (gitlab-git--ancestor-p tip head)
+                  (puthash iid t behind))))))))
+    behind))
 
 (defun gitlab-git--diff-refs-sha (data key)
   "Return the commit that DATA gives for KEY, or nil.

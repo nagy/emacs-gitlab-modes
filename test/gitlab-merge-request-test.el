@@ -430,6 +430,28 @@
     (should (eq 'gitlab-status-skipped (get-text-property 0 'face (nth 3 states))))
     (should-not (get-text-property 6 'face (nth 3 states)))))
 
+(ert-deftest gitlab-merge-request-entries-behind-state ()
+  "A merge request behind its target marks its State cell."
+  (let* ((gitlab-merge-request-show-behind nil)
+         (data '(((iid . 7) (title . "Seven") (state . "opened")
+                  (sha . "aaa"))
+                 ((iid . 8) (title . "Eight") (state . "opened")
+                  (sha . "bbb") (has_conflicts . t))
+                 ((iid . 9) (title . "Nine") (state . "closed")
+                  (sha . "ccc")))))
+    (let ((gitlab-merge-request--behind (make-hash-table :test #'equal)))
+      (puthash '("7" . "aaa") t gitlab-merge-request--behind)
+      (puthash '("8" . "bbb") t gitlab-merge-request--behind)
+      (let* ((entries (gitlab-merge-request--entries data))
+             (states (mapcar (lambda (entry) (aref (cadr entry) 2)) entries)))
+        (should (equal '("opened \u2193" "opened \u26a0 \u2193" "closed")
+                       (mapcar #'substring-no-properties states)))
+        (should (eq 'gitlab-status-running
+                    (get-text-property 0 'face (nth 0 states))))
+        (should (eq 'gitlab-behind (get-text-property 7 'face (nth 0 states))))
+        (should (eq 'gitlab-conflict (get-text-property 7 'face (nth 1 states))))
+        (should (eq 'gitlab-behind (get-text-property 9 'face (nth 1 states))))))))
+
 (ert-deftest gitlab-merge-request-entries-draft-title ()
   "A draft merge request prints its title with the draft face."
   (let* ((data '(((iid . 7) (title . "Seven") (draft . nil))

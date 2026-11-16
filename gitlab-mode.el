@@ -446,6 +446,13 @@ The face inherits `warning', so the marker reads as a warning
 against the status text beside it."
   :group 'gitlab)
 
+(defface gitlab-behind
+  '((t :inherit warning))
+  "Face of the marker of a merge request behind its target branch.
+The face inherits `warning', because the target branch holds commits
+that the merge request lacks."
+  :group 'gitlab)
+
 (defface gitlab-tag
   '((t :inherit magit-tag))
   "Face of a tag name.

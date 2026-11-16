@@ -211,6 +211,25 @@ the commit.  The option =gitlab-merge-request-show-commits=, on by
 default, turns the list off, and =gitlab-git-commit-limit= caps it at
 50 commits.  A project without the ref shows no commit section.
 
+The package reads the destination of that fetch refspec, so any local
+prefix works, for example =refs/mr/*=.  It also finds
+a =refs/merge-requests/IID/head= ref that you fetched by hand.
+
+A merge request that sits behind its target branch carries =↓= behind
+its state in the list, as in =opened ↓=.  A conflicted merge request
+that is also behind reads =opened ⚠ ↓=.  The marker carries the
+=gitlab-behind= face, which inherits =warning=.  It means that the
+target branch holds commits that the merge request lacks, so a
+fast-forward merge waits for a rebase and a merge commit does not.
+The answer comes from the local refs, because the merge status field
+of the API reports one blocker only: =need_rebase= stays hidden while
+approvals, CI or discussions still block.  A row whose local ref does
+not hold the head commit of the answer stays unmarked, so a stale
+fetch never shows a marker.  The option
+=gitlab-merge-request-show-behind=, on by default, turns the check
+off.  A group list and a list of another project stay unmarked,
+because their rows name no local checkout.
+
 =d= shows the local changes of the merge request, and =l= shows its
 commit log.  Both cover the merge base to the fetched head.  An active
 region over commit lines narrows both views to the selected commits,
