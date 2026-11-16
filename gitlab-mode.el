@@ -439,6 +439,13 @@ The face inherits `shadow', so a draft reads as a title that waits
 for work."
   :group 'gitlab)
 
+(defface gitlab-conflict
+  '((t :inherit warning))
+  "Face of the conflict marker of a merge request.
+The face inherits `warning', so the marker reads as a warning
+against the status text beside it."
+  :group 'gitlab)
+
 (defface gitlab-tag
   '((t :inherit magit-tag))
   "Face of a tag name.
@@ -1568,6 +1575,17 @@ false flag as true."
   "Return non-nil when DATA is a draft merge request."
   (declare (side-effect-free t))
   (gitlab--tag-flag-p (gitlab-data-field "draft" data)))
+
+(defun gitlab--conflict-p (data)
+  "Return non-nil when DATA holds a merge conflict.
+GitLab answers the `has_conflicts' flag with false unless
+`merge_status' reads `cannot_be_merged', so a status of
+`cannot_be_merged_recheck' also counts: it names a merge request
+that held a conflict before its last change."
+  (declare (side-effect-free t))
+  (or (gitlab--tag-flag-p (gitlab-data-field "has_conflicts" data))
+      (equal "cannot_be_merged_recheck"
+             (gitlab-data-field-string "merge_status" data))))
 
 (defun gitlab--field-value-face (key value &optional data)
   "Return the face for the value of field KEY holding VALUE.

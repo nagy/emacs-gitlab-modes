@@ -106,6 +106,11 @@ the face without its parent.
 The Title cell of a draft merge request carries the =gitlab-draft=
 face, which inherits =shadow=.  GitLab marks a draft merge request
 with the =draft= field and writes =Draft:= in front of the title.
+A merge request that holds a merge conflict shows a marker behind
+its state in a list: =opened ⚠=.  The marker carries the
+=gitlab-conflict= face, which inherits =warning=.  The list answer
+carries the =has_conflicts= field, so the table needs no second
+request.
 
 A reference in the text of a detail buffer or of a job log becomes a
 link to the web page of the object.  The reference follows the
@@ -306,7 +311,10 @@ sort indicator of =tabulated-list-mode=.  A date column carries the
 Author column carries =gitlab-author= and
 =gitlab-id=, and a branch column carries =gitlab-branch= or, for a tag,
 =gitlab-tag=.  The Title column of a draft merge request carries
-=gitlab-draft=.  A numeric column, the merge request IID and the pipeline
+=gitlab-draft=, and the State column of a merge request with a merge
+conflict writes =⚠= behind its state.  The State column takes the
+width of the marker only while a conflicted row shows.  A numeric
+column, the merge request IID and the pipeline
 ID, aligns its cells to the right, so a reader compares the last digit.
 The same holds for the duration column and the identifier column of
 the jobs table of a pipeline buffer.

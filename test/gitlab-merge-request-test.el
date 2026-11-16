@@ -407,6 +407,29 @@
                       (aref (cadr (car (gitlab-merge-request--entries data)))
                             3)))))))
 
+(ert-deftest gitlab-merge-request-entries-conflict-state ()
+  "A conflicted merge request marks its State cell."
+  (let* ((data '(((iid . 7) (title . "Seven") (state . "opened")
+                  (has_conflicts . nil) (merge_status . "can_be_merged"))
+                 ((iid . 8) (title . "Eight") (state . "opened")
+                  (has_conflicts . t) (merge_status . "cannot_be_merged"))
+                 ((iid . 9) (title . "Nine") (state . "opened")
+                  (has_conflicts . :false)
+                  (merge_status . "cannot_be_merged_recheck"))
+                 ((iid . 10) (title . "Ten") (state . "closed")
+                  (has_conflicts . :false))))
+         (entries (gitlab-merge-request--entries data))
+         (states (mapcar (lambda (entry) (aref (cadr entry) 2)) entries)))
+    (should (equal '("opened"
+                     "opened \u26a0"
+                     "opened \u26a0"
+                     "closed")
+                   (mapcar #'substring-no-properties states)))
+    (should (eq 'gitlab-status-running (get-text-property 0 'face (nth 1 states))))
+    (should (eq 'gitlab-conflict (get-text-property 7 'face (nth 1 states))))
+    (should (eq 'gitlab-status-skipped (get-text-property 0 'face (nth 3 states))))
+    (should-not (get-text-property 6 'face (nth 3 states)))))
+
 (ert-deftest gitlab-merge-request-entries-draft-title ()
   "A draft merge request prints its title with the draft face."
   (let* ((data '(((iid . 7) (title . "Seven") (draft . nil))

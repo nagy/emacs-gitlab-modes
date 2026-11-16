@@ -160,6 +160,23 @@ identifier, so two projects that both hold !12 stay apart."
          'merge-request iid (gitlab-merge-request--row-context merge-request))
       iid)))
 
+(defconst gitlab-merge-request-conflict-marker "⚠"
+  "Marker that the State cell of a conflicted merge request shows.
+The marker follows the state text, so the column grows by the
+width of the marker only while the table holds a conflicted row.")
+
+(defun gitlab-merge-request--state-cell (merge-request)
+  "Return the State cell of MERGE-REQUEST.
+A merge request with a merge conflict carries
+`gitlab-merge-request-conflict-marker' behind its state text."
+  (let ((state (gitlab-data-field-string "state" merge-request)))
+    (concat (propertize state 'face (or (gitlab--status-face state)
+                                        'default))
+            (when (gitlab--conflict-p merge-request)
+              (concat " "
+                      (propertize gitlab-merge-request-conflict-marker
+                                  'face 'gitlab-conflict))))))
+
 (defun gitlab-merge-request--rows (data)
   "Return an alist of merge request row ID to row for DATA."
   (mapcar (lambda (merge-request)
@@ -180,7 +197,7 @@ the IID cell keeps the full identifier as its navigation target."
                        (if (gitlab--draft-p merge-request)
                            (propertize title 'face 'gitlab-draft)
                          title)))
-              (state (gitlab-data-field-string "state" merge-request))
+              (state (gitlab-merge-request--state-cell merge-request))
               (author (gitlab--format-author
                        (gitlab-data-field "author" merge-request)))
               (source (gitlab--format-branch
@@ -201,8 +218,7 @@ the IID cell keeps the full identifier as its navigation target."
                                                (gitlab-data-id-string iid))
                                        'gitlab-merge-request-iid id)
                  title
-                 (propertize state 'face (or (gitlab--status-face state)
-                                             'default))
+                 state
                  author
                  (format "%s -> %s" source target)
                  labels

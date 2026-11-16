@@ -1051,6 +1051,19 @@ without evil.  The suite never opens a network connection.
   takes the `gitlab-draft` face, which inherits `shadow`, when
   `gitlab--draft-p` answers non-nil.  It reads the flag through
   `gitlab--tag-flag-p`.
+- A merge request with a merge conflict marks its State cell with
+  `gitlab-merge-request-conflict-marker` behind the state text, so a
+  row reads `opened ⚠`.  The marker carries the `gitlab-conflict`
+  face, which inherits `warning`.  `gitlab--conflict-p` reads the
+  `has_conflicts` flag, which the list answer carries beside the
+  `merge_status` field, so the table never fetches the detail of a
+  row.  GitLab answers `has_conflicts` with false unless
+  `merge_status` reads `cannot_be_merged`, so a
+  `cannot_be_merged_recheck` status also counts: it names a merge
+  request that held a conflict before its last change.
+  `gitlab-merge-request--state-cell` builds the cell, and the column
+  fitting measures its text, so the State column grows by the marker
+  only while a conflicted row shows.
 - A renderer that prints an author calls `gitlab--format-author`, and
   a renderer that prints a branch or a ref calls
   `gitlab--format-branch`, because `gitlab--format-value` adds no
