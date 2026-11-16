@@ -457,6 +457,150 @@ buffer."
                 (kill-buffer buffer)))))
       (delete-directory directory t))))
 
+(defun gitlab-git-tests--list-row-data (repo data)
+  "Prepare the buffer as the merge request list of REPO and return DATA.
+REPO names a checkout that holds the local refs, and DATA holds the
+decoded merge request answers."
+  (gitlab-merge-request-list-mode)
+  (setq-local gitlab-cli-directory (car repo))
+  (setq-local gitlab-repository "group/project")
+  (setq-local gitlab-list--rows (gitlab-merge-request--rows data))
+  data)
+
+(ert-deftest gitlab-merge-request-child-entries-commits ()
+  "A merge request row expands into its commits, newest first."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (let* ((directory (car repo))
+             (sha (gitlab-git-tests--git
+                   directory "rev-parse"
+                   "refs/remotes/origin/merge-requests/7/head"))
+             (short (gitlab-git-tests--git directory "rev-parse" "--short"
+                                          sha))
+             (data (gitlab-git-tests--list-row-data
+                    repo
+                    (list (append (gitlab-git-tests--data (cdr repo))
+                                  (list (cons 'sha sha))))))
+             (rows (gitlab-merge-request--child-entries "7")))
+        (ignore data)
+        (should (equal 1 (length rows)))
+        (should (equal (cons "7" sha) (car (car rows))))
+        (let ((cells (cadr (car rows))))
+          (should (equal 7 (length cells)))
+          (should (equal (concat "   " short)
+                         (substring-no-properties (aref cells 0))))
+          (should (eq 'gitlab-id (get-text-property 3 'face (aref cells 0))))
+          (should (equal "second" (aref cells 1)))
+          (should (equal "" (aref cells 2)))
+          (should (equal "Test" (substring-no-properties (aref cells 3))))
+          (should (equal "" (aref cells 4)))
+          (should (equal "" (aref cells 5)))
+          (should (eq 'gitlab-date (get-text-property 0 'face (aref cells 6)))))))))
+
+(ert-deftest gitlab-merge-request-child-entries-note-rows ()
+  "A row without a local ref, and a row of another project, answer a note."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (gitlab-git-tests--list-row-data
+       repo (list (gitlab-git-tests--data (cdr repo))))
+      (let ((cells (cadr (car (gitlab-merge-request--child-entries "8")))))
+        (should (equal "   No local ref."
+                       (substring-no-properties (aref cells 0)))))
+      (setq-local gitlab--context "other/project")
+      (setq-local gitlab--context-local nil)
+      (let ((cells (cadr (car (gitlab-merge-request--child-entries "7")))))
+        (should (equal "   No local ref."
+                       (substring-no-properties (aref cells 0))))))))
+
+(ert-deftest gitlab-merge-request-child-entries-stale-ref ()
+  "A local ref that holds an older head answers a note."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (gitlab-git-tests--list-row-data
+       repo
+       (list (append (gitlab-git-tests--data (cdr repo))
+                     (list (cons 'sha (cdr repo))))))
+      (let ((cells (cadr (car (gitlab-merge-request--child-entries "7")))))
+        (should (equal "   The local ref is outdated.  Fetch again."
+                       (substring-no-properties (aref cells 0))))))))
+
+(ert-deftest gitlab-merge-request-child-entries-group ()
+  "A group list indents the IID cell and keeps the Project column empty."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (gitlab-git-tests--list-row-data
+       repo (list (gitlab-git-tests--data (cdr repo))))
+      (setq-local gitlab--scope 'group)
+      (setq-local gitlab--context "group")
+      (let ((cells (cadr (car (gitlab-merge-request--child-entries "8")))))
+        (should (equal 8 (length cells)))
+        (should (equal "" (aref cells 0)))
+        (should (equal "   No local ref."
+                       (substring-no-properties (aref cells 1))))))))
+
+(ert-deftest gitlab-merge-request-commit-row-data ()
+  "A commit row answers its web URL to `thing-at-point'."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (let* ((directory (car repo))
+             (sha (gitlab-git-tests--git
+                   directory "rev-parse"
+                   "refs/remotes/origin/merge-requests/7/head")))
+        (gitlab-git-tests--list-row-data
+         repo
+         (list (append (gitlab-git-tests--data (cdr repo))
+                       (list (cons 'sha sha)))))
+        (gitlab-merge-request--child-entries "7")
+        (should (equal (format "https://gitlab.com/group/project/-/commit/%s"
+                               sha)
+                       (gitlab-data-field
+                        "web_url"
+                        (gitlab-merge-request--row-data (cons "7" sha)))))
+        (should (equal sha (gitlab-merge-request--row-id-string
+                            (cons "7" sha))))
+        (should-not (gitlab-merge-request--row-data "7"))))))
+
+(ert-deftest gitlab-merge-request-open-row ()
+  "RET opens the commit of a commit row and the request of a request row."
+  (let ((opened nil))
+    (cl-letf (((symbol-function 'gitlab-git-show-commit)
+               (lambda (sha) (setq opened (cons 'commit sha))))
+              ((symbol-function 'gitlab-display-merge-request)
+               (lambda (id) (setq opened (cons 'request id)))))
+      (gitlab-merge-request--open-row (cons "7" "abc"))
+      (should (equal '(commit . "abc") opened))
+      (gitlab-merge-request--open-row "7")
+      (should (equal '(request . "7") opened))
+      (gitlab-merge-request--open-row (cons 'note "7"))
+      (should (equal '(request . "7") opened)))))
+
+(ert-deftest gitlab-merge-request-list-expands-commits ()
+  "The list prints the commit rows of an expanded merge request."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (let* ((directory (car repo))
+             (sha (gitlab-git-tests--git
+                   directory "rev-parse"
+                   "refs/remotes/origin/merge-requests/7/head"))
+             (data (list (append (gitlab-git-tests--data (cdr repo))
+                                 (list (cons 'sha sha))))))
+        (gitlab-merge-request-list-mode)
+        (setq-local gitlab-cli-directory directory)
+        (setq-local gitlab-repository "group/project")
+        (gitlab-list--set-expanded "7" t)
+        (gitlab-list--render nil data)
+        (should (string-match-p "Local commits" (buffer-string)))
+        (should (string-match-p "second" (buffer-string)))
+        (goto-char (point-min))
+        (forward-line 1)
+        (should (equal (cons "7" sha) (tabulated-list-get-id)))))))
+
 (provide 'gitlab-git-tests)
 
 ;;; gitlab-git-test.el ends here

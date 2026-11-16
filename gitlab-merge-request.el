@@ -321,13 +321,170 @@ Call SUCCESS with the decoded array or ERROR with a condition."
    success error gitlab-list--arguments
    (and gitlab--scope (cons gitlab--scope gitlab--context))))
 
+;;; Expanded commit rows
+
+(defvar-local gitlab-merge-request--commits nil
+  "Hash of the commit answer of the expanded list rows.
+The key is a cons of the row ID and the head commit of the answer,
+so a refreshed head reads Git again and an unchanged table reads
+nothing.")
+
+(defun gitlab-merge-request--commit-table ()
+  "Return the commit cache of the current buffer."
+  (or gitlab-merge-request--commits
+      (setq-local gitlab-merge-request--commits
+                  (make-hash-table :test #'equal))))
+
+(defun gitlab-merge-request--row-data-at (id)
+  "Return the decoded merge request data of the list row ID."
+  (alist-get id gitlab-list--rows nil nil #'equal))
+
+(defun gitlab-merge-request--commit-answer (id)
+  "Return the commit answer of the merge request list row ID.
+The value is a plist with `:kind' and, for the `commits' kind, the
+`:info' plist of `gitlab-git-merge-request-commits'.  KIND is
+`commits', `foreign' for a row of another project or of a group,
+`none' for a row without a local ref, and `stale' for a local ref
+that holds an older head than the answer names."
+  (let* ((row (gitlab-merge-request--row-data-at id))
+         (sha (and row (gitlab-data-field-string "sha" row)))
+         (key (cons id sha))
+         (table (gitlab-merge-request--commit-table)))
+    (or (gethash key table)
+        (puthash key (gitlab-merge-request--commit-answer-compute row sha)
+                 table))))
+
+(defun gitlab-merge-request--commit-answer-compute (row sha)
+  "Return the commit answer of the merge request ROW at head SHA."
+  (if (or (null row) (not (gitlab--local-checkout-p)))
+      (list :kind (if row 'foreign 'none))
+    (let* ((iid (gitlab-data-id-string (gitlab-data-field "iid" row)))
+           (entry (cdr (assoc iid (gitlab-git-merge-request-refs))))
+           (info (and entry
+                      (equal sha (cdr entry))
+                      (gitlab-git-merge-request-commits iid row))))
+      (cond
+       ((null entry) (list :kind 'none))
+       ((not (equal sha (cdr entry))) (list :kind 'stale))
+       (info (list :kind 'commits :info info))
+       (t (list :kind 'none))))))
+
+(defun gitlab-merge-request--commit-record (id sha)
+  "Return the commit record of ID at the commit SHA."
+  (when-let* ((info (plist-get (gitlab-merge-request--commit-answer id) :info)))
+    (seq-find (lambda (commit)
+                (equal sha (alist-get 'sha commit)))
+              (plist-get info :commits))))
+
+(defun gitlab-merge-request--row-data (id)
+  "Return the decoded data of the child row ID.
+A commit row answers its commit record, with the `web_url' of the
+commit page, so `w' and `thing-at-point' reach the commit.  A
+parent row answers nil, so the collection alist serves it."
+  (when (and (consp id) (stringp (car id)))
+    (when-let* ((record (gitlab-merge-request--commit-record (car id)
+                                                             (cdr id))))
+      (append record
+              (list (cons 'web_url (gitlab-web-url 'commit (cdr id))))))))
+
+(defun gitlab-merge-request--row-id-string (id)
+  "Return the plain ID string of a merge request list row ID.
+A commit row names the full commit, and a note row names the merge
+request that holds it."
+  (if (consp id)
+      (format "%s" (cdr id))
+    (gitlab-data-id-string id)))
+
+(defun gitlab-merge-request--open-row (id)
+  "Open the merge request list row ID.
+A parent row opens its detail buffer, a commit row opens the
+commit, and a note row opens the merge request that it belongs
+to."
+  (cond
+   ((not (consp id)) (gitlab-display-merge-request id))
+   ((stringp (car id)) (gitlab-git-show-commit (cdr id)))
+   (t (gitlab-display-merge-request (cdr id)))))
+
+(defun gitlab-merge-request--indent ()
+  "Return the indentation of a child row of the merge request list."
+  (declare (pure t) (side-effect-free t))
+  (make-string (max gitlab-list-expand-indent 0) ?\s))
+
+(defun gitlab-merge-request--id-index ()
+  "Return the column index of the IID cell of the current list."
+  (declare (side-effect-free t))
+  (if (gitlab-merge-request--group-p) 1 0))
+
+(defun gitlab-merge-request--child-cells ()
+  "Return the empty cells of a child row of the current list."
+  (declare (side-effect-free t))
+  (make-vector (if (gitlab-merge-request--group-p) 8 7) ""))
+
+(defun gitlab-merge-request--note-entry (id text)
+  "Return a child row of the merge request list row ID that reads TEXT.
+The row reports why a merge request shows no commit, so it takes no
+command of its own."
+  (let ((cells (gitlab-merge-request--child-cells)))
+    (aset cells (gitlab-merge-request--id-index)
+          (concat (gitlab-merge-request--indent)
+                  (propertize text 'face 'gitlab-date)))
+    (list (cons 'note id) cells)))
+
+(defun gitlab-merge-request--commit-entry (id commit)
+  "Return the table entry of ID for the commit COMMIT.
+The IID cell holds the short hash, and the Title, Author and
+Updated cells hold the subject, the author and the author date."
+  (let* ((sha (alist-get 'sha commit))
+         (short (alist-get 'short commit))
+         (cells (gitlab-merge-request--child-cells))
+         (index (gitlab-merge-request--id-index)))
+    (aset cells index
+          (gitlab--nav-string
+           (concat (gitlab-merge-request--indent)
+                   (propertize short 'face 'gitlab-id))
+           'gitlab-commit-sha sha
+           (format "Commit %s" short)))
+    (aset cells (1+ index) (or (alist-get 'subject commit) ""))
+    (aset cells (+ 3 index)
+          (gitlab--format-author (alist-get 'author commit)))
+    (aset cells (+ 6 index)
+          (gitlab-list--date-cell (alist-get 'date commit)))
+    (list (cons id sha) cells)))
+
+(defun gitlab-merge-request--child-entries (id)
+  "Return the commit rows of the merge request list row ID.
+A row of another project, a row without a local ref and a row
+whose local ref holds an older head answer one note row.  The
+commit rows come newest first, as a log does, and
+`gitlab-git-commit-limit' caps them."
+  (let* ((answer (gitlab-merge-request--commit-answer id))
+         (info (plist-get answer :info))
+         (commits (plist-get info :commits))
+         (total (plist-get info :total)))
+    (pcase (plist-get answer :kind)
+      ('foreign (list (gitlab-merge-request--note-entry id "No local ref.")))
+      ('none (list (gitlab-merge-request--note-entry id "No local ref.")))
+      ('stale (list (gitlab-merge-request--note-entry
+                     id "The local ref is outdated.  Fetch again.")))
+      (_
+       (if (null commits)
+           (list (gitlab-merge-request--note-entry id "No commits."))
+         (append (mapcar (lambda (commit)
+                           (gitlab-merge-request--commit-entry id commit))
+                         commits)
+                 (when (< (length commits) total)
+                   (list (gitlab-merge-request--note-entry
+                          id (format "%d more commits."
+                                     (- total (length commits))))))))))))
+
 (define-derived-mode gitlab-merge-request-list-mode gitlab-list-mode
   "GitLab Merge Requests"
   "Display the merge requests of the current project or of a group.
 The table columns are IID, Title, State, Author, Branches, Labels
 and Updated, and a group list puts the Project column first.  RET
 opens the merge request at point; c copies its identifier and w
-opens its web page."
+opens its web page.  TAB expands a row into its local commits: the
+short hash, the subject, the author and the author date."
   :group 'gitlab
   :interactive nil
   (setq-local tabulated-list-format
@@ -339,7 +496,13 @@ opens its web page."
   (setq-local gitlab-list--fetch-function #'gitlab-merge-request--fetch-list)
   (setq-local gitlab-list--entries-function #'gitlab-merge-request--entries)
   (setq-local gitlab-list--rows-function #'gitlab-merge-request--rows)
-  (setq-local gitlab-list--open-function #'gitlab-display-merge-request))
+  (setq-local gitlab-list--open-function #'gitlab-merge-request--open-row)
+  (setq-local gitlab-list--child-function
+              #'gitlab-merge-request--child-entries)
+  (setq-local gitlab-list--row-id-function
+              #'gitlab-merge-request--row-id-string)
+  (setq-local gitlab-list--row-data-function
+              #'gitlab-merge-request--row-data))
 
 ;;;###autoload
 (defun gitlab-list-merge-requests (&optional all)

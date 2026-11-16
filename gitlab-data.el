@@ -676,7 +676,7 @@ object."
 
 (defun gitlab-web-url (kind id &optional repository)
   "Return a GitLab web URL for KIND and ID, or nil.
-KIND is `merge-request', `pipeline', `job' or `work-item'.
+KIND is `merge-request', `pipeline', `job', `commit' or `work-item'.
 REPOSITORY defaults to `gitlab-repository', because the URL needs
 the project path; display buffers prefer the web_url field of their
 own data.
@@ -695,6 +695,7 @@ and `gitlab-web-base-url' serves the default one."
                        ('merge-request "merge_requests")
                        ('pipeline "pipelines")
                        ('job "jobs")
+                       ('commit "commit")
                        ('work-item "work_items")
                        (_ (signal 'gitlab-error
                                   (list (format "Unknown GitLab kind: %S"

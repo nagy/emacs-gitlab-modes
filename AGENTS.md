@@ -26,7 +26,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
-| `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
+| `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, the commit rows of an expanded list row, the behind-target marker, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-work-item.el` | Work item list mode for a project and for a group, the Project column of a group list, detail mode, display commands and the work item list as the parent view of a detail buffer.  GitLab renamed the issue object to work item, so the transport is `glab issue` and the web URL uses `/-/work_items/`.  The family lists and displays issues.
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
@@ -1097,6 +1097,32 @@ without evil.  The suite never opens a network connection.
   and `gitlab-merge-request-show-behind` turns the whole check off.
   The check needs `gitlab--local-checkout-p`, so a group list and a
   list of another project read no ref.
+- A merge request list row expands into its local commits through
+  `gitlab-list--child-function`, the hook that the pipeline list uses
+  for its jobs, so the list base mode owns the weave, the sort, the
+  point record and the parent property of a child row.
+  `gitlab-merge-request--child-entries` answers the rows: the IID cell
+  holds the short hash with `gitlab-commit-sha` on it, the Title cell
+  the subject, the Author cell the author and the Updated cell the
+  author date.  The other cells stay empty, as a nested row leaves the
+  cells that it does not own, and the Project cell of a group list
+  stays empty too, so the indentation of `gitlab-list-expand-indent`
+  goes into the IID cell at `gitlab-merge-request--id-index`.  The row
+  ID is a cons of the parent row ID and the full commit, so a commit
+  never meets a merge request of the same text, and
+  `gitlab-merge-request--row-id-string` answers the commit for `c` and
+  the parent for a note row.  `gitlab-merge-request--row-data` answers
+  the commit record with a `web_url` of the commit page, so `w` and
+  `thing-at-point` reach it, and `gitlab-web-url` takes the `commit`
+  kind for that.  The rows read
+  `gitlab-git-merge-request-commits` on the local ref, so a row of a
+  group list, a row without a ref and a row whose ref holds another
+  head than the `sha` field answer one note row instead.  The answer
+  caches in `gitlab-merge-request--commits` under the row ID and the
+  head commit, so an unchanged table reads no Git again.
+  `gitlab-git-commit-limit` caps the rows and a note row counts the
+  rest.  `gitlab-merge-request--open-row` opens the commit for a commit
+  row and the merge request for every other row.
 - A renderer that prints an author calls `gitlab--format-author`, and
   a renderer that prints a branch or a ref calls
   `gitlab--format-branch`, because `gitlab--format-value` adds no
@@ -1298,7 +1324,7 @@ without evil.  The suite never opens a network connection.
 - Job rows in the imenu of a pipeline buffer.  The design is in
   git-bug issue `01e1ede`: keep the field lines and add one entry per
   job row.
-- Merge request rows that expand into their notes or their commits,
-  through `gitlab-list--child-function` of the list base mode.  The
-  machinery of the pipeline list already covers the sort, the point
-  record and the bookmark target.
+- Merge request rows that expand into their notes, through
+  `gitlab-list--child-function` of the list base mode.  The commit
+  rows of that hook already answer the sort, the point record and the
+  row data.

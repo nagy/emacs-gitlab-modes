@@ -354,6 +354,20 @@ same shape for work items.  The IID cell writes =%12=, the Type column
 shows the issue type, and a group list puts the Project column first.
 Filters live in =gitlab-work-item-list-arguments=.
 
+=TAB= expands a merge request row into its local commits.  The IID
+column holds the short hash, the Title column the subject, the Author
+column the author and the Updated column the author date.  The rows
+come newest first, as =magit-log= shows them, and
+=gitlab-git-commit-limit= caps them with a note that counts the rest.
+=RET= opens the commit, =c= copies the full hash and =w= opens the
+commit page, so =thing-at-point 'url= answers that page too.  The rows
+read the local merge request ref of the row, the same ref that the
+commit section of the detail buffer reads.  A row without that ref,
+and a row of a group list, expands into one note row.  A local ref
+that holds an older head than the GitLab answer names also expands
+into a note row, because the rows would show a patch series that the
+merge request left behind.
+
 A list buffer fits the width of every column to its rows.  A column
 takes the width of its longest cell, or the width of its header when
 that is wider.  When the columns are wider than the window, the widest
