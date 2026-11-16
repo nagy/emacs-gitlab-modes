@@ -755,6 +755,75 @@ request of another project opens the list of that project."
   (should-not (command-modes #'gitlab-list-merge-requests))
   (should-not (command-modes #'gitlab-display-merge-request)))
 
+(defun gitlab-merge-request-tests--commit-lines (ids)
+  "Insert one table line per ID of IDS and activate the region.
+Each line carries `tabulated-list-id' as `tabulated-list-print-entry'
+writes it, so the helpers read the rows of a list buffer without a
+fetch."
+  (dolist (id ids)
+    (let ((inhibit-read-only t))
+      (insert (propertize
+               (format "  %s\n" (if (consp id) (cdr id) id))
+               'tabulated-list-id id))))
+  (set-mark (point-min))
+  (goto-char (point-max))
+  (activate-mark))
+
+(ert-deftest gitlab-merge-request-region-rows ()
+  "The region answers its commit rows and skips the rows that hold none."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (gitlab-merge-request-tests--commit-lines
+     '((note . "7") ("7" . "aaa") "8" ("7" . "bbb")))
+    (should (equal '(("7" . "aaa") ("7" . "bbb"))
+                   (gitlab-merge-request--region-rows)))))
+
+(ert-deftest gitlab-merge-request-region-rows-without-region ()
+  "The region holds no commit row without an active region."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (gitlab-merge-request-tests--commit-lines '(("7" . "aaa")))
+    (deactivate-mark)
+    (should-not (gitlab-merge-request--region-rows))))
+
+(ert-deftest gitlab-merge-request-region-open ()
+  "The region opens the diff of its selected commits."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (setq-local gitlab-list--rows '(("7" . ((iid . 7)))))
+    (gitlab-merge-request-tests--commit-lines
+     '(("7" . "aaa") ("7" . "bbb")))
+    (let (captured)
+      (cl-letf (((symbol-function 'gitlab-merge-request--checkout-p)
+                 (lambda (_context) t))
+                ((symbol-function 'gitlab-git-show-changes)
+                 (lambda (iid data commits)
+                   (setq captured (list iid data commits)))))
+        (should (gitlab-merge-request--open-region))
+        (should (equal '("7" ((iid . 7)) ("aaa" "bbb")) captured))))))
+
+(ert-deftest gitlab-merge-request-region-open-two-requests ()
+  "A region over the commits of two merge requests signals a user error."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (gitlab-merge-request-tests--commit-lines
+     '(("7" . "aaa") ("8" . "bbb")))
+    (should-error (gitlab-merge-request--open-region) :type 'user-error)))
+
+(ert-deftest gitlab-merge-request-region-open-without-commit ()
+  "A region without a commit row leaves the row at point to RET."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (gitlab-merge-request-tests--commit-lines '("7" (note . "7")))
+    (should-not (gitlab-merge-request--open-region))))
+
+(ert-deftest gitlab-merge-request-list-region-hook ()
+  "The merge request list names the region function of the base mode."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (should (eq gitlab-list--region-open-function
+                #'gitlab-merge-request--open-region))))
+
 (provide 'gitlab-merge-request-tests)
 
 ;;; gitlab-merge-request-test.el ends here

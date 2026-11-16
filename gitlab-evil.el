@@ -59,7 +59,9 @@
 ;; List buffers: RET opens the row; o opens it in another window; TAB
 ;; expands a row into its child rows; c or Y copies its ID; w opens
 ;; its web page; S sorts the current column.  A visual line selection
-;; followed by y copies every selected row ID, one per line.
+;; followed by y copies every selected row ID, one per line, and the
+;; same selection followed by RET or o shows the diff of that commit
+;; range.
 ;;
 ;; Job log buffers: q quits; gr, r and R restart the trace; ~ toggles the
 ;; timestamps; C-x C-j opens the pipeline; c copies the job ID; G and
@@ -150,10 +152,17 @@ that evil already binds.  Evil leaves `TAB' unbound in its normal
 state, so a plain key reaches the expansion of a row.")
 
 (defvar gitlab-evil-list-visual-keys
-  '(([remap evil-yank] . gitlab-evil-list-copy-ids))
+  '(([remap evil-yank] . gitlab-evil-list-copy-ids)
+    ([remap evil-ret] . gitlab-list-open)
+    ;; Evil binds `o' to `exchange-point-and-mark' in visual state.
+    ;; A plain key keeps `C-x C-x' on its own command, because a remap
+    ;; of the mark exchange would follow that key too.
+    ("o" . gitlab-open-other-window))
   "Keys that `gitlab-evil-mode' binds in visual state of list buffers.
 A key is a key string, or a `[remap COMMAND]' vector for a command
-that evil already binds.")
+that evil already binds.  The two open keys serve a region of
+expanded commit rows, because `gitlab-list-open' reads the active
+region before the row at point.")
 
 (defvar gitlab-evil-job-log-keys
   '(([remap evil-record-macro] . quit-window)

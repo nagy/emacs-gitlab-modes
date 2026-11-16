@@ -599,7 +599,14 @@ decoded merge request answers."
         (should (string-match-p "second" (buffer-string)))
         (goto-char (point-min))
         (forward-line 1)
-        (should (equal (cons "7" sha) (tabulated-list-get-id)))))))
+        (should (equal (cons "7" sha) (tabulated-list-get-id)))
+        ;; A region over the rendered commit row answers that commit.
+        (set-mark (point-min))
+        (goto-char (point-max))
+        (activate-mark)
+        (should (member (cons "7" sha)
+                        (gitlab-merge-request--region-rows)))
+        (deactivate-mark)))))
 
 (provide 'gitlab-git-tests)
 

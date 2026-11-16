@@ -561,6 +561,38 @@ the renderer names none of them."
     (should (equal "100" (get-text-property 0 'help-echo string)))
     (should-not (get-text-property 0 'keymap string))))
 
+(ert-deftest gitlab-mode-list-open-region-hook ()
+  "An active region opens through the region function of the list.
+The row at point answers only when that function declines, and a
+click on a row never reads the region."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (let ((inhibit-read-only t))
+       (insert (propertize "7  title\n" 'tabulated-list-id "7")))
+     (goto-char (point-min))
+     (let ((opened nil))
+       (setq-local gitlab-list--open-function
+                   (lambda (id) (setq opened (cons 'row id))))
+       (setq-local gitlab-list--region-open-function
+                   (lambda () (setq opened 'region) t))
+       (set-mark (point-min))
+       (goto-char (point-max))
+       (activate-mark)
+       (gitlab-list-open)
+       (should (eq 'region opened))
+       (deactivate-mark)
+       (goto-char (point-min))
+       (setq opened nil)
+       (gitlab-list--open-at-point)
+       (should (equal '(row . "7") opened))
+       (setq opened nil)
+       (setq-local gitlab-list--region-open-function (lambda () nil))
+       (set-mark (point-max))
+       (activate-mark)
+       (gitlab-list-open)
+       (should (equal '(row . "7") opened))))))
+
 (ert-deftest gitlab-mode-button-push-opens-object ()
   "`push-button' runs the action of a GitLab object button."
   (with-temp-buffer

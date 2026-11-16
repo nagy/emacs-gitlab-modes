@@ -326,7 +326,9 @@ The list modes derive from =tabulated-list-mode=.  Column sorting,
 column resizing and point keeping by row identity come from the parent.
 =RET= opens the row, =c= copies its ID and =w= opens its web page.
 =o= opens the row in another window, as
-=dired-find-file-other-window= opens a file.
+=dired-find-file-other-window= opens a file.  A list mode whose rows
+hold a selection of their own serves the active region first, as the
+commit rows of an expanded merge request row do.
 A header line shows the column names, and the sort column carries the
 sort indicator of =tabulated-list-mode=.  A date column carries the
 =gitlab-date= face, the identifier column carries =gitlab-id=, the
@@ -370,6 +372,14 @@ and a row of a group list, expands into one note row.  A local ref
 that holds an older head than the GitLab answer names also expands
 into a note row, because the rows would show a patch series that the
 merge request left behind.
+
+An active region over the commit rows narrows =RET= and =o= to the
+selected commits.  The diff runs from the parent of the oldest
+selected commit to the newest selected commit, so one selected commit
+shows the diff of that commit alone.  The region ignores a row that
+holds no commit, and it signals an error when it holds commits of two
+merge requests, because one diff names one request.  With evil, =V=
+selects the lines and then =RET= or =o= serves the range.
 
 A list buffer fits the width of every column to its rows.  A column
 takes the width of its longest cell, or the width of its header when

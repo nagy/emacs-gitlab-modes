@@ -106,7 +106,12 @@ VISUAL reads the binding in visual state instead of normal state."
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "y")
                #'gitlab-export-json))
    (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "y" 'visual)
-               #'gitlab-evil-list-copy-ids))))
+               #'gitlab-evil-list-copy-ids))
+   ;; A visual line selection serves the commit range of the open keys.
+   (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "RET" 'visual)
+               #'gitlab-list-open))
+   (should (eq (gitlab-evil-test--binding #'gitlab-list-mode "o" 'visual)
+               #'gitlab-open-other-window))))
 
 (ert-deftest gitlab-evil-detail-keys-remap ()
   "The detail bindings reach the GitLab commands through a remap."

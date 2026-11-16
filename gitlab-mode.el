@@ -679,6 +679,15 @@ It receives SUCCESS and ERROR and returns a process object or nil.")
 (defvar-local gitlab-list--open-function nil
   "Function that opens the row ID at point in the current list buffer.")
 
+(defvar-local gitlab-list--region-open-function nil
+  "Function that opens the active region of the current list buffer.
+`gitlab-list-open' calls it with no argument while a region is
+active, before it reads the row at point.  The function returns
+non-nil when it opened the region itself, nil to open the row at
+point, and it signals a user error when the region names no valid
+selection.  A nil value, the default, ignores the region.  A mouse
+click names one row, so it never calls this function.")
+
 (defvar-local gitlab-list--arguments nil
   "Extra glab arguments of the current list buffer.")
 
@@ -2755,19 +2764,29 @@ that reads a URL work on a table row."
   (when-let* ((row (gitlab-list--row-at-point)))
     (gitlab-data-field "web_url" row)))
 
-(defun gitlab-list-open ()
-  "Open the row at point."
-  (interactive nil gitlab-list-mode)
+(defun gitlab-list--open-at-point ()
+  "Open the row at point through the open function of the list."
   (let ((id (gitlab-list--id-at-point)))
     (if id
         (funcall gitlab-list--open-function id)
       (user-error "No row at point"))))
 
+(defun gitlab-list-open ()
+  "Open the row at point, or the selected rows.
+A list mode installs `gitlab-list--region-open-function' when a
+region names a selection of its own, as the expanded commit rows
+of a merge request list do."
+  (interactive nil gitlab-list-mode)
+  (unless (and (use-region-p)
+               gitlab-list--region-open-function
+               (funcall gitlab-list--region-open-function))
+    (gitlab-list--open-at-point)))
+
 (defun gitlab-list-mouse-open (event)
   "Open the row at the click EVENT."
   (interactive "e" gitlab-list-mode)
   (mouse-set-point event)
-  (gitlab-list-open))
+  (gitlab-list--open-at-point))
 
 (defun gitlab-list-copy-id ()
   "Copy the ID of the row at point to the kill ring."

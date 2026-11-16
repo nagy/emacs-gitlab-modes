@@ -24,9 +24,9 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the region hook of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
-| `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, the commit rows of an expanded list row, the behind-target marker, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
+| `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, the commit rows of an expanded list row, the commit range of a selected region, the behind-target marker, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-work-item.el` | Work item list mode for a project and for a group, the Project column of a group list, detail mode, display commands and the work item list as the parent view of a detail buffer.  GitLab renamed the issue object to work item, so the transport is `glab issue` and the web URL uses `/-/work_items/`.  The family lists and displays issues.
 | `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
 | `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
@@ -838,6 +838,23 @@ without evil.  The suite never opens a network connection.
   pipeline ID, so an update keeps point on the same row.
   `gitlab-change-functions` receives `gitlab-list--kind` and a nil ID
   for a list buffer, because one collection has no single ID.
+- `gitlab-list-open` serves an active region before the row at point
+  through `gitlab-list--region-open-function`, a buffer-local function
+  of no argument that a mode sets.  It returns non-nil when it opened
+  the region, nil to fall back to the row, and it signals a user error
+  when the region names no valid selection.  `gitlab-list-open` and
+  `gitlab-list-mouse-open` share `gitlab-list--open-at-point`, and the
+  mouse click calls that helper alone, because a click names one row
+  and never the region.  The merge request list binds the hook to
+  `gitlab-merge-request--open-region`, which turns the commit rows of
+  the region into one diff through `gitlab-git-commit-selection-range`:
+  `gitlab-merge-request--region-rows` reads the row IDs of the region,
+  ignores a row that holds no commit, and the command signals a user
+  error when the rows name two merge requests.  So RET and the evil
+  `o` on a visual line selection show the diff of the selected span,
+  and the region function runs under the display action of
+  `gitlab-open-other-window` without a second path.  The base mode
+  keeps the hook nil, so a pipeline list ignores its region.
 - A group list keeps the row ID apart from a project list.  Its row ID
   is the full identifier, `group/project!12` or
   `group/project@HOST!12`, because two projects of one group can both
@@ -1134,7 +1151,11 @@ without evil.  The suite never opens a network connection.
   head commit, so an unchanged table reads no Git again.
   `gitlab-git-commit-limit` caps the rows and a note row counts the
   rest.  `gitlab-merge-request--open-row` opens the commit for a commit
-  row and the merge request for every other row.
+  row and the merge request for every other row.  An active region
+  over the commit rows opens the diff of that range instead, through
+  `gitlab-list--region-open-function` and
+  `gitlab-merge-request--open-region`, so one selected commit shows the
+  diff of that commit alone.
 - A renderer that prints an author calls `gitlab--format-author`, and
   a renderer that prints a branch or a ref calls
   `gitlab--format-branch`, because `gitlab--format-value` adds no
@@ -1193,7 +1214,12 @@ without evil.  The suite never opens a network connection.
   error.  `gitlab-open-other-window` takes the `evil-open-below`
   remap of `o` in a detail buffer and in a list buffer, because evil
   binds `o` to a text edit that a read-only view cannot use, and a
-  job log keeps `o`.  `gitlab-list-toggle-expansion`
+  job log keeps `o`.  A visual line selection of list rows binds
+  `[remap evil-ret]` to `gitlab-list-open` and `o` as a plain key to
+  `gitlab-open-other-window`, and not through the
+  `exchange-point-and-mark` remap, because that remap would follow
+  `C-x C-x` too; the two keys open the diff of the selected commit
+  rows.  `gitlab-list-toggle-expansion`
   takes the same plain `TAB` key in a list buffer, and
   `gitlab-list-sort` takes the `evil-change-whole-line` remap, so
   `S` sorts the table through the command that keeps a child row

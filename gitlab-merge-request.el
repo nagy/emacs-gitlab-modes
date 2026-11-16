@@ -477,6 +477,47 @@ commit rows come newest first, as a log does, and
                           id (format "%d more commits."
                                      (- total (length commits))))))))))))
 
+(defun gitlab-merge-request--region-rows ()
+  "Return the commit rows of the active region, in display order.
+Each element is a cons of the merge request row ID and the commit
+hash.  A row that holds no commit contributes nothing, so a region
+that also covers a merge request row or a note row still answers
+its commits.  Return nil without an active region or without a
+commit row."
+  (when (use-region-p)
+    (save-excursion
+      (let ((end (region-end))
+            (rows nil))
+        (goto-char (region-beginning))
+        (beginning-of-line)
+        (while (< (point) end)
+          (let ((id (tabulated-list-get-id)))
+            (when (and (consp id) (stringp (car id)))
+              (push (cons (car id) (cdr id)) rows)))
+          (forward-line 1))
+        (nreverse rows)))))
+
+(defun gitlab-merge-request--open-region ()
+  "Open the commit rows of the active region as one diff.
+Return nil without a commit row, so `gitlab-list-open' opens the
+row at point.  Signal a user error when the region holds commit
+rows of two merge requests, because one diff names one request,
+and when the local checkout holds no ref of the project."
+  (when-let* ((rows (gitlab-merge-request--region-rows)))
+    (let ((parents (delete-dups (mapcar #'car rows))))
+      (when (cdr parents)
+        (user-error
+         "The region holds the commits of two merge requests"))
+      (unless (gitlab-merge-request--checkout-p gitlab--context)
+        (user-error "No local checkout of %s" gitlab--context))
+      (let* ((parent (car parents))
+             (row (gitlab-merge-request--row-data-at parent))
+             (iid (if row
+                      (gitlab-data-id-string (gitlab-data-field "iid" row))
+                    (gitlab-data-id-string parent))))
+        (gitlab-git-show-changes iid row (mapcar #'cdr rows)))
+      t)))
+
 (define-derived-mode gitlab-merge-request-list-mode gitlab-list-mode
   "GitLab Merge Requests"
   "Display the merge requests of the current project or of a group.
@@ -484,7 +525,9 @@ The table columns are IID, Title, State, Author, Branches, Labels
 and Updated, and a group list puts the Project column first.  RET
 opens the merge request at point; c copies its identifier and w
 opens its web page.  TAB expands a row into its local commits: the
-short hash, the subject, the author and the author date."
+short hash, the subject, the author and the author date.  With an
+active region over the commit rows, RET shows the diff of that
+commit range."
   :group 'gitlab
   :interactive nil
   (setq-local tabulated-list-format
@@ -502,7 +545,9 @@ short hash, the subject, the author and the author date."
   (setq-local gitlab-list--row-id-function
               #'gitlab-merge-request--row-id-string)
   (setq-local gitlab-list--row-data-function
-              #'gitlab-merge-request--row-data))
+              #'gitlab-merge-request--row-data)
+  (setq-local gitlab-list--region-open-function
+              #'gitlab-merge-request--open-region))
 
 ;;;###autoload
 (defun gitlab-list-merge-requests (&optional all)
