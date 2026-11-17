@@ -24,7 +24,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
 | `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the region hook of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
+| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the region hook of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the face painter `gitlab--propertize`, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, the commit rows of an expanded list row, the commit range of a selected region, the behind-target marker, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
 | `gitlab-work-item.el` | Work item list mode for a project and for a group, the Project column of a group list, detail mode, display commands and the work item list as the parent view of a detail buffer.  GitLab renamed the issue object to work item, so the transport is `glab issue` and the web URL uses `/-/work_items/`.  The family lists and displays issues.
@@ -1070,6 +1070,20 @@ without evil.  The suite never opens a network connection.
   `org-date`.  Magit and Org stay optional:
   Emacs ignores an undefined parent face, so no name goes into
   `Package-Requires` nor into a `require`.
+- A renderer paints text through `gitlab--propertize`, which names
+  its face in `face` and in `font-lock-face`.  `magit-section-mode`
+  sets `font-lock-defaults` to `(nil t)`, so `font-lock-mode` turns
+  on in a detail buffer, and fontification removes every `face`
+  property that no keyword matches.  The keyword list stays nil, so
+  `font-lock-face` keeps the paint: `font-lock-mode` adds that
+  property to `char-property-alias-alist` as an alias of `face`, and
+  the display reads it.  Do not `propertize` a face by hand in a
+  renderer, and do not call `font-lock-ensure` in a render: both
+  drop the paint of a Magit section buffer.  A list buffer and a
+  job log set no `font-lock-defaults`, so font-lock stays off there,
+  and the same helper serves them.  A test renders a field table,
+  calls `font-lock-ensure` and reads `font-lock-face`, because a
+  batch Emacs never turns `font-lock-mode` on.
 - Colors, dates, identifiers, authors, branches and status values go
   through `gitlab--field-value-face`, `gitlab--format-date` and
   `gitlab-status-face`.  A new date field goes into

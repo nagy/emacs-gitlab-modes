@@ -165,6 +165,39 @@
     (should (eq 'gitlab-id (get-text-property 0 'face cell)))
     (should (equal "!12" (get-text-property 0 'gitlab-merge-request-iid cell)))))
 
+(ert-deftest gitlab-mode-propertize-names-both-face-properties ()
+  "`gitlab--propertize' names its face in both face properties."
+  (let ((string (gitlab--propertize "x" 'shadow)))
+    (should (equal "x" string))
+    (should (eq 'shadow (get-text-property 0 'face string)))
+    (should (eq 'shadow (get-text-property 0 'font-lock-face string)))))
+
+(ert-deftest gitlab-mode-rendered-faces-survive-font-lock ()
+  "A rendered detail buffer keeps every face after fontification.
+`magit-section-mode' sets `font-lock-defaults' to a nil keyword
+list, so `font-lock-mode' turns on in an interactive session, and
+unfontification removes a plain `face' property.  Each face must
+also name `font-lock-face'."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-detail-mode)
+     (gitlab--render-fields
+      "Pipeline #1001 success"
+      '((user (username . "alice") (name . "Alice"))
+        (sha . "1111111111111111111111111111111111111111")
+        (updated_at . "2026-10-31T20:57:30.763Z")))
+     (font-lock-ensure)
+     (cl-labels ((paint (needle)
+                   (goto-char (point-min))
+                   (should (search-forward needle nil t))
+                   (get-text-property (match-beginning 0) 'font-lock-face)))
+       (should (eq (paint "Updated At:") 'gitlab-field-name))
+       (should (eq (paint "2026-10-31 20:57:30") 'gitlab-date))
+       (should (eq (paint "Alice") 'gitlab-author))
+       (should (eq (paint "1111111111111111111111111111111111111111")
+                   'gitlab-id))
+       (should (eq (paint "Pipeline #1001 success") 'gitlab-title))))))
+
 (ert-deftest gitlab-mode-render-fields ()
   "A field table has labels, values and a field property."
   (gitlab-test-with-environment

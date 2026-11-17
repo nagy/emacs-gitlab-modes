@@ -210,8 +210,8 @@ render.")
        (list id
              (vector
               (gitlab-list--id-cell id 'gitlab-pipeline-id)
-              (propertize status 'face (or (gitlab--status-face status)
-                                           'default))
+              (gitlab--propertize status (or (gitlab--status-face status)
+                                             'default))
               ref
               source
               updated))))
@@ -445,7 +445,7 @@ pipeline without jobs, so it takes no command of its own."
   (list (cons 'note pipeline-id)
         (vector (gitlab-pipeline--indent)
                 ""
-                (propertize text 'face face)
+                (gitlab--propertize text face)
                 ""
                 "")))
 
@@ -466,11 +466,11 @@ the stage and the finish time or the time that the job runs."
           (vector
            (gitlab--nav-string
             (concat (gitlab-pipeline--indent)
-                    (propertize job-id 'face 'gitlab-id))
+                    (gitlab--propertize job-id 'gitlab-id))
             'gitlab-job-id job-id
             (format "Job %s (%s)" name job-id))
-           (propertize status 'face (or (gitlab--status-face status)
-                                        'default))
+           (gitlab--propertize status (or (gitlab--status-face status)
+                                          'default))
            name
            (gitlab-data-field-string "stage" job)
            (gitlab-pipeline--job-time-cell job)))))
@@ -488,8 +488,8 @@ in the column that holds the pipeline time."
      ((gitlab--transitional-state-p status)
       (if-let* ((seconds (gitlab--elapsed-seconds
                           (gitlab-data-field "started_at" job))))
-          (propertize (format "running %s" (gitlab--format-duration seconds))
-                      'face 'gitlab-date)
+          (gitlab--propertize (format "running %s" (gitlab--format-duration seconds))
+                              'gitlab-date)
         "-"))
      (t "-"))))
 
@@ -604,7 +604,7 @@ table does."
                                        gitlab-pipeline-job-duration-width)
                                "Status" "Stage" "Name"
                                "Duration" "ID")))
-          (insert (propertize header 'face 'gitlab-table-header))
+          (insert (gitlab--propertize header 'gitlab-table-header))
           (dolist (job jobs)
             (gitlab-pipeline--insert-job job name-width)))))))
 
@@ -622,9 +622,9 @@ offers the job from any cell too."
          (duration (gitlab--format-duration
                     (gitlab-data-field "duration" job)))
          (help (format "Job %s (%s)" name id))
-         (status-cell (propertize (format "%-12s" status)
-                                  'face (or (gitlab--status-face status)
-                                            'default))))
+         (status-cell (gitlab--propertize (format "%-12s" status)
+                                          (or (gitlab--status-face status)
+                                              'default))))
     (magit-insert-section (gitlab-job id)
       (let ((start (point)))
         (insert (format (format "%%s %%-12s %%-%ds %%%ds %%14s"

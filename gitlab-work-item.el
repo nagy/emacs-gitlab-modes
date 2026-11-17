@@ -171,8 +171,8 @@ the IID cell keeps the full identifier as its navigation target."
                                        'gitlab-work-item-iid id)
                  type
                  title
-                 (propertize state 'face (or (gitlab--status-face state)
-                                             'default))
+                 (gitlab--propertize state (or (gitlab--status-face state)
+                                               'default))
                  author
                  labels
                  updated)))))

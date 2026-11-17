@@ -247,7 +247,7 @@ another project, and from a row that is no longer open."
 (defun gitlab-merge-request--marker (glyph face)
   "Return GLYPH as a State cell marker that carries FACE."
   (declare (pure t) (side-effect-free t))
-  (concat " " (propertize glyph 'face face)))
+  (concat " " (gitlab--propertize glyph face)))
 
 (defun gitlab-merge-request--state-cell (merge-request)
   "Return the State cell of MERGE-REQUEST.
@@ -256,8 +256,8 @@ A merge request with a merge conflict carries
 merge request that sits behind its target branch carries
 `gitlab-merge-request-behind-marker' behind that."
   (let ((state (gitlab-data-field-string "state" merge-request)))
-    (concat (propertize state 'face (or (gitlab--status-face state)
-                                        'default))
+    (concat (gitlab--propertize state (or (gitlab--status-face state)
+                                          'default))
             (when (gitlab--conflict-p merge-request)
               (gitlab-merge-request--marker
                gitlab-merge-request-conflict-marker 'gitlab-conflict))
@@ -284,7 +284,7 @@ the IID cell keeps the full identifier as its navigation target."
               (title (let ((title (gitlab-data-field-string
                                   "title" merge-request)))
                        (if (gitlab--draft-p merge-request)
-                           (propertize title 'face 'gitlab-draft)
+                           (gitlab--propertize title 'gitlab-draft)
                          title)))
               (state (gitlab-merge-request--state-cell merge-request))
               (author (gitlab--format-author
@@ -427,7 +427,7 @@ command of its own."
   (let ((cells (gitlab-merge-request--child-cells)))
     (aset cells (gitlab-merge-request--id-index)
           (concat (gitlab-merge-request--indent)
-                  (propertize text 'face 'gitlab-date)))
+                  (gitlab--propertize text 'gitlab-date)))
     (list (cons 'note id) cells)))
 
 (defun gitlab-merge-request--commit-entry (id commit)
@@ -441,7 +441,7 @@ Updated cells hold the subject, the author and the author date."
     (aset cells index
           (gitlab--nav-string
            (concat (gitlab-merge-request--indent)
-                   (propertize short 'face 'gitlab-id))
+                   (gitlab--propertize short 'gitlab-id))
            'gitlab-commit-sha sha
            (format "Commit %s" short)))
     (aset cells (1+ index) (or (alist-get 'subject commit) ""))
@@ -642,8 +642,8 @@ because a ref of another project would be wrong."
                 (let ((start (point)))
                   (insert
                    (format "%s %s  (%s, %s)"
-                           (propertize (alist-get 'short commit)
-                                       'face 'gitlab-id)
+                           (gitlab--propertize (alist-get 'short commit)
+                                               'gitlab-id)
                            (alist-get 'subject commit)
                            (gitlab--format-author (alist-get 'author commit))
                            (gitlab--format-date (alist-get 'date commit))))
@@ -662,8 +662,8 @@ because a ref of another project would be wrong."
         (system (gitlab-data-field "system" note)))
     (concat (gitlab--format-author (gitlab-data-field "author" note))
             "  "
-            (propertize (format "%s%s" created (if system "  (system)" ""))
-                        'face 'gitlab-field-name))))
+            (gitlab--propertize (format "%s%s" created (if system "  (system)" ""))
+                                'gitlab-field-name))))
 
 (defun gitlab-merge-request-insert-notes ()
   "Insert the fetched notes as a group section.

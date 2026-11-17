@@ -1442,6 +1442,15 @@ a value already."
       "-"))
    (t (format "%s" value))))
 
+(defun gitlab--propertize (string face)
+  "Return STRING painted with FACE under both face properties.
+`face' names FACE for a caller that reads a text property, and
+`font-lock-face' keeps the paint.  `magit-section-mode' sets
+`font-lock-defaults', so `font-lock-mode' turns on in a detail
+buffer, and fontification removes a plain `face' property."
+  (declare (pure t) (side-effect-free t))
+  (propertize string 'face face 'font-lock-face face))
+
 (defun gitlab--format-author (value)
   "Return author VALUE as display text with the `gitlab-author' face.
 The name takes `gitlab-author' and the account name takes
@@ -1456,17 +1465,17 @@ name follows the name."
       (cond
        ((and name username)
         (if gitlab-show-author-username
-            (concat (propertize (format "%s" name) 'face 'gitlab-author)
+            (concat (gitlab--propertize (format "%s" name) 'gitlab-author)
                     " ("
-                    (propertize (format "@%s" username) 'face 'gitlab-id)
+                    (gitlab--propertize (format "@%s" username) 'gitlab-id)
                     ")")
-          (propertize (format "%s" name) 'face 'gitlab-author)))
+          (gitlab--propertize (format "%s" name) 'gitlab-author)))
        (username
-        (propertize (format "@%s" username) 'face 'gitlab-id))
-       (t (propertize (gitlab--format-object value)
-                      'face 'gitlab-author)))))
+        (gitlab--propertize (format "@%s" username) 'gitlab-id))
+       (t (gitlab--propertize (gitlab--format-object value)
+                             'gitlab-author)))))
    ((and (stringp value) (not (string-empty-p value)))
-    (propertize value 'face 'gitlab-author))
+    (gitlab--propertize value 'gitlab-author))
    (t (gitlab--format-value value))))
 
 (defun gitlab--format-author-list (value)
@@ -1489,9 +1498,9 @@ TAG is the decoded `tag' flag of the object that holds VALUE, so a
 ref of a tag takes `gitlab-tag'."
   (declare (pure t) (side-effect-free t))
   (if (and (stringp value) (not (string-empty-p value)))
-      (propertize value 'face (if (gitlab--tag-flag-p tag)
-                                  'gitlab-tag
-                                'gitlab-branch))
+      (gitlab--propertize value (if (gitlab--tag-flag-p tag)
+                                    'gitlab-tag
+                                  'gitlab-branch))
     (gitlab--format-value value)))
 
 (defun gitlab--format-date (value)
@@ -1648,7 +1657,7 @@ DATA is the object that holds KEY, when the caller has it."
           (t (gitlab--format-value value)))))
     (if-let* ((face (and (not (gitlab--author-field-p key))
                          (gitlab--field-value-face key value data))))
-        (propertize text 'face face)
+        (gitlab--propertize text face)
       text)))
 
 (defun gitlab--field-at-point ()
@@ -1704,7 +1713,7 @@ from `gitlab--buffer-data'."
 The heading carries `gitlab-title', and a blank line follows the
 section, so a reader sees the title above the field table."
   (magit-insert-section (gitlab-title 'title)
-    (magit-insert-heading (propertize title 'face 'gitlab-title)))
+    (magit-insert-heading (gitlab--propertize title 'gitlab-title)))
   (insert "\n"))
 
 (defun gitlab-insert-title ()
@@ -1720,7 +1729,7 @@ generic title names `gitlab--label' when that function is nil."
   "Insert HEADING as the heading line of the current group section.
 The heading carries `gitlab-title', and a blank line follows it, so
 the rows of the group start below the name."
-  (magit-insert-heading (propertize heading 'face 'gitlab-title))
+  (magit-insert-heading (gitlab--propertize heading 'gitlab-title))
   (insert "\n"))
 
 (defun gitlab--insert-fields (data &optional keys)
@@ -1736,9 +1745,10 @@ command or a bookmark reaches the field from any column of it."
     (dolist (key keys)
       (magit-insert-section (gitlab-field key)
         (let ((start (point)))
-          (insert (propertize (format (format "%%-%ds " width)
-                                      (concat (gitlab--field-label key) ":"))
-                              'face 'gitlab-field-name))
+          (insert (gitlab--propertize
+                   (format (format "%%-%ds " width)
+                           (concat (gitlab--field-label key) ":"))
+                   'gitlab-field-name))
           (insert (gitlab--format-field-value
                    key (gitlab-data-field key data) data))
           (add-text-properties start (point) (list 'gitlab-field key))
@@ -2266,7 +2276,7 @@ a cons of `group' and a group context, or nil for a project."
 (defun gitlab-list--date-cell (value)
   "Return timestamp VALUE as a table cell with `gitlab-date'."
   (declare (pure t) (side-effect-free t))
-  (propertize (gitlab--format-date value) 'face 'gitlab-date))
+  (gitlab--propertize (gitlab--format-date value) 'gitlab-date))
 
 (defvar-local gitlab-list--base-format nil
   "Table format of the current list buffer before fitting.
@@ -2844,7 +2854,7 @@ a merge request IID carries a leading !, so keep the digits only."
 VALUE defaults to ID, and it names the object behind the cell when
 the cell text differs from the identifier, as in a group list."
   (declare (pure t) (side-effect-free t))
-  (gitlab--nav-string (propertize id 'face 'gitlab-id)
+  (gitlab--nav-string (gitlab--propertize id 'gitlab-id)
                       property (or value id) "Open"))
 
 (defun gitlab-list-sort (&optional column)
