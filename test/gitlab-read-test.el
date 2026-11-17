@@ -168,6 +168,39 @@
      (should (equal "group" (gitlab-read-group)))
      (should (equal "my-group" (gitlab-read-group nil "my-group"))))))
 
+(ert-deftest gitlab-read-prompt-histories ()
+  "Every prompt names its own history, so `savehist' saves the answers.
+`savehist' adds the value of `minibuffer-history-variable' to
+`savehist-minibuffer-history-variables' when a minibuffer runs, so
+a named history per prompt keeps the answers of one session in the
+history file."
+  (dolist (case '((gitlab-read-repository . gitlab-read-repository-history)
+                  (gitlab-read-group . gitlab-read-group-history)
+                  (gitlab-read-merge-request-iid
+                   . gitlab-read-merge-request-history)
+                  (gitlab-read-work-item-iid . gitlab-read-work-item-history)
+                  (gitlab-read-pipeline-id . gitlab-read-pipeline-history)
+                  (gitlab-read-job-id . gitlab-read-job-history)))
+    (gitlab-test-with-environment
+     (let ((history nil)
+           (pipeline (symbol-function 'gitlab-read-pipeline-id)))
+       (cl-letf (((symbol-function 'gitlab-git-context)
+                  (lambda (&optional _directory) "group/project"))
+                 ((symbol-function 'completing-read)
+                  (lambda (_prompt _collection &rest arguments)
+                    (setq history (nth 3 arguments))
+                    ""))
+                 ;; The job prompt reads its pipeline first, so the
+                 ;; pipeline prompt stays out of that case.
+                 ((symbol-function 'gitlab-read-pipeline-id)
+                  (if (eq (car case) 'gitlab-read-job-id)
+                      (lambda (&optional _prompt) "1")
+                    pipeline))
+                 ((symbol-function 'gitlab-pipeline-show)
+                  (lambda (_id) '((jobs)))))
+         (funcall (car case))
+         (should (eq history (cdr case))))))))
+
 (provide 'gitlab-read-tests)
 
 ;;; gitlab-read-test.el ends here

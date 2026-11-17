@@ -661,6 +661,21 @@ of the job beside it.  Marginalia, Embark,
 one category per kind of object.  The identifier candidates sort by
 their number, so =#1000= follows =#999=.
 
+Each prompt names its own history.  The variables are
+=gitlab-read-repository-history=, =gitlab-read-group-history=,
+=gitlab-read-merge-request-history=, =gitlab-read-work-item-history=,
+=gitlab-read-pipeline-history= and =gitlab-read-job-history=.
+=savehist-mode= saves the minibuffer history of a prompt, so the
+answers of one session come back in the next one with one line:
+
+#+begin_src elisp
+(savehist-mode 1)
+#+end_src
+
+The setting =savehist-save-minibuffer-history= stays on and keeps
+those answers.  Set it to nil, or drop a name from
+=savehist-save-hook=, to keep them out of the history file.
+
 The context names the buffer, so two projects and two instances never
 share one buffer:
 

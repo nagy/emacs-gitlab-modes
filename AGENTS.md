@@ -429,6 +429,19 @@ without evil.  The suite never opens a network connection.
   `gitlab-read--sort-by-number` orders the identifiers by number, and
   the project prompt keeps the order of `gitlab-repositories` with
   `#'identity`, because the current project comes first.
+- Every prompt passes its own named history to `completing-read`:
+  `gitlab-read-repository-history`, `gitlab-read-group-history`,
+  `gitlab-read-merge-request-history`, `gitlab-read-work-item-history`,
+  `gitlab-read-pipeline-history` and `gitlab-read-job-history`.
+  `savehist-mode` adds the value of `minibuffer-history-variable` to
+  `savehist-minibuffer-history-variables` while a minibuffer runs, so
+  those names alone carry the answers of a session into the next one.
+  Do not add the names to `savehist-additional-variables`: savehist
+  asks for minibuffer histories itself, and a non-nil list there costs
+  the concurrent-write handling of the history file.  A new prompt
+  gets one history variable of its own and one line in
+  `gitlab-read-prompt-histories`, so a history never turns anonymous
+  and a renamed prompt keeps the answers of a user.
 - `gitlab-cli--repository-arguments` passes `PATH` to `--repo` for the
   default instance and `https://HOST/PATH` for another one, because glab
   selects an instance from a URL.  `gitlab-cli-project-endpoint`
