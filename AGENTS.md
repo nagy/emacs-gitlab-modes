@@ -705,18 +705,28 @@ without evil.  The suite never opens a network connection.
   and not a hook list, and it runs for every buffer.  A kill command
   in the read-only log copies and signals `buffer-read-only` through
   the usual `kill-region` fallback, so the trace text stays in place.
-- A job log shows the duration of the active region on the right edge
-  of the mode line.  `gitlab-job-log--region-span` reads the first and
-  the last trace line in the region that carries a timestamp and
-  returns their count and their difference.  A line without a
-  timestamp neither starts nor ends the span, and fewer than two
-  stamped lines leave the section off.  The helper reads
+- A job log shows a duration on the right edge of the mode line.
+  Without an active region the section reports the whole trace.
+  `gitlab-job-log--record-line-time` runs from
+  `gitlab-job-log--insert-line` and keeps the first and the last
+  timestamp of the buffer together with their count, so
+  `gitlab-job-log--total-span` answers the totals without a scan and
+  a long trace costs the mode line nothing.  A restart clears the
+  three values with the text in `gitlab-job-log--start`, because an
+  increment over an erased buffer would count the old run twice.
+  With an active region `gitlab-job-log--region-span` reads the first
+  and the last trace line in the region that carries a timestamp and
+  returns their count and their difference.  The section then reports
+  the selection alone and marks the values as the values of the
+  region, because the total says nothing about the step that a reader
+  measures.  A line without a timestamp neither starts nor ends the
+  span, and fewer than two stamped lines leave the section off.  The
+  helper reads
   `region-beginning` and `region-end` into locals before it moves
   point: `region-end` reads point and the mark, so a region that
   starts above and ends below would otherwise collapse to its first
   line.  The section appears only
-  while `use-region-p` holds and
-  `gitlab-job-log-show-region-duration` is non-nil.
+  while `gitlab-job-log-show-duration` is non-nil.
   `gitlab-job-log--mode-line-format-base` reads the default mode line
   and drops a trailing `mode-line-end-spaces`, because that construct
   fills the rest of the line and would push the section past the
@@ -731,8 +741,10 @@ without evil.  The suite never opens a network connection.
   with its own right block therefore needs the plain text alone.
   `post-command-hook` and the chunk
   filter call `gitlab-job-log--mode-line-maybe-update`, which rebuilds
-  the format only when the region signature changes.  The signature
-  holds the region bounds and `buffer-chars-modified-tick`.  The
+  the format only when the signature changes.
+  `gitlab-job-log--mode-line-signature` holds the region bounds, nil
+  without an active region, and `buffer-chars-modified-tick`, so a new
+  trace line moves the total too.  The
   hidden timestamp text stays in the buffer, so the section measures
   a region while `gitlab-job-log-show-timestamps` is nil.  Do not put
   `mode-line-format-right-align` in an `:eval` form: `format-mode-line`

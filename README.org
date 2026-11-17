@@ -146,12 +146,15 @@ the line at column 0, keeps every space that belongs to the text and
 keeps point at the start of a line on that line, so =C-a= and =0= do
 not look like a motion to the line above.
 
-An active region adds a section to the right edge of the mode line.
-It shows how many selected trace lines carry a timestamp, and the time
-between the first and the last of them.  A line without a timestamp
-does not start or end the span, and fewer than two stamped lines show
-no section.  The option =gitlab-job-log-show-region-duration=, on by
-default, turns the section off.
+The right edge of the mode line shows a duration.  It reports how many
+trace lines carry a timestamp, and the time between the first and the
+last of them.  Without an active region the section reports the whole
+trace.  With an active region it reports the selection alone and
+marks the values as the values of the region, because the total says
+nothing about the step that a reader measures.  A line without a
+timestamp does not start or end the span, and fewer than two stamped
+lines show no section.  The option =gitlab-job-log-show-duration=, on
+by default, turns the section off.
 
 GitLab writes a section marker into the trace before and after a
 section of the job.  The log turns the start marker into a header line

@@ -634,6 +634,34 @@ carries the navigation properties."
          (set-buffer-modified-p nil))
        (kill-buffer buffer)))))
 
+(ert-deftest gitlab-pipeline-job-log-mode-line-restart-resets-total ()
+  "A restart counts the trace of the new run alone.
+The total of the mode line comes from counters that the buffer keeps,
+so a restart must clear them together with the text."
+  (gitlab-test-with-environment
+   (let ((buffer (gitlab-pipeline--prepare-job-log
+                  "5001" "unit-tests")))
+     (unwind-protect
+         (progn
+           (gitlab-test-wait
+            (lambda ()
+              (with-current-buffer buffer gitlab-job-log--finished)))
+           (with-current-buffer buffer
+             (should (= 4 gitlab-job-log--stamped-lines))
+             (revert-buffer)
+             (should
+              (gitlab-test-wait
+               (lambda ()
+                 (with-current-buffer buffer
+                   gitlab-job-log--finished))))
+             (should (= 4 gitlab-job-log--stamped-lines))
+             (gitlab-job-log--update-mode-line)
+             (should (equal " [4 lines, 2s]"
+                            gitlab-job-log--mode-line-cache))))
+       (with-current-buffer buffer
+         (set-buffer-modified-p nil))
+       (kill-buffer buffer)))))
+
 (ert-deftest gitlab-pipeline-job-log-open-twice ()
   "Opening a job log again replaces the old trace."
   (gitlab-test-with-environment
@@ -817,12 +845,14 @@ above.  The `invisible' property keeps the cursor on its line."
   (should (equal "1h 2m 3s" (gitlab-job-log--duration-string 3723))))
 
 (defun gitlab-pipeline-tests--job-log-with-trace (text)
-  "Return a job log buffer that holds TEXT and select the whole text."
+  "Return a job log buffer that holds TEXT and select the whole text.
+The helper writes TEXT through the chunk filter of the buffer, so the
+timestamp properties and the duration counters of the mode line act
+as they do during a stream."
   (let ((buffer (generate-new-buffer "*GitLab job log mode line test*")))
     (with-current-buffer buffer
       (gitlab-job-log-mode)
-      (let ((inhibit-read-only t))
-        (insert text))
+      (gitlab-job-log--write text)
       (set-buffer-modified-p nil)
       (goto-char (point-min))
       (set-mark (point-max))
@@ -840,7 +870,7 @@ above.  The `invisible' property keeps the cursor on its line."
     (unwind-protect
         (with-current-buffer buffer
           (gitlab-job-log--update-mode-line)
-          (should (equal " [3 in region, 3.75s]"
+          (should (equal " [3 lines in region, 3.75s]"
                          gitlab-job-log--mode-line-cache))
           (should (eq 'mode-line-format-right-align
                       (nth (- (length mode-line-format) 2)
@@ -864,12 +894,12 @@ before it moves point."
           (set-mark (point-min))
           (activate-mark)
           (gitlab-job-log--update-mode-line)
-          (should (equal " [3 in region, 3.75s]"
+          (should (equal " [3 lines in region, 3.75s]"
                          gitlab-job-log--mode-line-cache)))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-mode-line-right-align ()
-  "The region section sits at the right edge of the mode line.
+  "The duration section sits at the right edge of the mode line.
 The base drops the construct that fills the mode line, because a
 filled line leaves no room for the section."
   (let ((buffer
@@ -913,16 +943,76 @@ the mode line keeps one alignment."
         (kill-buffer buffer))
       (set-default 'mode-line-format original))))
 
-(ert-deftest gitlab-pipeline-job-log-mode-line-without-region ()
-  "The mode line drops the region section when the region is gone."
+(ert-deftest gitlab-pipeline-job-log-mode-line-total-duration ()
+  "Without a region the mode line reports the whole trace."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:38.500Z 00O two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (deactivate-mark)
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [2 lines, 1.5s]"
+                         gitlab-job-log--mode-line-cache))
+          (should (eq 'mode-line-format-right-align
+                      (nth (- (length mode-line-format) 2)
+                           mode-line-format))))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-total-grows ()
+  "A new trace line changes the total of the mode line.
+The counters of the buffer answer the total, so the mode line reads
+no buffer text and a long trace costs it nothing."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:38.000Z 00O two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (deactivate-mark)
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [2 lines, 1s]"
+                         gitlab-job-log--mode-line-cache))
+          (gitlab-job-log--write
+           "2026-10-30T20:59:42.500Z 00O three\n")
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [3 lines, 5.5s]"
+                         gitlab-job-log--mode-line-cache)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-region-hides-total ()
+  "An active region replaces the total of the trace, not joins it."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:40.000Z 00O two\n"
+                  "2026-10-30T20:59:41.000Z 00O three\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (deactivate-mark)
+          (gitlab-job-log--update-mode-line)
+          (should (equal " [3 lines, 4s]"
+                         gitlab-job-log--mode-line-cache))
+          (goto-char (point-min))
+          (forward-line 1)
+          (set-mark (point-max))
+          (activate-mark)
+          (gitlab-job-log--mode-line-maybe-update)
+          (should (equal " [2 lines in region, 1s]"
+                         gitlab-job-log--mode-line-cache)))
+      (kill-buffer buffer))))
+
+(ert-deftest gitlab-pipeline-job-log-mode-line-empty ()
+  "A log without two stamped lines shows no duration section."
   (let ((buffer
          (gitlab-pipeline-tests--job-log-with-trace
           "2026-10-30T20:59:37.000Z 00O one\n")))
     (unwind-protect
         (with-current-buffer buffer
+          (deactivate-mark)
           (gitlab-job-log--update-mode-line)
           (should (equal "" gitlab-job-log--mode-line-cache))
-          (deactivate-mark)
           (gitlab-job-log--mode-line-maybe-update)
           (should (equal "" gitlab-job-log--mode-line-cache))
           (should-not (memq 'mode-line-format-right-align
@@ -930,20 +1020,20 @@ the mode line keeps one alignment."
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-mode-line-option-off ()
-  "The option turns the region section off."
+  "The option turns the duration section off."
   (let ((buffer
          (gitlab-pipeline-tests--job-log-with-trace
           (concat "2026-10-30T20:59:37.000Z 00O one\n"
                   "2026-10-30T20:59:38.000Z 00O two\n"))))
     (unwind-protect
         (with-current-buffer buffer
-          (setq-local gitlab-job-log-show-region-duration nil)
+          (setq-local gitlab-job-log-show-duration nil)
           (gitlab-job-log--update-mode-line)
           (should (equal "" gitlab-job-log--mode-line-cache)))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-mode-line-hidden-timestamps ()
-  "A hidden timestamp still measured the region."
+  "A hidden timestamp still measures the trace and the region."
   (let ((buffer
          (gitlab-pipeline-tests--job-log-with-trace
           (concat "2026-10-30T20:59:37.000Z 00O one\n"
@@ -953,11 +1043,12 @@ the mode line keeps one alignment."
           (call-interactively #'gitlab-job-log-toggle-timestamps)
           (should-not gitlab-job-log-show-timestamps)
           (gitlab-job-log--update-mode-line)
-          (should (equal " [2 in region, 1.5s]"
+          (should (equal " [2 lines in region, 1.5s]"
                          gitlab-job-log--mode-line-cache))
           (deactivate-mark)
           (gitlab-job-log--update-mode-line)
-          (should (equal "" gitlab-job-log--mode-line-cache)))
+          (should (equal " [2 lines, 1.5s]"
+                         gitlab-job-log--mode-line-cache)))
       (kill-buffer buffer))))
 
 (ert-deftest gitlab-pipeline-job-log-split-chunk ()
