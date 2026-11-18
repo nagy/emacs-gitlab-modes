@@ -238,71 +238,116 @@ local reads."
       (gitlab-merge-request--render "7" (gitlab-git-tests--data (cdr repo)))
       (should-not (string-match-p "Commits (" (buffer-string))))))
 
-(ert-deftest gitlab-git-show-commit-buffer ()
-  "The plain commit buffer shows the message and the patch."
+(ert-deftest gitlab-git-show-commit-uses-magit ()
+  "The commit view goes through the commit function of Magit."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
-    (let ((gitlab-git-use-magit nil)
-          (buffer nil))
-      (unwind-protect
-          (with-temp-buffer
-            (setq-local gitlab-cli-directory (car repo))
-            (gitlab-git-show-commit
-             (gitlab-git-tests--git (car repo) "rev-parse" "HEAD"))
-            (setq buffer (current-buffer))
-            (should (derived-mode-p 'gitlab-git-commit-mode))
-            (should (string-match-p "second" (buffer-string)))
-            (should (string-match-p "\\+two" (buffer-string)))
-            (should buffer-read-only))
-        (when (buffer-live-p buffer)
-          (kill-buffer buffer))))))
+    (let ((captured 'none))
+      (cl-letf (((symbol-function 'gitlab-git--ensure-magit) #'ignore)
+                ((symbol-function 'magit-show-commit)
+                 (lambda (rev &optional _args _files _module)
+                   (setq captured rev))))
+        (with-temp-buffer
+          (setq-local gitlab-cli-directory (car repo))
+          (gitlab-git-show-commit (cdr repo))))
+      (should (equal (cdr repo) captured)))))
 
-(ert-deftest gitlab-git-show-changes-buffer ()
-  "The plain changes buffer holds the diff of the merge request."
+(ert-deftest gitlab-git-show-changes-uses-magit-arguments ()
+  "The changes view passes the diff arguments of Magit."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
-    (let ((gitlab-git-use-magit nil)
-          (buffer nil))
-      (unwind-protect
-          (with-temp-buffer
-            (setq-local gitlab-cli-directory (car repo))
-            (gitlab-git-show-changes "7" (gitlab-git-tests--data (cdr repo)))
-            (setq buffer (current-buffer))
-            (should (derived-mode-p 'gitlab-git-patch-mode))
-            (should (string-match-p "diff --git a/file.txt b/file.txt"
-                                    (buffer-string)))
-            (should (string-match-p "^\\+two" (buffer-string)))
-            (should buffer-read-only))
-        (when (buffer-live-p buffer)
-          (kill-buffer buffer))))))
+    (let ((captured 'none)
+          (head (gitlab-git-tests--git
+                 (car repo) "rev-parse"
+                 "refs/remotes/origin/merge-requests/7/head")))
+      (cl-letf (((symbol-function 'gitlab-git--ensure-magit) #'ignore)
+                ((symbol-function 'magit-diff-arguments)
+                 (lambda (&optional _mode) '(("--stat") "file.txt")))
+                ((symbol-function 'magit-diff-range)
+                 (lambda (range &optional args files)
+                   (setq captured (list range args files)))))
+        (with-temp-buffer
+          (setq-local gitlab-cli-directory (car repo))
+          (gitlab-git-show-changes "7" (gitlab-git-tests--data (cdr repo)))))
+      (should (equal (format "%s..%s" (cdr repo) head)
+                     (nth 0 captured)))
+      (should (equal '("--stat") (nth 1 captured)))
+      (should (equal "file.txt" (nth 2 captured))))))
 
-(ert-deftest gitlab-git-show-log-buffer ()
-  "The plain log buffer holds only the commits of the merge request."
+(ert-deftest gitlab-git-show-changes-single-commit ()
+  "One selected commit opens its commit view instead of a diff."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo-commits repo 2
+    (let ((captured 'none))
+      (cl-letf (((symbol-function 'gitlab-git--ensure-magit) #'ignore)
+                ((symbol-function 'magit-diff-range)
+                 (lambda (&rest _) (setq captured 'diff)))
+                ((symbol-function 'magit-show-commit)
+                 (lambda (rev &optional _args _files _module)
+                   (setq captured rev))))
+        (with-temp-buffer
+          (setq-local gitlab-cli-directory (car repo))
+          (let* ((data (gitlab-git-tests--data (cdr repo)))
+                 (commits (plist-get
+                           (gitlab-git-merge-request-commits "7" data)
+                           :commits))
+                 (middle (alist-get 'sha (nth 1 commits))))
+            (gitlab-git-show-changes "7" data (list middle))
+            (should (equal middle captured))))))))
+
+(ert-deftest gitlab-git-show-log-uses-magit-arguments ()
+  "The log view passes the log arguments of Magit."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
-    (let ((gitlab-git-use-magit nil)
-          (buffer nil))
-      (unwind-protect
-          (with-temp-buffer
-            (setq-local gitlab-cli-directory (car repo))
-            (gitlab-git-show-log "7" (gitlab-git-tests--data (cdr repo)))
-            (setq buffer (current-buffer))
-            (should (derived-mode-p 'gitlab-git-patch-mode))
-            (should (string-match-p "second" (buffer-string)))
-            (should-not (string-match-p "\\* first" (buffer-string))))
-        (when (buffer-live-p buffer)
-          (kill-buffer buffer))))))
+    (let ((captured 'none))
+      (cl-letf (((symbol-function 'gitlab-git--ensure-magit) #'ignore)
+                ((symbol-function 'magit-log-arguments)
+                 (lambda (&optional _mode) '(("--graph") "file.txt")))
+                ((symbol-function 'magit-log-other)
+                 (lambda (revs &optional args files)
+                   (setq captured (list revs args files)))))
+        (with-temp-buffer
+          (setq-local gitlab-cli-directory (car repo))
+          (gitlab-git-show-log "7" (gitlab-git-tests--data (cdr repo)))))
+      (should (equal (list (format "%s..%s"
+                                   (cdr repo)
+                                   (gitlab-git-tests--git
+                                    (car repo) "rev-parse"
+                                    "refs/remotes/origin/merge-requests/7/head")))
+                     (nth 0 captured)))
+      (should (equal '("--graph") (nth 1 captured)))
+      (should (equal "file.txt" (nth 2 captured))))))
 
-(ert-deftest gitlab-git-show-changes-without-ref ()
-  "A missing local ref signals a user error."
+(ert-deftest gitlab-git-views-need-magit ()
+  "A Git view without Magit signals a user error."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
     (let ((gitlab-git-use-magit nil))
       (with-temp-buffer
         (setq-local gitlab-cli-directory (car repo))
-        (should-error
-         (gitlab-git-show-changes "8" (gitlab-git-tests--data (cdr repo)))
-         :type 'user-error)))))
+        (should-error (gitlab-git-show-changes
+                       "7" (gitlab-git-tests--data (cdr repo)))
+                      :type 'user-error)
+        (should-error (gitlab-git-show-log
+                       "7" (gitlab-git-tests--data (cdr repo)))
+                      :type 'user-error)
+        (should-error (gitlab-git-show-commit (cdr repo))
+                      :type 'user-error)))))
+
+(ert-deftest gitlab-git-views-need-installed-magit ()
+  "A Git view signals a user error when Magit is absent."
+  (cl-letf (((symbol-function 'require) (lambda (&rest _) nil)))
+    (should-error (gitlab-git--ensure-magit) :type 'user-error)))
+
+(ert-deftest gitlab-git-show-changes-without-ref ()
+  "A missing local ref signals a user error."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (should-error
+       (gitlab-git-show-changes "8" (gitlab-git-tests--data (cdr repo)))
+       :type 'user-error))))
 
 (defun gitlab-git-tests--position (sha)
   "Return the line start of the commit SHA in the current buffer."
@@ -433,29 +478,26 @@ buffer."
 (ert-deftest gitlab-git-show-log-selected-commits ()
   "A selected commit range leaves the other commits out of the log."
   (skip-unless (executable-find "git"))
-  (let* ((repo (gitlab-git-tests--repo 2))
-         (directory (car repo)))
-    (unwind-protect
-        (with-temp-buffer
-          (setq-local gitlab-cli-directory directory)
-          (let* ((data (gitlab-git-tests--data (cdr repo)))
-                 (info (gitlab-git-merge-request-commits "7" data))
-                 (commits (plist-get info :commits))
-                 (newest (alist-get 'sha (nth 0 commits)))
-                 (middle (alist-get 'sha (nth 1 commits)))
-                 (oldest (alist-get 'sha (nth 2 commits)))
-                 (gitlab-git-use-magit nil)
-                 (buffer nil))
-            (unwind-protect
-                (progn
-                  (gitlab-git-show-log "7" data (list middle oldest))
-                  (setq buffer (current-buffer))
-                  (should (string-match-p "extra 0" (buffer-string)))
-                  (should (string-match-p "second" (buffer-string)))
-                  (should-not (string-match-p newest (buffer-string))))
-              (when (buffer-live-p buffer)
-                (kill-buffer buffer)))))
-      (delete-directory directory t))))
+  (gitlab-git-tests--with-repo-commits repo 2
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (let* ((data (gitlab-git-tests--data (cdr repo)))
+             (commits (plist-get (gitlab-git-merge-request-commits
+                                  "7" data)
+                                 :commits))
+             (middle (alist-get 'sha (nth 1 commits)))
+             (oldest (alist-get 'sha (nth 2 commits)))
+             (range (gitlab-git-commit-selection-range (list middle oldest)))
+             (captured 'none))
+        (cl-letf (((symbol-function 'gitlab-git--ensure-magit) #'ignore)
+                  ((symbol-function 'magit-log-arguments)
+                   (lambda (&optional _mode) nil))
+                  ((symbol-function 'magit-log-other)
+                   (lambda (revs &optional _args _files)
+                     (setq captured revs))))
+          (gitlab-git-show-log "7" data (list middle oldest)))
+        (should (equal (list (format "%s..%s" (cdr range) (car range)))
+                       captured))))))
 
 (defun gitlab-git-tests--list-row-data (repo data)
   "Prepare the buffer as the merge request list of REPO and return DATA.

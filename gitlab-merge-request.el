@@ -527,7 +527,8 @@ opens the merge request at point; c copies its identifier and w
 opens its web page.  TAB expands a row into its local commits: the
 short hash, the subject, the author and the author date.  With an
 active region over the commit rows, RET shows the diff of that
-commit range."
+commit range, and a region of one commit row shows its commit
+view."
   :group 'gitlab
   :interactive nil
   (setq-local tabulated-list-format
@@ -873,10 +874,11 @@ Point names the merge request through its text property, its
 display buffer or its web URL, so the command works in a merge
 request buffer, on a list row and on a link in any buffer.  The
 view needs a fetched merge request ref.  With an active region over
-commit lines, the view covers only those commits.  Magit, when
-available, supplies the diff buffer and its Ediff command on E.
-Signal a user error in a buffer of another project, because the
-local checkout holds no ref of that project."
+commit lines, the view covers only those commits, and one selected
+commit shows its commit view.  Magit supplies the diff buffer and
+its Ediff command on E.  Signal a user error in a buffer of
+another project, because the local checkout holds no ref of that
+project."
   (interactive)
   (let ((object (gitlab--object-at-point 'merge-request)))
     (unless object
@@ -896,9 +898,9 @@ display buffer or its web URL, so the command works in a merge
 request buffer, on a list row and on a link in any buffer.  The
 log holds only the commits of the merge request.  With an active
 region over commit lines, the log covers only those commits.
-Magit, when available, supplies the log buffer and its Ediff
-commands.  Signal a user error in a buffer of another project,
-because the local checkout holds no ref of that project."
+Magit supplies the log buffer and its Ediff commands.  Signal a
+user error in a buffer of another project, because the local
+checkout holds no ref of that project."
   (interactive)
   (let ((object (gitlab--object-at-point 'merge-request)))
     (unless object

@@ -19,7 +19,7 @@ installed package works without =glab= on =PATH=.
 - =glab=, authenticated for the GitLab instance
 - Optional: evil, for =gitlab-evil.el=
 - Optional: Org, for =ol-gitlab.el=
-- Optional: Magit, for the commit and changes views of a merge request
+- Optional: Magit, needed by the commit, changes and log views
 
 * Commands
 
@@ -240,13 +240,16 @@ commit log.  Both cover the merge base to the fetched head.  An active
 region over commit lines narrows both views to the selected commits,
 from the parent of the oldest selected commit to the newest selected
 commit.  The commit
-view, the changes view and the log view use Magit when Magit is
-available.  Magit supplies its whole-tree diff, its commit view and the
-=ediff= commands on =E=, so a review can compare a file or a commit
-side by side.  The commit log of =l= holds only the commits of the merge
-request.  Without Magit the package opens a read-only =diff-mode=
-buffer, and =q= closes it.  The package never loads Magit at startup and
-never fetches from the network for these views.
+view, the changes view and the log view go through Magit, because
+Magit owns their flags, their faces and the =ediff= commands on =E=.
+The views pass the diff and log arguments of Magit, so a transient
+value such as =--stat= or =--color-moved= applies.  Magit supplies its
+whole-tree diff, its commit view and the =ediff= commands, so a review
+can compare a file or a commit side by side.  The commit log of =l=
+holds only the commits of the merge request.  A view signals an error
+when Magit is missing or =gitlab-git-use-magit= is nil, because the
+package builds no diff of its own.  The package never loads Magit at
+startup and never fetches from the network for these views.
 
 The notes request and the jobs request ask for one page of 100 items.
 A merge request with more notes, or a pipeline with more jobs, shows
@@ -383,11 +386,13 @@ merge request left behind.
 
 An active region over the commit rows narrows =RET= and =o= to the
 selected commits.  The diff runs from the parent of the oldest
-selected commit to the newest selected commit, so one selected commit
-shows the diff of that commit alone.  The region ignores a row that
-holds no commit, and it signals an error when it holds commits of two
-merge requests, because one diff names one request.  With evil, =V=
-selects the lines and then =RET= or =o= serves the range.
+selected commit to the newest selected commit, so a span of several
+commits shows their diff.  A region of one commit row shows the commit
+view of that commit instead, with its message.  The region ignores a
+row that holds no commit, and it signals an error when it holds
+commits of two merge requests, because one diff names one request.
+With evil, =V= selects the lines and then =RET= or =o= serves the
+range.
 
 A list buffer fits the width of every column to its rows.  A column
 takes the width of its longest cell, or the width of its header when

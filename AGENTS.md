@@ -23,7 +23,7 @@ The license is AGPL-3.0-or-later.  Read `LICENSE`.
 | `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
 | `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
 | `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
-| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, `gitlab-git-show-commit`, `gitlab-git-show-changes`, `gitlab-git-show-log`, `gitlab-git-patch-mode` and `gitlab-git-commit-mode`.  No network access and no repository writes. |
+| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, the Magit guard `gitlab-git--ensure-magit`, the Magit call `gitlab-git--magit`, and the views `gitlab-git-show-commit`, `gitlab-git-show-changes` and `gitlab-git-show-log`.  No network access and no repository writes. |
 | `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the region hook of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the face painter `gitlab--propertize`, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
 | `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
 | `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, the commit rows of an expanded list row, the commit range of a selected region, the behind-target marker, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
@@ -108,17 +108,28 @@ without evil.  The suite never opens a network connection.
   records with `%x00` separators.  A literal NUL in an Elisp string
   reaches `process-file` as the end of the argument.
 - `gitlab-git-show-commit`, `gitlab-git-show-changes` and
-  `gitlab-git-show-log` prefer Magit when `gitlab-git-use-magit` is
-  non-nil and `(require 'magit nil t)` succeeds.  They call
-  `magit-show-commit`, `magit-diff-range` and `magit-log-other`.
-  Magit's own `E` reaches Ediff, so the package adds no second ediff
-  code path.  Without Magit they open a read-only
-  `gitlab-git-patch-mode` buffer, which derives from `diff-mode`, and
-  `q` closes it.  Magit stays out of `Package-Requires` and out of the
-  melpaBuild inputs.  The display layer declares `magit-section`, the
-  section library that Magit 4 ships as its own package, and the
-  flake puts it on the load path of the build.  Declare every Magit
-  function that the Git views call with `declare-function`.
+  `gitlab-git-show-log` show their view through Magit alone.  The
+  package builds no diff, commit or log buffer of its own, because a
+  second Git invocation would miss the arguments, the faces and the
+  Ediff commands of Magit.  They call `magit-show-commit`,
+  `magit-diff-range` and `magit-log-other`, and they hand those
+  functions the argument lists of Magit itself, so a saved transient
+  value such as `--stat` or `--color-moved` applies:
+  `(magit-diff-arguments)` answers a list of the diff arguments and
+  the diff files, and `(magit-log-arguments)` does the same for the
+  log.  `gitlab-git--magit` loads Magit through
+  `gitlab-git--ensure-magit` and binds `default-directory` to the
+  project, so a view of another project reads its own checkout.  A
+  `gitlab-git-use-magit` of nil and a
+  missing Magit package both signal `user-error`, and the docstring of
+  every view names that condition.  Magit's own `E` reaches Ediff, so
+  the package adds no second ediff code path.  Magit stays out of
+  `Package-Requires` and out of the melpaBuild inputs.  The display
+  layer declares `magit-section`, the section library that Magit 4
+  ships as its own package, and the flake puts it on the load path of
+  the build.  Declare every Magit function that the Git views call
+  with `declare-function`, and let a test stub
+  `gitlab-git--ensure-magit`, so a suite runs without Magit.
 - `gitlab-merge-request-show-changes` on `d` and
   `gitlab-merge-request-show-log` on `l` pass `gitlab--id`,
   `gitlab--last-data` and the active commit selection to the Git
@@ -508,11 +519,11 @@ without evil.  The suite never opens a network connection.
   `display-buffer-overriding-action' to a reuse of a window of the
   buffer and, else, a new window, with `inhibit-same-window', because
   every display path ends in `pop-to-buffer': the detail buffer, the
-  list buffer, the job log and the plain commit view.  The command
+  list buffer, the job log and the commit view.  The command
   names no mode, because it serves both base modes, and it keeps the
   two RET commands as the one definition of opening.  Magit owns the
-  display of a commit when `gitlab-git-use-magit' is non-nil, so that
-  view may ignore the action.  A job log holds no object that a
+  display of a commit, so that view may ignore the action.  A job log
+  holds no object that a
   second window could show, so its evil keys leave `o' alone.
 - A detail buffer is a tree of `magit-section' objects, and
   `gitlab-detail-mode' derives from `magit-section-mode'.  The parent
@@ -877,7 +888,10 @@ without evil.  The suite never opens a network connection.
   ignores a row that holds no commit, and the command signals a user
   error when the rows name two merge requests.  So RET and the evil
   `o` on a visual line selection show the diff of the selected span,
-  and the region function runs under the display action of
+  and one selected commit row shows its commit view instead, because
+  `gitlab-git-show-changes` hands a single commit to
+  `magit-show-commit` and a longer span to `magit-diff-range`.  The
+  region function runs under the display action of
   `gitlab-open-other-window` without a second path.  The base mode
   keeps the hook nil, so a pipeline list ignores its region.
 - A group list keeps the row ID apart from a project list.  Its row ID
@@ -1199,8 +1213,8 @@ without evil.  The suite never opens a network connection.
   row and the merge request for every other row.  An active region
   over the commit rows opens the diff of that range instead, through
   `gitlab-list--region-open-function` and
-  `gitlab-merge-request--open-region`, so one selected commit shows the
-  diff of that commit alone.
+  `gitlab-merge-request--open-region`, so one selected commit shows
+  its commit view and a longer selection shows the diff of that span.
 - A renderer that prints an author calls `gitlab--format-author`, and
   a renderer that prints a branch or a ref calls
   `gitlab--format-branch`, because `gitlab--format-value` adds no

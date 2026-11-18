@@ -35,8 +35,10 @@
 ;;
 ;; `gitlab-git-merge-request-commits' returns the commits between the
 ;; merge base and the local head ref.  `gitlab-git-show-commit' opens
-;; one commit.  Both prefer Magit when it is available and fall back to
-;; a plain `diff-mode' buffer.
+;; one commit.  The commit view, the changes view and the log view go
+;; through Magit, so Magit owns the diff arguments, the buffer mode and
+;; the Ediff commands.  A missing Magit signals a user error instead of
+;; a second, hand-written Git invocation.
 ;;
 ;; The layer never runs a command that writes to the repository.  A
 ;; missing ref, a missing object or a command failure returns nil, so a
@@ -56,9 +58,11 @@
 (require 'gitlab-cli)
 (require 'gitlab-data)
 
+(declare-function magit-diff-arguments "magit-diff" (&optional mode))
 (declare-function magit-diff-range "magit-diff" (rev-or-range &optional args files))
 (declare-function magit-get-all "magit-git" (&rest keys))
 (declare-function magit-list-remotes "magit-git" ())
+(declare-function magit-log-arguments "magit-log" (&optional mode))
 (declare-function magit-log-other "magit-log" (revs &optional args files))
 (declare-function magit-rev-ancestor-p "magit-git" (rev1 rev2))
 (declare-function magit-show-commit "magit-diff" (rev &optional args files module))
@@ -69,9 +73,10 @@
   :group 'gitlab)
 
 (defcustom gitlab-git-use-magit t
-  "Non-nil if the GitLab views use Magit when it is available.
-A nil value keeps every view in the plain `diff-mode' buffers of
-this package.  The package never requires Magit at load time."
+  "Non-nil if the commit, changes and log views use Magit.
+A nil value makes those views signal a user error, because the
+package builds no diff of its own.  The package never requires
+Magit at load time."
   :type 'boolean
   :group 'gitlab)
 
@@ -476,83 +481,40 @@ or the base object is absent."
             :commits (delq nil (mapcar #'gitlab-git--commit-entry
                                        commits))))))
 
-;;; Patch buffers
+;;; Views
 
-(define-derived-mode gitlab-git-patch-mode diff-mode "GitLab Patch"
-  "Display a read-only Git patch in `diff-mode'.
-The buffer keeps the hunk commands of `diff-mode'.  It never loads a
-file."
-  :group 'gitlab
-  :interactive nil
-  (setq-local buffer-read-only t)
-  (setq-local buffer-stale-function nil)
-  (setq-local truncate-lines t))
+(defun gitlab-git--ensure-magit ()
+  "Load Magit, or signal a user error.
+The commit view, the changes view and the log view go through Magit,
+because Magit owns the diff arguments, the buffer mode and the Ediff
+commands of such a view."
+  (unless gitlab-git-use-magit
+    (user-error "The Git views need Magit, and `gitlab-git-use-magit' is nil"))
+  (unless (require 'magit nil t)
+    (user-error "The Git views need Magit, which is not installed")))
 
-(define-key gitlab-git-patch-mode-map (kbd "q") #'quit-window)
-
-(define-derived-mode gitlab-git-commit-mode gitlab-git-patch-mode
-  "GitLab Commit"
-  "Display one Git commit in a read-only `diff-mode' buffer.
-The buffer shows the commit message and the patch that the commit
-introduced."
-  :group 'gitlab
-  :interactive nil)
-
-(define-key gitlab-git-commit-mode-map (kbd "q") #'quit-window)
-
-(defun gitlab-git--show-commit-buffer (sha)
-  "Display SHA in a plain `diff-mode' buffer.
-The command returns the buffer."
-  (let* ((directory (gitlab-cli-directory-of))
-         (buffer (get-buffer-create
-                  (format "*GitLab Commit %s*" (substring sha 0 7))))
-         (text (gitlab-git--run
-                (list "show" "--no-color" "--stat" "--patch" sha))))
-    (with-current-buffer buffer
-      (setq-local default-directory directory)
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert (or text "")))
-      (gitlab-git-commit-mode)
-      (set-buffer-modified-p nil)
-      (goto-char (point-min)))
-    (pop-to-buffer buffer)))
+(defun gitlab-git--magit (function &rest arguments)
+  "Call Magit FUNCTION with ARGUMENTS.
+The call runs in the project directory of the current buffer, so a
+view of another project reads its own checkout.  Signal a user
+error when Magit is unavailable."
+  (gitlab-git--ensure-magit)
+  (let ((default-directory (gitlab-cli-directory-of)))
+    (apply function arguments)))
 
 (defun gitlab-git-show-commit (sha)
-  "Display commit SHA in its own buffer.
-Use Magit when `gitlab-git-use-magit' is non-nil and Magit is
-available.  Signal a user error when SHA names no local commit."
+  "Display commit SHA in a Magit commit buffer.
+Signal a user error when SHA names no local commit or when Magit is
+unavailable."
   (interactive
    (list (or (get-text-property (point) 'gitlab-commit-sha)
              (read-string "Commit: "))))
   (let ((revision (gitlab-git--rev sha)))
     (unless revision
       (user-error "Unknown commit: %s" sha))
-    (if (and gitlab-git-use-magit (require 'magit nil t))
-        (gitlab-git--magit-call #'magit-show-commit revision)
-      (gitlab-git--show-commit-buffer revision))))
+    (gitlab-git--magit #'magit-show-commit revision)))
 
 ;;; Changes and log
-
-(defun gitlab-git--magit-call (function &rest arguments)
-  "Call FUNCTION with ARGUMENTS in the directory of the current buffer."
-  (let ((default-directory (gitlab-cli-directory-of)))
-    (apply function arguments)))
-
-(defun gitlab-git--patch-buffer (name text mode)
-  "Display buffer NAME with TEXT and MODE, and return the buffer.
-The buffer starts read-only and stays out of auto-revert."
-  (let* ((directory (gitlab-cli-directory-of))
-         (buffer (get-buffer-create name)))
-    (with-current-buffer buffer
-      (setq-local default-directory directory)
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert text))
-      (funcall mode)
-      (set-buffer-modified-p nil)
-      (goto-char (point-min)))
-    (pop-to-buffer buffer)))
 
 (defun gitlab-git--merge-request-revision (iid data &optional commits)
   "Return the local revision range of merge request IID in DATA.
@@ -562,48 +524,39 @@ Return nil when the local ref or the base object is absent."
                          (gitlab-git-merge-request-range iid data))))
     (format "%s..%s" (cdr range) (car range))))
 
-(defun gitlab-git--show-patch-buffer (name arguments mode)
-  "Return buffer NAME with the answer of git ARGUMENTS.
-MODE is the major mode of the buffer."
-  (gitlab-git--patch-buffer
-   name
-   (or (gitlab-git--run arguments) "No changes.\n")
-   mode))
-
 (defun gitlab-git-show-changes (iid data &optional commits)
   "Show the local changes of merge request IID in DATA.
 The view covers the merge base to the fetched head.  COMMITS, when
-non-nil, limits the view to the selected commits.  Use Magit and
-its whole-tree diff when `gitlab-git-use-magit' is non-nil and
-Magit is available, and a plain `diff-mode' buffer otherwise.
-Signal a user error when no local ref or base exists."
-  (let ((revision (or (gitlab-git--merge-request-revision iid data commits)
-                      (user-error
-                       "No local merge request ref for !%s" iid))))
-    (if (and gitlab-git-use-magit (require 'magit nil t))
-        (gitlab-git--magit-call #'magit-diff-range revision)
-      (gitlab-git--show-patch-buffer
-       (format "*GitLab MR %s Changes*" iid)
-       (list "diff" "--no-color" "--stat" "--patch" revision)
-       #'gitlab-git-patch-mode))))
+non-nil, limits the view to the selected commits, and one selected
+commit shows its commit view.  Magit supplies the diff buffer and
+its diff arguments, so the view follows the flags of the user.
+Signal a user error when no local ref or base exists, or when Magit
+is unavailable."
+  (let* ((selection (gitlab-git-commit-selection-range commits))
+         (range (or selection
+                    (gitlab-git-merge-request-range iid data))))
+    (unless range
+      (user-error "No local merge request ref for !%s" iid))
+    (if (and selection (null (cdr commits)))
+        (gitlab-git--magit #'magit-show-commit (car range))
+      (gitlab-git--ensure-magit)
+      (pcase-let ((`(,args ,files) (magit-diff-arguments)))
+        (gitlab-git--magit #'magit-diff-range
+                           (format "%s..%s" (cdr range) (car range))
+                           args files)))))
 
 (defun gitlab-git-show-log (iid data &optional commits)
   "Show the local commit log of merge request IID in DATA.
 The log holds only the commits of the merge request.  COMMITS, when
-non-nil, limits the log to the selected commits.  Use Magit's log
-buffer when `gitlab-git-use-magit' is non-nil and Magit is
-available, and a plain `diff-mode' buffer otherwise.  Signal a user
-error when no local ref or base exists."
+non-nil, limits the log to the selected commits.  Magit supplies
+the log buffer and its log arguments.  Signal a user error when no
+local ref or base exists, or when Magit is unavailable."
   (let ((revision (or (gitlab-git--merge-request-revision iid data commits)
                       (user-error
                        "No local merge request ref for !%s" iid))))
-    (if (and gitlab-git-use-magit (require 'magit nil t))
-        (gitlab-git--magit-call #'magit-log-other (list revision))
-      (gitlab-git--show-patch-buffer
-       (format "*GitLab MR %s Log*" iid)
-       (list "log" "--no-color" "--decorate" "--stat" "--patch"
-             revision)
-       #'gitlab-git-patch-mode))))
+    (gitlab-git--ensure-magit)
+    (pcase-let ((`(,args ,files) (magit-log-arguments)))
+      (gitlab-git--magit #'magit-log-other (list revision) args files))))
 
 (provide 'gitlab-git)
 
