@@ -181,7 +181,13 @@ The caller kills the buffer."
                (should (equal "6002" (car kill-ring))))
              (should (equal '("1004" "1003")
                             (mapcar #'car (gitlab-list--children))))
-             ;; TAB on a child row collapses the row of the parent.
+             ;; TAB on a child row leaves the pipeline expanded.
+             (gitlab-list-toggle-expansion)
+             (should (equal '("1004" "1003" ("1003" . "6001")
+                              ("1003" . "6002") ("1003" . "6003"))
+                            (gitlab-pipeline-tests--row-ids buffer)))
+             ;; TAB on the row of the pipeline collapses it.
+             (should (gitlab--goto-property 'tabulated-list-id "1003"))
              (gitlab-list-toggle-expansion)
              (should (equal '("1004" "1003")
                             (gitlab-pipeline-tests--row-ids buffer)))))

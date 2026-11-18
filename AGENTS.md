@@ -917,8 +917,12 @@ without evil.  The suite never opens a network connection.
   remaps `evil-change-whole-line` to it.  A direct call of
   `tabulated-list-sort` interleaves the child rows, so no code and no
   key uses it.
-- `gitlab-list-toggle-expansion` on `TAB` toggles the row at point and
-  collapses the parent of a child row.  `gitlab-list-mouse-toggle` on
+- `gitlab-list-toggle-expansion` on `TAB` toggles the row at point.
+  Only a row of the collection toggles, because this layer weaves one
+  level of child rows and a child row holds no children of its own.
+  Point on a commit row or on a job row therefore leaves the table as
+  it stands, so a reader never closes a merge request or a pipeline
+  from a row that it holds.  `gitlab-list-mouse-toggle` on
   `double-mouse-1` does the same, and a mode that binds it also binds
   `follow-link` to `gitlab-list--click-selects-row`, so one left click
   selects a row instead of following the link of its ID cell.

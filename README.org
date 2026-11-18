@@ -364,7 +364,9 @@ Filters live in =gitlab-work-item-list-arguments=.
 
 =TAB= expands a merge request row into its local commits.  The IID
 column holds the short hash, the Title column the subject, the Author
-column the author and the Updated column the author date.  The rows
+column the author and the Updated column the author date.  A commit
+row expands into no rows, so =TAB= on it keeps the merge request open
+and =TAB= on the merge request row closes it again.  The rows
 come newest first, as =magit-log= shows them, and
 =gitlab-git-commit-limit= caps them with a note that counts the rest.
 =RET= opens the commit, =c= copies the full hash and =w= opens the
@@ -415,8 +417,8 @@ of an expanded row together with that row.
 
 The pipeline list expands one row into the jobs of that pipeline.
 =TAB= toggles the row at point, and a double click does the same.
-=TAB= on a job row collapses the pipeline that holds the job.
-=M-x gitlab-list-expand-all= and =M-x gitlab-list-collapse-all= serve
+A job row holds no rows of its own, so =TAB= on it leaves the table as
+it stands.  =M-x gitlab-list-expand-all= and =M-x gitlab-list-collapse-all= serve
 the whole table.
 
 The job row uses the five columns of the table:

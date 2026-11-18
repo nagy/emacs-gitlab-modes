@@ -1295,7 +1295,12 @@ render that replaces it keeps the place through the parent."
      (should (equal '(row . "10") (gitlab--line-identity)))
      (should (equal '("10" "20")
                     (mapcar #'car (gitlab-list--children))))
-     ;; TAB on the child row collapses the row of the parent.
+     ;; TAB on the child row leaves the row of the parent expanded.
+     (gitlab-list-toggle-expansion)
+     (should (equal '("10" "10.child" "20")
+                    (mapcar #'car tabulated-list-entries)))
+     (should (gitlab--goto-property 'tabulated-list-id "10"))
+     ;; TAB on the row of the parent collapses it again.
      (gitlab-list-toggle-expansion)
      (should (equal '("10" "20")
                     (mapcar #'car tabulated-list-entries))))))

@@ -2617,24 +2617,32 @@ line of the parent."
 
 (defun gitlab-list-toggle-expansion (&optional row)
   "Expand or collapse the row at point, or the row ROW.
-A child row collapses the row of its parent.  Expanding a row asks
-its mode to forget an answer that this call retries, and the mode
-starts a fetch when the table prints the expanded row."
+Only a row of the collection toggles, because the child rows of
+this layer hold no children of their own.  A child row therefore
+leaves the table as it stands, so a reader who sits on a commit
+row never closes the merge request that holds it.  Expanding a
+row asks its mode to forget an answer that this call retries, and
+the mode starts a fetch when the table prints the expanded row."
   (interactive nil gitlab-list-mode)
-  (let* ((child (gitlab-list--parent-id-at-point))
-         (id (or row child (gitlab-list--id-at-point))))
+  (let ((child (gitlab-list--parent-id-at-point))
+        (id (or row (gitlab-list--id-at-point))))
     (cond
      ((null id)
       (user-error "No row at point"))
      ((null gitlab-list--child-function)
       (user-error "The current list holds no child rows"))
+     ;; A child row holds no child rows of its own, so point on one
+     ;; leaves the table alone and never closes the parent row.
+     ((and child (null row))
+      nil)
      ((gitlab-list--expanded-p id)
       (gitlab-list--set-expanded id nil))
      (t
       (when gitlab-list--child-reset-function
         (funcall gitlab-list--child-reset-function id))
       (gitlab-list--set-expanded id t)))
-    (gitlab-list--reprint)))
+    (unless (and child (null row))
+      (gitlab-list--reprint))))
 
 (defun gitlab-list-mouse-toggle (event)
   "Expand or collapse the row of the click EVENT.
