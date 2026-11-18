@@ -91,6 +91,8 @@ A field that names one object or one commit, such as =id=, =iid=,
 =project_id=, =sha= or =before_sha=, carries the =gitlab-id= face.
 An author carries the =gitlab-author= face, which inherits the Magit
 =magit-log-author= face, and its account name carries =gitlab-id=.
+A commit hash carries the =gitlab-hash= face, which inherits the Magit
+=magit-hash= face.
 The option =gitlab-show-author-username=, nil by default, adds the
 account name to the name.
 An assignee, an assignee list, a reviewer list, the user of a
@@ -364,7 +366,8 @@ Filters live in =gitlab-work-item-list-arguments=.
 
 =TAB= expands a merge request row into its local commits.  The IID
 column holds the short hash, the Title column the subject, the Author
-column the author and the Updated column the author date.  A commit
+column the author and the Updated column the author date.  The hash
+carries the =gitlab-hash= face, so it looks like a hash in a Magit log.  A commit
 row expands into no rows, so =TAB= on it keeps the merge request open
 and =TAB= on the merge request row closes it again.  The rows
 come newest first, as =magit-log= shows them, and

@@ -408,6 +408,13 @@ plain `setq' leaves the entry in the alist."
   "Face of a GitLab identifier."
   :group 'gitlab)
 
+(defface gitlab-hash
+  '((t :inherit magit-hash))
+  "Face of a commit hash.
+The face inherits `magit-hash', so a hash looks the same as in a
+Magit log.  Magit stays optional."
+  :group 'gitlab)
+
 (defface gitlab-date
   '((t :inherit org-date))
   "Face of a timestamp field.

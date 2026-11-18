@@ -490,7 +490,7 @@ decoded merge request answers."
           (should (equal 7 (length cells)))
           (should (equal (concat "   " short)
                          (substring-no-properties (aref cells 0))))
-          (should (eq 'gitlab-id (get-text-property 3 'face (aref cells 0))))
+          (should (eq 'gitlab-hash (get-text-property 3 'face (aref cells 0))))
           (should (equal "second" (aref cells 1)))
           (should (equal "" (aref cells 2)))
           (should (equal "Test" (substring-no-properties (aref cells 3))))

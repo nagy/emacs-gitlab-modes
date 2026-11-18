@@ -441,7 +441,7 @@ Updated cells hold the subject, the author and the author date."
     (aset cells index
           (gitlab--nav-string
            (concat (gitlab-merge-request--indent)
-                   (gitlab--propertize short 'gitlab-id))
+                   (gitlab--propertize short 'gitlab-hash))
            'gitlab-commit-sha sha
            (format "Commit %s" short)))
     (aset cells (1+ index) (or (alist-get 'subject commit) ""))
@@ -643,7 +643,7 @@ because a ref of another project would be wrong."
                   (insert
                    (format "%s %s  (%s, %s)"
                            (gitlab--propertize (alist-get 'short commit)
-                                               'gitlab-id)
+                                               'gitlab-hash)
                            (alist-get 'subject commit)
                            (gitlab--format-author (alist-get 'author commit))
                            (gitlab--format-date (alist-get 'date commit))))

@@ -484,7 +484,7 @@
          (gitlab-merge-request-insert-commits)))
      (goto-char (point-min))
      (re-search-forward "abc123d")
-     (should (eq 'gitlab-id (get-text-property (match-beginning 0) 'face)))
+     (should (eq 'gitlab-hash (get-text-property (match-beginning 0) 'face)))
      (should (equal "abc123def"
                     (get-text-property (match-beginning 0)
                                        'gitlab-commit-sha)))

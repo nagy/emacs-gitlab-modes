@@ -1081,8 +1081,9 @@ without evil.  The suite never opens a network connection.
 - Every face inherits a standard face and lives in `gitlab-mode.el`.
   Status faces come from `gitlab-status-faces`; do not apply a
   font-lock face in a renderer.  `gitlab-author` inherits
-  `magit-log-author`, `gitlab-branch` inherits `magit-branch-remote`
-  and `gitlab-tag` inherits `magit-tag`.  `gitlab-date` inherits
+  `magit-log-author`, `gitlab-branch` inherits `magit-branch-remote`,
+  `gitlab-tag` inherits `magit-tag` and `gitlab-hash` inherits
+  `magit-hash`.  `gitlab-date` inherits
   `org-date`.  Magit and Org stay optional:
   Emacs ignores an undefined parent face, so no name goes into
   `Package-Requires` nor into a `require`.
@@ -1174,7 +1175,8 @@ without evil.  The suite never opens a network connection.
   for its jobs, so the list base mode owns the weave, the sort, the
   point record and the parent property of a child row.
   `gitlab-merge-request--child-entries` answers the rows: the IID cell
-  holds the short hash with `gitlab-commit-sha` on it, the Title cell
+  holds the short hash with `gitlab-hash` and `gitlab-commit-sha` on
+  it, the Title cell
   the subject, the Author cell the author and the Updated cell the
   author date.  The other cells stay empty, as a nested row leaves the
   cells that it does not own, and the Project cell of a group list
@@ -1212,7 +1214,8 @@ without evil.  The suite never opens a network connection.
   The merge request list uses both faces in its Author and Branches
   columns, the commit list and the notes header use the first, and
   the pipeline list uses the second in its Ref column.  The commit
-  list gives the short SHA `gitlab-id`.  `gitlab--format-field-value`
+  list and a commit row of the merge request list give the short SHA
+  `gitlab-hash`, which inherits `magit-hash`.  `gitlab--format-field-value`
   prints an author field through `gitlab--format-author-list` and
   applies no whole-text face there, because that would overwrite the
   two faces of each name.
