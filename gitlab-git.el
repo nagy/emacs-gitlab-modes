@@ -255,6 +255,7 @@ PAIRS holds the destination patterns of
 standard spellings of the GitLab documentation, so a repository
 without the fetch refspec still finds a ref that the user fetched
 by hand."
+  (declare (pure t) (side-effect-free t))
   (append (mapcar (lambda (pair)
                     (concat "\\`" (regexp-quote (car pair))
                             "\\([0-9]+\\)"

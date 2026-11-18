@@ -1384,7 +1384,7 @@ without evil.  The suite never opens a network connection.
 - A helper that reads only its arguments carries
   `(declare (pure t) (side-effect-free t))`, so the byte-compiler
   folds a call with constant arguments.  A helper that also reads a
-  defcustom, a defconst or a defvar carries
+  defcustom, a defconst, a defvar or a buffer-local value carries
   `(declare (side-effect-free t))` alone.  A helper that touches a
   buffer, a process or a file carries no such declaration.  The
   annotation goes after the docstring and before the body.

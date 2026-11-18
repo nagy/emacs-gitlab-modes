@@ -203,6 +203,7 @@ Do not enable this mode directly: enable `gitlab-evil-mode'."
   "Return the key sequence of KEY.
 KEY is a key string or a key vector, so a `[remap COMMAND]' entry
 passes through unchanged."
+  (declare (pure t) (side-effect-free t))
   (if (vectorp key) key (key-parse key)))
 
 (defun gitlab-evil--bind (state mode keys)

@@ -561,6 +561,7 @@ Call SUCCESS with the decoded answer, or ERROR with a condition."
 
 (defun gitlab-pipeline--fields (data)
   "Return the pipeline detail field order of DATA without jobs."
+  (declare (pure t) (side-effect-free t))
   (delq 'jobs (mapcar #'car data)))
 
 (defun gitlab-pipeline--title (id data)
@@ -872,6 +873,7 @@ value stays in the buffer and never reaches a file.")
 
 (defun gitlab-job-log--banner-line-p (line)
   "Return non-nil when LINE is a line of the banner of glab."
+  (declare (side-effect-free t))
   (cl-some (lambda (regexp) (string-match-p regexp line))
            gitlab-job-log--banner-regexps))
 

@@ -907,6 +907,7 @@ pipeline buffer is never stale."
 
 (defun gitlab--error-message (error)
   "Return a printable message for ERROR."
+  (declare (side-effect-free t))
   (cond
    ((null error) "")
    ((stringp error) error)
@@ -1271,6 +1272,7 @@ The notes command uses this after it fetched comments."
 
 (defun gitlab--json-encode (value)
   "Return VALUE as compact JSON, or its printed form on failure."
+  (declare (side-effect-free t))
   (condition-case nil
       (json-encode value)
     (error (format "%S" value))))
@@ -1857,6 +1859,7 @@ a repository part, such as group/project!12, names that repository;
 otherwise CONTEXT serves.  A list cell of a group list carries the
 full identifier, so one row of another project keeps its own
 project."
+  (declare (pure t) (side-effect-free t))
   (when (and text (not (string-empty-p (format "%s" text))))
     (let* ((split (gitlab-data-identifier-split kind
                                                 (gitlab-data-id-string text)))
@@ -1911,6 +1914,7 @@ the URL, because they name the object that the reader sees."
 (defun gitlab--object-id (kind value)
   "Return the ID text of KIND for VALUE, without a leading sigil.
 A list cell writes a pipeline as #ID and a merge request as !IID."
+  (declare (pure t) (side-effect-free t))
   (cdr (gitlab-data-identifier-split kind (gitlab-data-id-string value))))
 
 (defun gitlab--object-at-point (&optional kind)
@@ -2392,6 +2396,7 @@ widest columns shrink together."
   "Return FORMAT with the column widths fitted to ENTRIES.
 AVAILABLE is the number of columns that the window offers.  Every
 column keeps its label, its sort predicate and its properties."
+  (declare (side-effect-free t))
   (let* ((count (length format))
          (sort-key (car-safe tabulated-list-sort-key))
          (wants (make-vector count 0))
@@ -2561,6 +2566,7 @@ child rows already stand in `tabulated-list-entries'."
 
 (defun gitlab-list--row-id-string (id)
   "Return ID as the plain ID string of a list row."
+  (declare (side-effect-free t))
   (if gitlab-list--row-id-function
       (funcall gitlab-list--row-id-function id)
     (gitlab-data-id-string id)))
@@ -2608,6 +2614,7 @@ the whole life of the buffer, so a bookmark jump opens the row."
 Every cell takes the text property `gitlab-list-parent-id', so a
 command at a child row reaches its parent and a render keeps the
 line of the parent."
+  (declare (pure t) (side-effect-free t))
   (let ((copy (copy-sequence cells)))
     (dotimes (index (length copy))
       (let ((cell (aref copy index)))
@@ -2856,6 +2863,7 @@ the display of its buffers."
 `tabulated-list-mode' passes whole `tabulated-list-entries'
 elements to a SORT predicate, not the cell strings.  The cell of
 a merge request IID carries a leading !, so keep the digits only."
+  (declare (side-effect-free t))
   (let* ((column (tabulated-list--column-number
                   (car tabulated-list-sort-key)))
          (number (lambda (entry)
