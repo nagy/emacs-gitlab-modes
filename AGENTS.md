@@ -1337,8 +1337,17 @@ without evil.  The suite never opens a network connection.
   set, because the URL needs the project path: an HTML anchor, a
   markdown link, a LaTeX `\href`, and the text with the URL after it
   for every other backend.
-- `gitlab-xref.el` registers its backend through an autoloaded
-  `add-hook` form.  It accepts text properties first, then a typed
+- `gitlab-xref.el` registers its backend through an `add-hook` form
+  at its load, and the package adds that form to the autoload file
+  through a `;;;###autoload` cookie.  The cookie sits on the
+  `gitlab-xref-backend` defun and not on the `add-hook` form: a
+  cookie on a plain form copies the form alone, so the hook entry
+  would name a void function and every `xref-find-backend` call of
+  every buffer would signal `void-function`.  The autoload stub of
+  the function loads this library on the first xref request, and the
+  check then answers nil outside a GitLab object, so the other
+  backends run.  Do not move the cookie back to the `add-hook` form.
+  The backend accepts text properties first, then a typed
   `mr:`, `work-item:`, `pipeline:` or `job:` identifier.  A merge request list cell
   shows `!IID`, so the backend strips the sigil before it names a
   buffer or a glab argument.

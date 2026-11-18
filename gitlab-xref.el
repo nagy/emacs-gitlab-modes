@@ -118,8 +118,14 @@ property may carry the sigil.  The glab command needs the number."
                        (match-beginning 0) (match-end 0)))))
       found)))
 
+;;;###autoload
 (defun gitlab-xref-backend ()
-  "Return the GitLab xref backend symbol when it claims the buffer."
+  "Return the GitLab xref backend symbol when it claims the buffer.
+The function carries an autoload cookie, because the hook form at the
+end of this file reaches the autoload file of the package.  That
+form names this function, so the hook entry must load this library
+on its first call.  A hook entry without a definition signals
+`void-function' in every buffer that runs xref."
   (when (or (gitlab-xref--property-identifier)
             (gitlab-xref--text-identifier))
     'gitlab))
@@ -212,7 +218,11 @@ move the window configuration."
             identifiers))
     (nreverse identifiers)))
 
-;;;###autoload
+;; No autoload cookie here: a cookie on a plain form copies the form
+;; into the autoload file and creates no autoload stub, so the hook
+;; entry would name a void function.  The cookie on
+;; `gitlab-xref-backend' above creates the stub that loads this
+;; library on the first xref request.
 (add-hook 'xref-backend-functions #'gitlab-xref-backend)
 
 (provide 'gitlab-xref)
