@@ -27,14 +27,19 @@
 ;;; Commentary:
 
 ;; Local Git reads for the merge request views.  The file fetches
-;; nothing from the network.  It reads the merge request refs that the
-;; user already fetched, so a project with this fetch refspec gets the
-;; richer view:
+;; nothing from the network.  It reads the head commit that the merge
+;; request answer names, so a commit counts when the checkout holds it,
+;; through whatever branch, tag or fetch refspec:
+;;
+;;   git rev-parse --verify --quiet HEAD_SHA^{commit}
+;;
+;; The usual merge request fetch refspec of a project holds such a
+;; commit too, and it is one way to get one.  It is no requirement:
 ;;
 ;;   fetch = +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
 ;;
 ;; `gitlab-git-merge-request-commits' returns the commits between the
-;; merge base and the local head ref.  `gitlab-git-show-commit' opens
+;; merge base and that head commit.  `gitlab-git-show-commit' opens
 ;; one commit.  The commit view, the changes view and the log view go
 ;; through Magit, so Magit owns the diff arguments, the buffer mode and
 ;; the Ediff commands.  A missing Magit signals a user error instead of
@@ -312,6 +317,29 @@ refspec of the repository."
   (car (cdr (assoc-string (gitlab-git--iid iid)
                           (gitlab-git-merge-request-refs)))))
 
+(defun gitlab-git--merge-request-head-sha (data)
+  "Return the head commit that the merge request DATA names, or nil.
+A detail answer names it in the `head_sha' of `diff_refs' and in the
+`sha' field, and a list answer names the second alone."
+  (declare (side-effect-free t))
+  (let* ((refs (gitlab-data-field "diff_refs" data))
+         (head (and refs (gitlab-data-field "head_sha" refs))))
+    (or (and (stringp head) (not (string-empty-p head)) head)
+        (let ((sha (gitlab-data-field-string "sha" data)))
+          (and (not (string-empty-p sha)) sha)))))
+
+(defun gitlab-git--merge-request-head (iid data)
+  "Return the local head commit of merge request IID in DATA, or nil.
+The commit that DATA names answers when the checkout holds it, so a
+head that the user pushed, fetched or checked out counts as much as
+a fetched merge request ref.  A checkout that lacks that commit
+falls back to the merge request ref of IID, which names an older
+object when the fetch of the user lags behind the answer."
+  (or (when-let* ((sha (gitlab-git--merge-request-head-sha data)))
+        (gitlab-git--rev sha))
+      (when-let* ((ref (gitlab-git-merge-request-head-ref iid)))
+        (gitlab-git--rev ref))))
+
 (defun gitlab-git--ancestor-p (ancestor descendant)
   "Return non-nil when commit ANCESTOR is an ancestor of DESCENDANT.
 The function prefers Magit when the user already loaded it, because
@@ -327,8 +355,7 @@ The function prefers Magit when the user already loaded it, because
 (defun gitlab-git--holding-refs (commit &optional directory)
   "Return a hash of the ref names that hold COMMIT.
 The function reads the repository of DIRECTORY.  Return nil when git
-cannot answer, so a caller falls back to one ancestry check per
-ref."
+cannot answer, so a caller checks ancestry instead."
   (let ((output (gitlab-git--run
                  (list "for-each-ref" "--format=%(refname)"
                        (format "--contains=%s" commit))
@@ -348,16 +375,27 @@ name, because a local branch of the user answers no fetch."
            (gitlab-git--rev (format "%s/%s" remote target)))
       (gitlab-git--rev target)))
 
+(defun gitlab-git--holds-tip-p (tip head ref holding)
+  "Return non-nil when TIP sits among the ancestors of HEAD.
+The commit TIP names the target branch, the commit HEAD the head of
+a merge request and the commit REF the local merge request ref.
+HOLDING holds the refs that contain TIP, so it answers for HEAD
+while REF holds exactly that commit, and an ancestry check answers
+otherwise."
+  (if (and holding (equal head (cdr ref)))
+      (and (gethash (car ref) holding) t)
+    (gitlab-git--ancestor-p tip head)))
+
 (defun gitlab-git-merge-requests-behind (requests &optional directory)
   "Return a hash of the merge request IIDs that sit behind their target.
 REQUESTS is a list of decoded merge request answers, and the
-function reads the refs of DIRECTORY.  A request
-counts when its local merge request ref holds the `sha' field of the
-answer, so a stale ref never answers about another head.  A request
-without that ref, without a `sha' field, and with a `target_branch'
-that no local ref names gets no entry either.  The target branch
-counts as its remote-tracking branch, then as the branch of the same
-name."
+function reads the refs of DIRECTORY.  A request counts when its
+head commit, which its answer names and the checkout holds, does
+not contain the tip of its target branch, so a head that the user
+already has counts as much as a fetched merge request ref.  A
+request without that commit, and a request whose `target_branch'
+no local ref names, gets no entry.  The target branch counts as its
+remote-tracking branch, then as the branch of the same name."
   (let* ((refs (gitlab-git-merge-request-refs directory))
          (remote (gitlab-git--remote directory))
          (holdings (make-hash-table :test #'equal))
@@ -365,25 +403,18 @@ name."
     (dolist (request requests)
       (let* ((iid (gitlab-data-id-string
                    (gitlab-data-field "iid" request)))
-             (entry (cdr (assoc iid refs)))
-             (head (cdr entry))
-             (sha (gitlab-data-field-string "sha" request))
+             (head (gitlab-git--merge-request-head iid request))
+             (ref (cdr (assoc iid refs)))
              (target (gitlab-data-field-string "target_branch" request)))
-        (when (and entry
-                   (not (string-empty-p sha))
-                   (equal sha head)
-                   (not (string-empty-p target)))
+        (when (and head (not (string-empty-p target)))
           (when-let* ((tip (gitlab-git--target-tip target remote)))
             (let ((holding (or (gethash tip holdings)
                                (puthash tip
                                         (gitlab-git--holding-refs
                                          tip directory)
                                         holdings))))
-              (if holding
-                  (unless (gethash (car entry) holding)
-                    (puthash iid t behind))
-                (unless (gitlab-git--ancestor-p tip head)
-                  (puthash iid t behind))))))))
+              (unless (gitlab-git--holds-tip-p tip head ref holding)
+                (puthash iid t behind)))))))
     behind))
 
 (defun gitlab-git--diff-refs-sha (data key)
@@ -430,9 +461,8 @@ selected commit is absent."
 (defun gitlab-git-merge-request-range (iid data)
   "Return the local commit range of merge request IID in DATA.
 The value is a cons of the head commit and the base commit, or nil
-when the local ref or the base object is absent."
-  (when-let* ((ref (gitlab-git-merge-request-head-ref iid))
-              (head (gitlab-git--rev ref)))
+when the checkout holds no head commit or no base object."
+  (when-let* ((head (gitlab-git--merge-request-head iid data)))
     (let ((base (or (gitlab-git--diff-refs-sha data "base_sha")
                     (gitlab-git--diff-refs-sha data "start_sha")
                     (when-let* ((target
@@ -462,8 +492,8 @@ LINE holds the five NUL separated fields that
   "Return the local commits of merge request IID in DATA.
 LIMIT caps the number of commits and defaults to
 `gitlab-git-commit-limit'.  The value is a plist with
-:head, :base, :total and :commits.  Return nil when the local ref
-or the base object is absent."
+:head, :base, :total and :commits.  Return nil when the checkout
+holds no head commit or no base object."
   (when-let* ((range (gitlab-git-merge-request-range iid data))
               (head (car range))
               (base (cdr range)))
@@ -520,24 +550,25 @@ unavailable."
 (defun gitlab-git--merge-request-revision (iid data &optional commits)
   "Return the local revision range of merge request IID in DATA.
 COMMITS, when non-nil, limits the range to the selected commits.
-Return nil when the local ref or the base object is absent."
+Return nil when the checkout holds no head commit or no base
+object."
   (when-let* ((range (or (gitlab-git-commit-selection-range commits)
                          (gitlab-git-merge-request-range iid data))))
     (format "%s..%s" (cdr range) (car range))))
 
 (defun gitlab-git-show-changes (iid data &optional commits)
   "Show the local changes of merge request IID in DATA.
-The view covers the merge base to the fetched head.  COMMITS, when
-non-nil, limits the view to the selected commits, and one selected
-commit shows its commit view.  Magit supplies the diff buffer and
-its diff arguments, so the view follows the flags of the user.
-Signal a user error when no local ref or base exists, or when Magit
-is unavailable."
+The view covers the merge base to the head commit that DATA names.
+COMMITS, when non-nil, limits the view to the selected commits, and
+one selected commit shows its commit view.  Magit supplies the diff
+buffer and its diff arguments, so the view follows the flags of the
+user.  Signal a user error when the checkout holds no head commit
+or no base, or when Magit is unavailable."
   (let* ((selection (gitlab-git-commit-selection-range commits))
          (range (or selection
                     (gitlab-git-merge-request-range iid data))))
     (unless range
-      (user-error "No local merge request ref for !%s" iid))
+      (user-error "No local commits of !%s" iid))
     (if (and selection (null (cdr commits)))
         (gitlab-git--magit #'magit-show-commit (car range))
       (gitlab-git--ensure-magit)
@@ -550,11 +581,11 @@ is unavailable."
   "Show the local commit log of merge request IID in DATA.
 The log holds only the commits of the merge request.  COMMITS, when
 non-nil, limits the log to the selected commits.  Magit supplies
-the log buffer and its log arguments.  Signal a user error when no
-local ref or base exists, or when Magit is unavailable."
+the log buffer and its log arguments.  Signal a user error when the
+checkout holds no head commit or no base, or when Magit is
+unavailable."
   (let ((revision (or (gitlab-git--merge-request-revision iid data commits)
-                      (user-error
-                       "No local merge request ref for !%s" iid))))
+                      (user-error "No local commits of !%s" iid))))
     (gitlab-git--ensure-magit)
     (pcase-let ((`(,args ,files) (magit-log-arguments)))
       (gitlab-git--magit #'magit-log-other (list revision) args files))))

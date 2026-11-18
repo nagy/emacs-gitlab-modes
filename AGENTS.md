@@ -85,11 +85,22 @@ without evil.  The suite never opens a network connection.
   Use `gitlab-data-set-field` to merge a missing field, because the
   built-in `alist-get` setter does not mutate a non-empty list for a
   missing key.
-- `gitlab-git.el` reads the merge request refs that the user already
-  fetched.  `gitlab-git-merge-request-refs` names the refs in one
-  `git for-each-ref` call and answers an alist of IID to a cons of ref
-  name and commit.  It reads the destination of every merge request
-  fetch refspec of `gitlab-git--remote', so the standard
+- `gitlab-git.el` reads local Git only.  The head commit of a merge
+  request comes from the answer, because a commit counts when the
+  checkout holds it, through whatever branch, tag or fetch refspec:
+  `gitlab-git--merge-request-head` reads
+  `gitlab-git--merge-request-head-sha`, which takes `diff_refs.head_sha`
+  of a detail answer and the `sha` field of any answer, and it asks
+  `gitlab-git--rev` for the local object.  So a head that the user
+  pushed, fetched or checked out serves, and a merge request ref is
+  only one more way to hold it.  The fetch refspec is no requirement:
+  `gitlab-git-merge-request-head-ref` answers when the checkout lacks
+  the commit of the answer, and it reads the merge request refs that
+  the user already fetched.  `gitlab-git-merge-request-refs` names
+  those refs in one `git for-each-ref` call and answers an alist of
+  IID to a cons of ref name and commit.  It reads the destination of
+  every merge request fetch refspec of `gitlab-git--remote', so the
+  standard
   `+refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*`
   and a user prefix such as `refs/mr/*` both answer, and it also
   matches `/merge-requests/IID/head` anywhere under `refs/remotes` and
@@ -97,11 +108,13 @@ without evil.  The suite never opens a network connection.
   answers.  Do not add a customization for the ref spelling: the
   refspec of the repository holds it.  The merge request IID must be
   digits only, because it becomes part of a ref name and a git
-  argument.  A missing ref, a missing object or a failed command
+  argument.  A missing commit, a missing object or a failed command
   returns nil, so a display buffer shows no section instead of a
   signal.  The base comes from `diff_refs.base_sha`, then from
   `diff_refs.start_sha`, then from `git merge-base` against
-  `target_branch`.
+  `target_branch`.  Do not add a staleness check on the local ref: the
+  answer is fresher than a fetch, so the head that it names wins, and
+  a row whose local ref holds another commit still shows its rows.
 - `gitlab-git.el` never runs a command that writes to the repository
   and never opens a network connection.  It calls `git` through
   `process-file` with `GIT_OPTIONAL_LOCKS=0`, and it reads commit
@@ -149,7 +162,8 @@ without evil.  The suite never opens a network connection.
   table with `gitlab-commit-sha` on every line.  `gitlab-open-at-point`
   reads that property first.  A commit limit shows "N more commits."
   The section appears only with `gitlab-merge-request-show-commits`
-  and a local merge request ref.  Every line is one text button, so
+  and a head commit that the local checkout holds.  Every line is one
+  text button, so
   the mouse face covers the line without joining the line above and
   the line below, because the newline stays outside the button.
 - Every write goes through `gitlab--write` and `gitlab--write-async`
@@ -1173,12 +1187,15 @@ without evil.  The suite never opens a network connection.
   the whole table in one round: one `for-each-ref` for the refs, one
   `for-each-ref --contains` per distinct target branch for the refs
   that hold the target tip, and one `gitlab-git--ancestor-p` per row
-  for a git that cannot answer `--contains`.  `gitlab-git--ancestor-p`
+  that the batch cannot answer.  `gitlab-git--holds-tip-p` takes the
+  batch answer while the local merge request ref names the head commit
+  of the row, and it checks ancestry otherwise, so a head that the
+  checkout holds but no ref names still answers.  `gitlab-git--ancestor-p`
   calls `magit-rev-ancestor-p` when the user already loaded Magit, and
-  `git merge-base --is-ancestor` otherwise.  A row counts only when
-  its local ref holds the `sha` field, so a stale fetch answers
-  nothing.  The rows that are no longer open stay out, because a
-  closed row has no place behind a branch.
+  `git merge-base --is-ancestor` otherwise.  A row counts when the
+  checkout holds the head commit that the answer names, so no fetch
+  refspec is needed.  The rows that are no longer open stay out,
+  because a closed row has no place behind a branch.
   `gitlab-merge-request--behind` caches the answer per row ID and head
   commit, so an unchanged table runs no Git command on a later render,
   and `gitlab-merge-request-show-behind` turns the whole check off.
@@ -1203,9 +1220,11 @@ without evil.  The suite never opens a network connection.
   the commit record with a `web_url` of the commit page, so `w` and
   `thing-at-point` reach it, and `gitlab-web-url` takes the `commit`
   kind for that.  The rows read
-  `gitlab-git-merge-request-commits` on the local ref, so a row of a
-  group list, a row without a ref and a row whose ref holds another
-  head than the `sha` field answer one note row instead.  The answer
+  `gitlab-git-merge-request-commits`, which follows the head commit of
+  the answer, so a row of a group list and a row whose head commit the
+  local checkout lacks answer one note row instead, and
+  `gitlab-merge-request--missing-commit` names that commit when the
+  answer carries it.  The answer
   caches in `gitlab-merge-request--commits` under the row ID and the
   head commit, so an unchanged table reads no Git again.
   `gitlab-git-commit-limit` caps the rows and a note row counts the

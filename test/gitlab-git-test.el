@@ -135,14 +135,36 @@ The macro deletes the repository afterwards."
             (should (equal 2 (length (plist-get info :commits))))))
       (delete-directory directory t))))
 
-(ert-deftest gitlab-git-merge-request-commits-without-ref ()
-  "A merge request without a local ref yields no commit list."
+(ert-deftest gitlab-git-merge-request-commits-without-head ()
+  "A merge request whose head commit the checkout lacks yields no commits."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
     (with-temp-buffer
       (setq-local gitlab-cli-directory (car repo))
       (let ((data (gitlab-git-tests--data (cdr repo))))
         (should-not (gitlab-git-merge-request-commits "8" data))))))
+
+(ert-deftest gitlab-git-merge-request-head-sha ()
+  "The head of the answer wins over a local ref and names the commit."
+  (should (equal "aa" (gitlab-git--merge-request-head-sha
+                       '((sha . "bb")
+                         (diff_refs . ((head_sha . "aa")))))))
+  (should (equal "bb" (gitlab-git--merge-request-head-sha
+                       '((sha . "bb")))))
+  (should-not (gitlab-git--merge-request-head-sha '((iid . 7)))))
+
+(ert-deftest gitlab-git-merge-request-commits-from-answer-head ()
+  "The head commit of the answer serves without a merge request ref."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (setq-local gitlab-cli-directory (car repo))
+      (let* ((head (gitlab-git-tests--git (car repo) "rev-parse" "HEAD"))
+             (data (append (list (cons 'sha head))
+                           (gitlab-git-tests--data (cdr repo))))
+             (info (gitlab-git-merge-request-commits "8" data)))
+        (should (equal head (plist-get info :head)))
+        (should (equal 1 (plist-get info :total)))))))
 
 (ert-deftest gitlab-git-merge-request-head-ref-refspec ()
   "The fetch refspec of the repository names the merge request ref.
@@ -198,8 +220,10 @@ local reads."
              (behind (gitlab-git-merge-requests-behind (list data))))
         (should (gethash "7" behind))))))
 
-(ert-deftest gitlab-git-merge-requests-behind-stale-ref ()
-  "A local ref that holds another head answers nothing."
+(ert-deftest gitlab-git-merge-requests-behind-answer-head ()
+  "The behind check follows the head that the answer names.
+A local ref that holds another commit changes nothing, because the
+answer carries the newer head."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
     (with-temp-buffer
@@ -207,7 +231,26 @@ local reads."
       (let* ((data (append (gitlab-git-tests--data (cdr repo))
                            (list (cons 'sha (cdr repo)))))
              (behind (gitlab-git-merge-requests-behind (list data))))
-        (should (equal 0 (hash-table-count behind)))))))
+        (should (gethash "7" behind))))))
+
+(ert-deftest gitlab-git-merge-requests-behind-without-ref ()
+  "A head commit that the checkout holds answers behind without a ref."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (let ((directory (car repo))
+          (gitlab-cli-directory (car repo))
+          (sha nil))
+      (setq sha (gitlab-git-tests--git
+                 directory "rev-parse"
+                 "refs/remotes/origin/merge-requests/7/head"))
+      (gitlab-git-tests--git directory "update-ref" "-d"
+                             "refs/remotes/origin/merge-requests/7/head")
+      (gitlab-git-tests--write directory "file.txt" "three\n")
+      (gitlab-git-tests--git directory "commit" "-q" "-am" "third")
+      (let* ((data (append (list (cons 'iid 8) (cons 'sha sha))
+                           (gitlab-git-tests--data (cdr repo))))
+             (behind (gitlab-git-merge-requests-behind (list data))))
+        (should (gethash "8" behind))))))
 
 (ert-deftest gitlab-merge-request-render-commits ()
   "The merge request buffer lists the local commits with a property."
@@ -548,26 +591,44 @@ decoded merge request answers."
       (gitlab-git-tests--list-row-data
        repo (list (gitlab-git-tests--data (cdr repo))))
       (let ((cells (cadr (car (gitlab-merge-request--child-entries "8")))))
-        (should (equal "   No local ref."
+        (should (equal "   No local commit."
                        (substring-no-properties (aref cells 0)))))
       (setq-local gitlab--context "other/project")
       (setq-local gitlab--context-local nil)
       (let ((cells (cadr (car (gitlab-merge-request--child-entries "7")))))
-        (should (equal "   No local ref."
+        (should (equal "   No local commit."
                        (substring-no-properties (aref cells 0))))))))
 
-(ert-deftest gitlab-merge-request-child-entries-stale-ref ()
-  "A local ref that holds an older head answers a note."
+(ert-deftest gitlab-merge-request-child-entries-answer-head ()
+  "A head commit that the checkout holds lists commits without a ref."
   (skip-unless (executable-find "git"))
   (gitlab-git-tests--with-repo repo
     (with-temp-buffer
-      (gitlab-git-tests--list-row-data
-       repo
-       (list (append (gitlab-git-tests--data (cdr repo))
-                     (list (cons 'sha (cdr repo))))))
-      (let ((cells (cadr (car (gitlab-merge-request--child-entries "7")))))
-        (should (equal "   The local ref is outdated.  Fetch again."
-                       (substring-no-properties (aref cells 0))))))))
+      (let* ((directory (car repo))
+             (sha (gitlab-git-tests--git
+                   directory "rev-parse"
+                   "refs/remotes/origin/merge-requests/7/head")))
+        (gitlab-git-tests--list-row-data
+         repo
+         (list (append (list (cons 'iid 8) (cons 'sha sha))
+                       (gitlab-git-tests--data (cdr repo)))))
+        (let ((rows (gitlab-merge-request--child-entries "8")))
+          (should (equal 1 (length rows)))
+          (should (equal (cons "8" sha) (car (car rows)))))))))
+
+(ert-deftest gitlab-merge-request-child-entries-missing-head ()
+  "A head commit that the checkout lacks answers a note that names it."
+  (skip-unless (executable-find "git"))
+  (gitlab-git-tests--with-repo repo
+    (with-temp-buffer
+      (let ((sha "6666666666666666666666666666666666666666"))
+        (gitlab-git-tests--list-row-data
+         repo
+         (list (append (list (cons 'iid 8) (cons 'sha sha))
+                       (gitlab-git-tests--data (cdr repo)))))
+        (let ((cells (cadr (car (gitlab-merge-request--child-entries "8")))))
+          (should (equal "   Commit 6666666 not found locally."
+                         (substring-no-properties (aref cells 0)))))))))
 
 (ert-deftest gitlab-merge-request-child-entries-group ()
   "A group list indents the IID cell and keeps the Project column empty."
@@ -581,7 +642,7 @@ decoded merge request answers."
       (let ((cells (cadr (car (gitlab-merge-request--child-entries "8")))))
         (should (equal 8 (length cells)))
         (should (equal "" (aref cells 0)))
-        (should (equal "   No local ref."
+        (should (equal "   No local commit."
                        (substring-no-properties (aref cells 1))))))))
 
 (ert-deftest gitlab-merge-request-commit-row-data ()

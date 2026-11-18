@@ -526,8 +526,8 @@ names and the identity lookup use it.")
 
 (defvar-local gitlab--context-local nil
   "Non-nil if `gitlab--context' is the checkout of the buffer.
-A buffer of another project reads no local merge request ref, so
-the Git views stay out of the way.")
+A buffer of another project reads no local commit, so the Git views
+stay out of the way.")
 
 (defvar-local gitlab--identity nil
   "Identity of the current display buffer.
@@ -786,8 +786,8 @@ as a project."
 (defun gitlab--local-checkout-p ()
   "Return non-nil when the buffer shows the local checkout.
 A display buffer without a project context keeps the old behavior
-and reads the local refs, because its project is the directory the
-user opened it from."
+and reads the local commits, because its project is the directory
+the user opened it from."
   (or (null gitlab--context) gitlab--context-local))
 
 (defun gitlab--contextual-name (name context)

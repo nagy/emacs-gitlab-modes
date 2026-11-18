@@ -209,15 +209,19 @@ namespace:
     fetch = +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
 #+end_src
 
-With such a local ref, the merge request buffer lists the commits
-between the diff base and the fetched head.  Every commit line shows
-the short hash, the subject, the author and the date, and =RET= opens
-the commit.  The option =gitlab-merge-request-show-commits=, on by
-default, turns the list off, and =gitlab-git-commit-limit= caps it at
-50 commits.  A project without the ref shows no commit section.
+With the head commit of the merge request in the local checkout, the
+merge request buffer lists the commits between the diff base and that
+head.  Every commit line shows the short hash, the subject, the author
+and the date, and =RET= opens the commit.  The option
+=gitlab-merge-request-show-commits=, on by default, turns the list off,
+and =gitlab-git-commit-limit= caps it at 50 commits.  A project
+without that commit shows no commit section.
 
-The package reads the destination of that fetch refspec, so any local
-prefix works, for example =refs/mr/*=.  It also finds
+The fetch refspec above is one way to get such a commit and no
+requirement.  A head that you pushed, fetched or checked out serves
+as well, so a merge request that you built on a local branch reads the
+same.  The package reads the destination of that fetch refspec, so
+any local prefix works, for example =refs/mr/*=.  It also finds
 a =refs/merge-requests/IID/head= ref that you fetched by hand.
 
 A merge request that sits behind its target branch carries =↓= behind
@@ -226,17 +230,19 @@ that is also behind reads =opened ⚠ ↓=.  The marker carries the
 =gitlab-behind= face, which inherits =warning=.  It means that the
 target branch holds commits that the merge request lacks, so a
 fast-forward merge waits for a rebase and a merge commit does not.
-The answer comes from the local refs, because the merge status field
-of the API reports one blocker only: =need_rebase= stays hidden while
-approvals, CI or discussions still block.  A row whose local ref does
-not hold the head commit of the answer stays unmarked, so a stale
-fetch never shows a marker.  The option
+The answer comes from the local Git reads, because the merge status
+field of the API reports one blocker only: =need_rebase= stays hidden
+while approvals, CI or discussions still block.  The check compares
+the head commit of the answer with the target branch, so it needs no
+fetch refspec, and it marks a row when the head commit of the answer
+sits in the local checkout.  The option
 =gitlab-merge-request-show-behind=, on by default, turns the check
 off.  A group list and a list of another project stay unmarked,
 because their rows name no local checkout.
 
 =d= shows the local changes of the merge request, and =l= shows its
-commit log.  Both cover the merge base to the fetched head.  An active
+commit log.  Both cover the merge base to the head commit that the
+answer names.  An active
 region over commit lines narrows both views to the selected commits,
 from the parent of the oldest selected commit to the newest selected
 commit.  The commit
@@ -377,12 +383,11 @@ come newest first, as =magit-log= shows them, and
 =gitlab-git-commit-limit= caps them with a note that counts the rest.
 =RET= opens the commit, =c= copies the full hash and =w= opens the
 commit page, so =thing-at-point 'url= answers that page too.  The rows
-read the local merge request ref of the row, the same ref that the
-commit section of the detail buffer reads.  A row without that ref,
-and a row of a group list, expands into one note row.  A local ref
-that holds an older head than the GitLab answer names also expands
-into a note row, because the rows would show a patch series that the
-merge request left behind.
+read the head commit of the merge request, the same commit that the
+commit section of the detail buffer reads, so they need no fetch
+refspec either.  A row of a group list and a row whose head commit
+the local checkout lacks expand into one note row, and the note names
+the absent commit when the answer carries it.
 
 An active region over the commit rows narrows =RET= and =o= to the
 selected commits.  The diff runs from the parent of the oldest

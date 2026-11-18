@@ -70,12 +70,13 @@ a renamed buffer stays reachable."
 
 (defcustom gitlab-merge-request-show-commits t
   "Non-nil if a merge request buffer lists the local commits.
-The list needs a fetched merge request ref, for example through
-this fetch refspec:
+The list needs the head commit of the answer in the local
+checkout, so a commit that the user pushed, fetched or checked out
+serves, and so does a commit of the merge request fetch refspec:
 
   +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
 
-A project without the ref shows no commit section."
+A project without that commit shows no commit section."
   :type 'boolean
   :group 'gitlab)
 
@@ -97,17 +98,17 @@ from `gitlab--buffer-data'."
 
 (defcustom gitlab-merge-request-show-behind t
   "Non-nil if the list marks a merge request that sits behind its target.
-The check reads the local merge request refs and compares them
-with the target branch, so it needs the fetch refspec that the
-GitLab documentation names:
+The check compares the head commit of the answer with the target
+branch of the local checkout, so it needs no fetch refspec.  The
+head commit counts when the checkout holds it, and a fetched merge
+request ref answers otherwise:
 
   +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
 
 The package reads the destination of the refspec, so any prefix
-works.  A row whose local ref does not hold the head commit of the
-answer stays unmarked, because a stale ref would answer about
-another head.  A merge request behind its target cannot merge with
-a fast-forward merge, and it merges cleanly with a merge commit."
+works.  A row whose head commit the checkout lacks stays unmarked.
+A merge request behind its target cannot merge with a fast-forward
+merge, and it merges cleanly with a merge commit."
   :type 'boolean
   :group 'gitlab)
 
@@ -339,35 +340,42 @@ nothing.")
   "Return the decoded merge request data of the list row ID."
   (alist-get id gitlab-list--rows nil nil #'equal))
 
+(defun gitlab-merge-request--missing-commit (sha)
+  "Return the text that reports a head commit SHA absent from the checkout.
+The text names the commit, so a reader knows what to fetch.  It
+names the head alone when the answer carries no commit."
+  (declare (side-effect-free t))
+  (if (and (stringp sha) (not (string-empty-p sha)))
+      (format "Commit %s not found locally."
+              (substring sha 0 (min 7 (length sha))))
+    "No local commit."))
+
 (defun gitlab-merge-request--commit-answer (id)
   "Return the commit answer of the merge request list row ID.
 The value is a plist with `:kind' and, for the `commits' kind, the
 `:info' plist of `gitlab-git-merge-request-commits'.  KIND is
-`commits', `foreign' for a row of another project or of a group,
-`none' for a row without a local ref, and `stale' for a local ref
-that holds an older head than the answer names."
+`commits', `foreign' for a row of another project or of a group, and
+`none' for a row whose head commit the checkout lacks."
   (let* ((row (gitlab-merge-request--row-data-at id))
          (sha (and row (gitlab-data-field-string "sha" row)))
          (key (cons id sha))
          (table (gitlab-merge-request--commit-table)))
     (or (gethash key table)
-        (puthash key (gitlab-merge-request--commit-answer-compute row sha)
+        (puthash key (gitlab-merge-request--commit-answer-compute row)
                  table))))
 
-(defun gitlab-merge-request--commit-answer-compute (row sha)
-  "Return the commit answer of the merge request ROW at head SHA."
+(defun gitlab-merge-request--commit-answer-compute (row)
+  "Return the commit answer of the merge request ROW.
+The answer reads the head commit that ROW names, so a row of
+another project and a row whose head commit the checkout lacks
+take the `foreign' and `none' kinds."
   (if (or (null row) (not (gitlab--local-checkout-p)))
       (list :kind (if row 'foreign 'none))
     (let* ((iid (gitlab-data-id-string (gitlab-data-field "iid" row)))
-           (entry (cdr (assoc iid (gitlab-git-merge-request-refs))))
-           (info (and entry
-                      (equal sha (cdr entry))
-                      (gitlab-git-merge-request-commits iid row))))
-      (cond
-       ((null entry) (list :kind 'none))
-       ((not (equal sha (cdr entry))) (list :kind 'stale))
-       (info (list :kind 'commits :info info))
-       (t (list :kind 'none))))))
+           (info (gitlab-git-merge-request-commits iid row)))
+      (if info
+          (list :kind 'commits :info info)
+        (list :kind 'none)))))
 
 (defun gitlab-merge-request--commit-record (id sha)
   "Return the commit record of ID at the commit SHA."
@@ -453,20 +461,15 @@ Updated cells hold the subject, the author and the author date."
 
 (defun gitlab-merge-request--child-entries (id)
   "Return the commit rows of the merge request list row ID.
-A row of another project, a row without a local ref and a row
-whose local ref holds an older head answer one note row.  The
-commit rows come newest first, as a log does, and
-`gitlab-git-commit-limit' caps them."
+A row of another project and a row whose head commit the local
+checkout lacks answer one note row.  The commit rows come newest
+first, as a log does, and `gitlab-git-commit-limit' caps them."
   (let* ((answer (gitlab-merge-request--commit-answer id))
          (info (plist-get answer :info))
          (commits (plist-get info :commits))
          (total (plist-get info :total)))
     (pcase (plist-get answer :kind)
-      ('foreign (list (gitlab-merge-request--note-entry id "No local ref.")))
-      ('none (list (gitlab-merge-request--note-entry id "No local ref.")))
-      ('stale (list (gitlab-merge-request--note-entry
-                     id "The local ref is outdated.  Fetch again.")))
-      (_
+      ('commits
        (if (null commits)
            (list (gitlab-merge-request--note-entry id "No commits."))
          (append (mapcar (lambda (commit)
@@ -475,7 +478,12 @@ commit rows come newest first, as a log does, and
                  (when (< (length commits) total)
                    (list (gitlab-merge-request--note-entry
                           id (format "%d more commits."
-                                     (- total (length commits))))))))))))
+                                     (- total (length commits)))))))))
+      (_
+       (list (gitlab-merge-request--note-entry
+              id (gitlab-merge-request--missing-commit
+                  (gitlab-data-field-string
+                   "sha" (gitlab-merge-request--row-data-at id)))))))))
 
 (defun gitlab-merge-request--region-rows ()
   "Return the commit rows of the active region, in display order.
@@ -624,9 +632,9 @@ Every commit is a child section, so a render keeps the place of the
 reader on a commit.  Every line carries `gitlab-commit-sha', so RET
 opens the commit.  Every line is also one text button, so the mouse
 face covers the line without joining the lines above and below.
-The function inserts nothing without a local merge request ref, and
+The function inserts nothing without a local head commit, and
 nothing for a buffer whose project is not the local checkout,
-because a ref of another project would be wrong."
+because a commit of another project would be wrong."
   (when (and gitlab-merge-request-show-commits
              (gitlab--local-checkout-p))
     (when-let* ((info (gitlab-git-merge-request-commits
@@ -798,7 +806,7 @@ line of a GitLab buffer and in the echo area elsewhere."
   "GitLab Merge Request"
   "Display one GitLab merge request.
 Every top-level field of the glab JSON answer appears in a field
-table.  A local merge request ref adds the commit list below the
+table.  A local head commit adds the commit list below the
 fields, when `gitlab-merge-request-show-commits' is non-nil.
 d shows the local changes and l the local commit log, and an
 active region over commit lines limits both to those commits.
@@ -873,12 +881,12 @@ the user names its own project."
 Point names the merge request through its text property, its
 display buffer or its web URL, so the command works in a merge
 request buffer, on a list row and on a link in any buffer.  The
-view needs a fetched merge request ref.  With an active region over
-commit lines, the view covers only those commits, and one selected
-commit shows its commit view.  Magit supplies the diff buffer and
-its Ediff command on E.  Signal a user error in a buffer of
-another project, because the local checkout holds no ref of that
-project."
+view needs the head commit of the answer in the local checkout.
+With an active region over commit lines, the view covers only those
+commits, and one selected commit shows its commit view.  Magit
+supplies the diff buffer and its Ediff command on E.  Signal a user
+error in a buffer of another project, because the local checkout
+holds no commit of that project."
   (interactive)
   (let ((object (gitlab--object-at-point 'merge-request)))
     (unless object
