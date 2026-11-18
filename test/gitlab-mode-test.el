@@ -60,6 +60,17 @@
   (should (equal "1m 40s" (gitlab--format-duration 100.234765)))
   (should (equal "1h 0m 5s" (gitlab--format-duration 3605))))
 
+(ert-deftest gitlab-mode-label-face ()
+  "Every label of a label list takes `gitlab-label'."
+  (let ((text (gitlab--format-labels '("UX" "backend"))))
+    (should (equal "UX, backend" text))
+    (should (eq 'gitlab-label (get-text-property 0 'face text)))
+    (should (eq 'gitlab-label (get-text-property 4 'face text))))
+  (should (equal "-" (gitlab--format-labels nil)))
+  (should (equal "-" (gitlab--format-labels '())))
+  (should (equal "UX" (gitlab--format-labels "UX")))
+  (should-not (get-text-property 0 'face (gitlab--format-labels "UX"))))
+
 (ert-deftest gitlab-mode-date-field-face ()
   "Timestamp fields carry `gitlab-date' and a compact form."
   (dolist (key '(created_at updated_at latest_build_started_at

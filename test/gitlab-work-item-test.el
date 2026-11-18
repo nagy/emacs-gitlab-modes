@@ -136,6 +136,7 @@
       (should (equal "group/project@gitlab.example.com%12"
                      (get-text-property 0 'gitlab-work-item-iid
                                         (aref cells 1))))
+      (should (eq 'gitlab-label (get-text-property 0 'face (aref cells 6))))
       (should (= 8 (length cells))))))
 
 (ert-deftest gitlab-work-item-detail-buffer ()

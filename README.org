@@ -348,7 +348,8 @@ sort indicator of =tabulated-list-mode=.  A date column carries the
 =gitlab-date= face, the identifier column carries =gitlab-id=, the
 Author column carries =gitlab-author= and
 =gitlab-id=, and a branch column carries =gitlab-branch= or, for a tag,
-=gitlab-tag=.  The Title column of a draft merge request carries
+=gitlab-tag=.  A Labels column carries =gitlab-label=, which inherits
+=org-tag=, so a label looks like a tag of an Org outline.  The Title column of a draft merge request carries
 =gitlab-draft=, and the State column of a merge request with a merge
 conflict writes =⚠= behind its state.  The State column takes the
 width of the marker only while a conflicted row shows.  A numeric

@@ -1112,7 +1112,9 @@ without evil.  The suite never opens a network connection.
   `magit-log-author`, `gitlab-branch` inherits `magit-branch-remote`,
   `gitlab-tag` inherits `magit-tag` and `gitlab-hash` inherits
   `magit-hash`.  `gitlab-date` inherits
-  `org-date`.  Magit and Org stay optional:
+  `org-date` and `gitlab-label` inherits `org-tag`, because the
+  Labels cell of a list row goes through `gitlab--format-labels`,
+  which paints every label of the decoded array.  Magit and Org stay optional:
   Emacs ignores an undefined parent face, so no name goes into
   `Package-Requires` nor into a `require`.
 - A renderer paints text through `gitlab--propertize`, which names

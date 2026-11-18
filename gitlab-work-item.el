@@ -156,7 +156,7 @@ the IID cell keeps the full identifier as its navigation target."
               (state (gitlab-data-field-string "state" work-item))
               (author (gitlab--format-author
                        (gitlab-data-field "author" work-item)))
-              (labels (gitlab--format-value
+              (labels (gitlab--format-labels
                        (gitlab-data-field "labels" work-item)))
               (updated (gitlab-list--date-cell
                         (gitlab-data-field "updated_at" work-item))))

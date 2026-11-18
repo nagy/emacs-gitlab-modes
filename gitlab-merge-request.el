@@ -294,7 +294,7 @@ the IID cell keeps the full identifier as its navigation target."
                        (gitlab-data-field "source_branch" merge-request)))
               (target (gitlab--format-branch
                        (gitlab-data-field "target_branch" merge-request)))
-              (labels (gitlab--format-value
+              (labels (gitlab--format-labels
                        (gitlab-data-field "labels" merge-request)))
               (updated (gitlab-list--date-cell
                         (gitlab-data-field "updated_at" merge-request))))

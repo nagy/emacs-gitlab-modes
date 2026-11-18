@@ -468,6 +468,14 @@ Magit buffer.  Magit stays optional, because Emacs ignores an
 undefined parent face."
   :group 'gitlab)
 
+(defface gitlab-label
+  '((t :inherit org-tag))
+  "Face of a label of a merge request or of a work item.
+The face inherits `org-tag', so a label reads as a tag of an Org
+outline.  Org stays optional, because Emacs ignores an undefined
+parent face."
+  :group 'gitlab)
+
 (defface gitlab-error
   '((t :inherit error))
   "Face of an error message."
@@ -1450,6 +1458,19 @@ a value already."
         (mapconcat #'gitlab--format-value value ", ")
       "-"))
    (t (format "%s" value))))
+
+(defun gitlab--format-labels (value)
+  "Return the decoded label list VALUE as display text.
+Every label takes the face `gitlab-label'.  A value that is no list
+of labels goes through `gitlab--format-value', so nil, an empty
+list and a string keep their plain text."
+  (declare (side-effect-free t))
+  (if (and (listp value) value (not (gitlab-data-alist-p value)))
+      (mapconcat (lambda (label)
+                   (gitlab--propertize (gitlab--format-value label)
+                                       'gitlab-label))
+                 value ", ")
+    (gitlab--format-value value)))
 
 (defun gitlab--propertize (string face)
   "Return STRING painted with FACE under both face properties.
