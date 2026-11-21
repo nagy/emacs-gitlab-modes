@@ -43,10 +43,8 @@ the design of its own layer.
 
 ## Build and test
 
-- `nix flake check`: package, checkdoc, package-lint, treefmt.  Run it
-  before a commit.
-- `nix build`: the package.  Its check phase byte-compiles every file
-  with warnings as errors and runs the ERT suite.
+- `nix flake check`: the gate.  Run it before a commit.
+- `nix build`: the package.
 - `nix develop -c emacs`: fast loop.  The shell carries evil, magit,
   magit-section, glab and git.
 - `nix fmt`: nixfmt through treefmt.  Never run nixfmt directly.
