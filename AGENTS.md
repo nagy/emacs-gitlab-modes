@@ -2,1610 +2,213 @@
 
 ## Purpose
 
-`gitlab-modes` is an Emacs package for GitLab merge requests, work
-items and CI pipelines.  One buffer shows one merge request, one work
-item or one pipeline.  A
-separate mode shows a collection as a table.  Every display buffer
-refreshes itself through `auto-revert-mode` and never blocks Emacs.
+`gitlab-modes` gives Emacs a GitLab client for merge requests, work
+items and CI pipelines.  One buffer shows one object or one
+collection.  A display buffer refreshes through `auto-revert-mode`
+and never blocks Emacs.
 
-The package reads GitLab through the `glab` command line program.  The
-Nix build substitutes `gitlab-program` with the store path of the
-nixpkgs `glab` package.  The package has no native HTTP transport yet.
-The git-bug issue `cabdead` holds the design for that backend.
+The package reads GitLab with the `glab` command line program.  Emacs
+30.1 or later.  License: AGPL-3.0-or-later.
 
-The license is AGPL-3.0-or-later.  Read `LICENSE`.
+Read `README.org` for the commands, the keys, the options and the
+faces.  Each source file carries a `;;; Commentary` block that states
+the design of its own layer.
 
 ## Layout
 
-| File | Purpose |
-|---|---|
-| `gitlab-modes.el` | Entry library and package namesake.  Requires the data layer, the display layer, the ID prompts, the three resource families and the JSON export.  `(use-package gitlab-modes ...)` and `:ensure t` load and resolve through it.  An autoloaded form loads the evil layer at the load of evil and enables it. |
-| `gitlab-error.el` | Package-wide parent condition `gitlab-error` and the `gitlab` customization group.  `gitlab-cli-error` and `gitlab-cli-timeout` cover the CLI transport.  `gitlab-api-error` and `gitlab-api-timeout` reserve the native transport.  `gitlab-backend-error` reports an unsupported backend. |
-| `gitlab-cli.el` | glab transport: `gitlab-program`, `gitlab-repository`, `gitlab-cli-directory`, `gitlab-cli-default-host`, `gitlab-cli-timeout`, `gitlab-cli-request` (sync), `gitlab-cli-request-async`, `gitlab-cli-stream`, `gitlab-cli-project-endpoint`, `gitlab-cli-response-text`, the request host `gitlab-cli--host`, the repository spelling (`gitlab-cli-repository-split`, `-path`, `-host`, `-normalize`), the project.el directory helper, argument helpers.  A `--group` argument suppresses the `--repo` append.  A stream takes an optional chunk filter.  JSON decodes to an alist with symbol keys.  JSON false decodes to `:false`; JSON null decodes to nil. |
-| `gitlab-data.el` | Data layer: `gitlab-backend`, field accessors, the identifier syntax (`gitlab-data-identifier`, `gitlab-data-identifier-split`, `gitlab-data-identifier-signs`), the list cache, the session list `gitlab-repositories`, and the merge request, work item, pipeline and job entry points.  The merge request and work item lists take a SCOPE cons of `group` and a group context, so one request reaches a group of one instance.  `gitlab--write` and `gitlab--write-async` send every write, and `gitlab-merge-request-approve` and `gitlab-merge-request-merge` with their asynchronous forms are the write entry points.  No buffer, mode, face or key code.  `gitlab-backend` accepts `cli`; `api` signals `gitlab-backend-error`. |
-| `gitlab-git.el` | Local Git reads: `gitlab-git-program`, `gitlab-git-use-magit`, `gitlab-git-commit-limit`, `gitlab-git-preferred-remote`, `gitlab-git-context-from-git`, the project context (`gitlab-git-remotes`, `gitlab-git-remote-url`, `gitlab-git-remote-context`, `gitlab-git-context`), ref discovery (`gitlab-git-merge-request-refs` from the fetch refspecs, `gitlab-git-merge-request-head-ref`), the ancestry test `gitlab-git--ancestor-p`, `gitlab-git-merge-requests-behind`, the merge request commit range, the commit list, the Magit guard `gitlab-git--ensure-magit`, the Magit call `gitlab-git--magit`, and the views `gitlab-git-show-commit`, `gitlab-git-show-changes` and `gitlab-git-show-log`.  No network access and no repository writes. |
-| `gitlab-mode.el` | Display layer: customization, faces, the detail base mode with its Magit section tree and its per-kind inserter hooks, the list base mode, the scope of a list buffer, the row expansion of the list base mode, the region hook of the list base mode, the asynchronous refresh pipeline, the section point record, the stale check, the field and value renderers, the face painter `gitlab--propertize`, the object resolver, the text buttons, the text links, imenu, the navigation commands, the parent and sibling protocol, the bookmark records, `gitlab-bookmark-jump` and the `js-json-mode` and `json-ts-mode` remap of both base modes. |
-| `gitlab-read.el` | ID completion: `gitlab-read-merge-request-iid`, `gitlab-read-work-item-iid`, `gitlab-read-pipeline-id`, `gitlab-read-job-id`, the project prompt `gitlab-read-repository` and the group prompt `gitlab-read-group`.  The prompts read the cached lists and accept a typed ID.  Every prompt declares a completion category, an annotation function and a display sort function. |
-| `gitlab-merge-request.el` | Merge request list mode for a project and for a group, the Project column of a group list, the commit rows of an expanded list row, the commit range of a selected region, the behind-target marker, detail mode, display commands, the notes command, the approval command, the merge command and the merge request list as the parent view of a detail buffer. |
-| `gitlab-work-item.el` | Work item list mode for a project and for a group, the Project column of a group list, detail mode, display commands and the work item list as the parent view of a detail buffer.  GitLab renamed the issue object to work item, so the transport is `glab issue` and the web URL uses `/-/work_items/`.  The family lists and displays issues.
-| `gitlab-pipeline.el` | Pipeline list mode with the jobs of an expanded row, pipeline detail mode with the jobs table, the job rows as the parent view of a job log, and the streaming job log mode. |
-| `gitlab-export.el` | `gitlab-export-json`, the single JSON export buffer and the fallback encoder.  It installs no key. |
-| `gitlab-evil.el` | Optional evil layer: the global `gitlab-evil-mode`, the auto enable function, the option `gitlab-evil-auto-enable`, three local minor modes and the `evil-fold-list` entry of a detail buffer.  The package does not depend on evil. |
-| `ol-gitlab.el` | Optional Org link types: `gitlab-mr:`, `gitlab-work-item:`, `gitlab-pipeline:` and `gitlab-job:`.  Follow, store and export.  A path names its project with the bookmark identifier. |
-| `gitlab-xref.el` | Optional xref backend: `mr:`, `work-item:`, `pipeline:` and `job:` identifiers, with an optional project path.  Text properties win over a typed identifier. |
-| `test/gitlab-test-helper.el` | Shared ERT helpers: the mock program path, the environment macro and the process wait helper. |
-| `test/mock-glab` | Offline glab stand-in.  It reads `test/fixtures` and never opens a network connection.  `GITLAB_TEST_TRACE` selects another job trace fixture. |
-| `test/fixtures/` | Minimal glab JSON, a job trace, a job trace with sections, a pipeline without a jobs array, two jobs fixtures (one for the pipeline detail and one for the row expansion of the pipeline list) and two work item fixtures (a list and a detail). |
-| `test/*-test.el` | ERT suites, one file per source unit.  No MELPA `files` spec descends into a subdirectory, so the package tarball never carries them. |
-| `flake.nix` | flake-parts flake with one `melpaBuild` for the whole repo, the glab store path patch, the git check input, one `emacsWithPackages` wrapper that carries magit-section and evil on the load path of the build, the install compile and the check phase, the ERT check phase and the package-lint, checkdoc and treefmt checks.  The package goes through `lib.makeOverridable`, so `packages.default.override` swaps the Emacs package set, `melpaBuild`, the version, the glab store path, the git binary, the evil package or the magit-section package. |
-| `flake.lock` | Pinned flake inputs. |
-| `README.org` | User documentation. |
-| `AGENTS.md` | This file. |
-| `LICENSE` | AGPL-3.0. |
+- `gitlab-modes.el`: entry library.  Requires every other layer, so
+  `(use-package gitlab-modes)` reaches the whole package.
+- `gitlab-error.el`: condition tree and the `gitlab` customization
+  group.
+- `gitlab-cli.el`: glab transport, arguments, project spelling, JSON
+  decode, stream.
+- `gitlab-data.el`: data entry points per resource, list cache, write
+  entry points.
+- `gitlab-git.el`: local Git reads, the project context and the Magit
+  views.
+- `gitlab-mode.el`: display layer, both base modes, the refresh
+  pipeline, point keeping, faces, buttons, text links, imenu,
+  navigation and bookmarks.
+- `gitlab-merge-request.el`, `gitlab-work-item.el`, `gitlab-pipeline.el`:
+  resource families.  Each one carries a list mode, a detail mode, the
+  parent view of a detail buffer and the keys.
+- `gitlab-read.el`: completion of IDs, projects and groups.
+- `gitlab-export.el`: JSON export of the current display buffer.
+- `gitlab-evil.el`: optional evil key layer.
+- `ol-gitlab.el`: optional Org link types.
+- `gitlab-xref.el`: optional xref backend.
+- `test/`: `*-test.el` suites, `mock-glab`, the helper library and
+  `fixtures/`.
+- `flake.nix`: package, checks, dev shell, treefmt.
 
 ## Build and test
 
-```sh
-nix build          # package; its check phase byte-compiles and runs ERT
-nix flake check    # package, package-lint, checkdoc, treefmt
-nix fmt            # nixfmt via treefmt
-nix develop        # emacs with evil, and glab
-```
-
-Without Nix:
-
-```sh
-emacs --batch -L . -L test -L "$EVIL" -l gitlab-test-helper.el \
-  $(printf -- '-l %s ' test/*-test.el) \
-  -f ert-run-tests-batch-and-exit
-```
-
-`EVIL` is the directory that holds `evil.el`.  The display layer also
-needs `magit-section` on the load path, together with the packages that
-it requires, so the dev shell or an Emacs that carries the package
-supplies it.  All other tests run
-without evil.  The suite never opens a network connection.
+- `nix flake check`: package, checkdoc, package-lint, treefmt.  Run it
+  before a commit.
+- `nix build`: the package.  Its check phase byte-compiles every file
+  with warnings as errors and runs the ERT suite.
+- `nix develop -c emacs`: fast loop.  The shell carries evil, magit,
+  magit-section, glab and git.
+- `nix fmt`: nixfmt through treefmt.  Never run nixfmt directly.
 
 ## Architecture
 
-- Dependency direction runs one way: `gitlab-cli` (transport), then
-  `gitlab-data`, then `gitlab-mode` (display), then the resource families, then
-  `gitlab-modes` (entry library).
-- `gitlab-git` reads local Git alone. `gitlab-read` prompts over the cached
-  lists. `gitlab-export` holds the JSON export. `gitlab-error` holds the
-  condition tree and the customization group.
-- Optional layers stay out of the entry library: `gitlab-evil`, `ol-gitlab` and
-  `gitlab-xref`.
-- `gitlab-backend` accepts `cli`. `api` signals `gitlab-backend-error` until the
-  native transport lands.
+One call chain, one direction:
 
-### Resource families
-
-- `gitlab-merge-request`, `gitlab-work-item` and `gitlab-pipeline` each carry a
-  list mode, a detail mode and the parent view of a detail buffer.
-- A table mode shows a collection, a detail mode shows one object, and one
-  buffer shows one merge request, work item, pipeline or job.
-- The display layer renders through a Magit section tree and refreshes through
-  `auto-revert-mode`.
+    glab process -> gitlab-cli -> gitlab-data -> gitlab-mode
+                 -> resource family -> gitlab-modes
 
 ### Transport
 
-- `gitlab-cli` shells out to `glab`. The Nix build substitutes
-  `gitlab-program` with the store path of the nixpkgs `glab` package.
-- The package carries no native HTTP transport yet. The git-bug issue `cabdead`
-  holds the design.
+`gitlab-cli` owns the process, the argument list, the project spelling
+and the JSON decode.  It owns no cache and no display state.
+
+### Data
+
+`gitlab-data` owns one entry point per resource, the list cache and the
+write entry points.  It opens no buffer, reads no buffer-local variable
+and loads no mode library.  A consumer that requires it gets the data
+alone.
+
+### Display
+
+`gitlab-mode` owns both base modes, the Magit section tree, the table
+and the asynchronous refresh pipeline.  It also owns the point record,
+the faces, the buttons, the text links, the navigation and the
+bookmark records.  A resource family adds a mode body, a fetch
+function, an inserter hook and a buffer namer.
+
+### Optional layers
+
+`gitlab-evil`, `ol-gitlab` and `gitlab-xref` stay out of the entry
+library.  Each one registers itself at its own load.
 
 ## Rules
 
-- Dependencies point down only: transport (`gitlab-cli.el`), data
-  (`gitlab-data.el`), presentation.  `gitlab-data.el` never opens a
-  buffer, reads no buffer-local variable and loads no mode library.  A
-  consumer that requires `gitlab-data` gets the data entry points.
-
-- All reads go through the type-keyed data entry points.  A mode never
-  builds a glab command by hand and never calls `gitlab-program`
-  directly.  This keeps the planned `api` backend a transport swap.
-
-- The data layer has a synchronous and an asynchronous form for every
-  read.  The synchronous form serves prompts and tests.  The display
-  buffers use the asynchronous form.  A fetcher returns its process
-  object so `gitlab--kill-pending` can cancel it.
-
-- JSON is an alist with symbol keys.  Read a field with
-  `gitlab-data-field`; it compares strings and symbols.  Do not
-  normalize the raw shape.  `:false` is JSON false and nil is JSON null.
-  Use `gitlab-data-set-field` to merge a missing field, because the
-  built-in `alist-get` setter does not mutate a non-empty list for a
-  missing key.
-
-- `gitlab-git.el` reads local Git only.  The head commit of a merge
-  request comes from the answer, because a commit counts when the
-  checkout holds it, through whatever branch, tag or fetch refspec:
-  `gitlab-git--merge-request-head` reads
-  `gitlab-git--merge-request-head-sha`, which takes `diff_refs.head_sha`
-  of a detail answer and the `sha` field of any answer, and it asks
-  `gitlab-git--rev` for the local object.  So a head that the user
-  pushed, fetched or checked out serves, and a merge request ref is
-  only one more way to hold it.  The fetch refspec is no requirement:
-  `gitlab-git-merge-request-head-ref` answers when the checkout lacks
-  the commit of the answer, and it reads the merge request refs that
-  the user already fetched.  `gitlab-git-merge-request-refs` names
-  those refs in one `git for-each-ref` call and answers an alist of
-  IID to a cons of ref name and commit.  It reads the destination of
-  every merge request fetch refspec of `gitlab-git--remote', so the
-  standard
-  `+refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*`
-  and a user prefix such as `refs/mr/*` both answer, and it also
-  matches `/merge-requests/IID/head` anywhere under `refs/remotes` and
-  `refs/merge-requests`, so a ref that the user fetched by hand still
-  answers.  Do not add a customization for the ref spelling: the
-  refspec of the repository holds it.  The merge request IID must be
-  digits only, because it becomes part of a ref name and a git
-  argument.  A missing commit, a missing object or a failed command
-  returns nil, so a display buffer shows no section instead of a
-  signal.  The base comes from `diff_refs.base_sha`, then from
-  `diff_refs.start_sha`, then from `git merge-base` against
-  `target_branch`.  Do not add a staleness check on the local ref: the
-  answer is fresher than a fetch, so the head that it names wins, and
-  a row whose local ref holds another commit still shows its rows.
-
-- `gitlab-git.el` never runs a command that writes to the repository
-  and never opens a network connection.  It calls `git` through
-  `process-file` with `GIT_OPTIONAL_LOCKS=0`, and it reads commit
-  records with `%x00` separators.  A literal NUL in an Elisp string
-  reaches `process-file` as the end of the argument.
-
-- `gitlab-git-show-commit`, `gitlab-git-show-changes` and
-  `gitlab-git-show-log` show their view through Magit alone.  The
-  package builds no diff, commit or log buffer of its own, because a
-  second Git invocation would miss the arguments, the faces and the
-  Ediff commands of Magit.  They call `magit-show-commit`,
-  `magit-diff-range` and `magit-log-other`, and they hand those
-  functions the argument lists of Magit itself, so a saved transient
-  value such as `--stat` or `--color-moved` applies:
-  `(magit-diff-arguments)` answers a list of the diff arguments and
-  the diff files, and `(magit-log-arguments)` does the same for the
-  log.  `gitlab-git--magit` loads Magit through
-  `gitlab-git--ensure-magit` and binds `default-directory` to the
-  project, so a view of another project reads its own checkout.  A
-  `gitlab-git-use-magit` of nil and a
-  missing Magit package both signal `user-error`, and the docstring of
-  every view names that condition.  Magit's own `E` reaches Ediff, so
-  the package adds no second ediff code path.  Magit stays out of
-  `Package-Requires` and out of the melpaBuild inputs.  The display
-  layer declares `magit-section`, the section library that Magit 4
-  ships as its own package, and the flake puts it on the load path of
-  the build.  Declare every Magit function that the Git views call
-  with `declare-function`, and let a test stub
-  `gitlab-git--ensure-magit`, so a suite runs without Magit.
-
-- `gitlab-merge-request-show-changes` on `d` and
-  `gitlab-merge-request-show-log` on `l` pass `gitlab--id`,
-  `gitlab--last-data` and the active commit selection to the Git
-  layer.  Both signal a user error in a buffer without a local merge
-  request ref.  The log covers `BASE..HEAD`, so Magit lists only the
-  commits of the merge request.
-
-- The merge request detail lists the local commits after the field
-  table with `gitlab-commit-sha` on every line.  `gitlab-open-at-point`
-  reads that property first.  A commit limit shows "N more commits."
-  The section appears only with `gitlab-merge-request-show-commits`
-  and a head commit that the local checkout holds.  Every line is one
-  text button, so
-  the mouse face covers the line without joining the line above and
-  the line below, because the newline stays outside the button.
-
-- `gitlab-merge-request-approve` is the first write entry point.  It
-  runs `glab mr approve` through `gitlab--write` and returns that
-  text.  The synchronous form serves tests, and
-  `gitlab-approve-merge-request` runs the asynchronous form so the
-  buffer never blocks.  The approve answer carries no merge request
-  field, so the command reports the approval in the echo area and
-  calls `gitlab--refresh-after-write`, which fetches the merge
-  request again.  A failure goes through `gitlab--report-error`,
-  which sets the header line of a GitLab buffer and writes the echo
-  area elsewhere.  The command holds no key: the merge request
-  keymap keeps no binding that would shadow an evil motion, and the
-  list keymap gains none either.
-
-- `gitlab--refresh-after-write` in the display layer follows a write
-  whose answer changes the object.  It drops the cached list answer
-  of the buffer kind through `gitlab-cache-invalidate`, so a later
-  prompt never offers the state before the write, and it runs
-  `gitlab--revert-buffer`, so the buffer shows the new state.  A
-  buffer that the write outlived drops every cached list instead,
-  because it carries no kind to name.  A list buffer refetches its
-  collection, because a merged row leaves the list.
-
-- The notes and jobs endpoints ask for `?per_page=100` and do not pass
-  `--paginate`.  `--paginate` concatenates one JSON array per page, and
-  one `json-parse-string` call cannot read that.  A collection with
-  more than 100 items shows the first page only.
-
-- The CLI process environment adds `GLAB_NO_PROMPT=1`.  A prompt would
-  wait forever in batch Emacs.  Do not remove it.
-
-- A stream has no timeout by default.  `gitlab-cli-stream` takes a
-  TIMEOUT only when a caller wants one, because a job trace can run for
-  hours.  The synchronous and asynchronous requests keep
-  `gitlab-cli-timeout`.  The last optional argument is a chunk filter:
-  it receives the process and one chunk and writes the chunk itself, so
-  the job log can assemble lines before it inserts them.
-  `gitlab-cli--insert-chunk` inserts text, applies ANSI colors and
-  clears the modified flag, and it returns the start position of the
-  text.
-
-- Both display modes wire `revert-buffer-function` to
-  `gitlab--revert-buffer` and `buffer-stale-function` to
-  `gitlab--buffer-stale-p`.  The revert function fetches the collection
-  in a list buffer and the object in a detail buffer.  The stale
-  check returns nil while a fetch runs and, with
-  `gitlab-refresh-visible-only`, in a buffer that no window shows.
-  `gitlab-refresh-fast-interval` applies while a status in
-  `gitlab-transitional-states` shows.
-
-- With `gitlab-refresh-finished-pipelines` (default t), the stale
-  check also returns nil in a settled pipeline buffer.
-  `gitlab--settled-p` reports a `pipeline` kind whose status is not in
-  `gitlab-transitional-states` and whose `jobs` array holds no such
-  status either.  A final pipeline cannot change without a user
-  action.  A list buffer, a merge request buffer and a pipeline with a
-  nil status keep polling, because a new object or a reopened
-  collection can arrive.  A manual `revert-buffer` still fetches, so a
-  restarted job shows again; the settle check then applies to the new
-  answer.
-
-- `gitlab-go-to-parent` walks one level up.  The buffer-local
-  `gitlab--parent-function` names the command of each kind: a merge
-  request opens `gitlab-list-merge-requests`, a work item opens
-  `gitlab-list-work-items`, a pipeline opens `gitlab-list-pipelines`
-  and a job log opens the pipeline that holds the job.  A list buffer
-  leaves the variable nil, so the command
-  signals `user-error` and `dired-jump` keeps its dired meaning there,
-  because the directory of a list buffer is the project root.  The
-  detail keymap and the job log keymap remap `dired-jump` and
-  `dired-up-directory` to the command; `gitlab-evil.el` adds the same
-  two remaps to its detail and job log key lists.
-
-- A closing sibling walk, a parent view that is not open, a current
-  object that the parent view does not hold and a buffer without a
-  parent all signal `user-error`; nothing wraps around.  A list buffer
-  has no parent, so it has no siblings.  The detail keymap and the job
-  log keymap bind `C-c C-n` and `C-c C-p` and the forward and back
-  buttons `[mouse-9]` and `[mouse-8]`.  Evil leaves `C-c` unbound in
-  its states and binds no side button, so no evil key list needs the
-  commands; `test/gitlab-evil-test.el` keeps that assumption checked.
-
-- A sibling command opens the neighbour in its own buffer and leaves
-  the buffer that it leaves open, so a job log keeps streaming and a
-  walk back returns to the text that the buffer already holds.
-
-- A job log knows its parent pipeline in three steps.  The pipeline
-  detail buffer passes its own `gitlab--id` as the third argument of
-  `gitlab-display-job-log`, the bookmark record stores the ID under
-  `pipeline`, and `gitlab-job-log-pipeline-id` calls
-  `gitlab-job-pipeline-id` once when neither holds it, then keeps the
-  answer in `gitlab-job-log--pipeline-id`.  The data entry points
-  `gitlab-job-show`, `gitlab-job-show-async` and
-  `gitlab-job-pipeline-id` read the `pipeline` object of
-  `glab api projects/:id/jobs/JOB_ID`.  So a log that a bookmark, an
-  Org link or an xref definition opened still reaches its pipeline.
-
-- Display buffers are views.  `default-directory` is the project root
-  of the buffer that opened the display, `buffer-modified-p` stays
-  nil, and `kill-buffer` asks no question.  A new display path must
-  call `gitlab--use-project-directory`,
-  `gitlab--update-list-buffers-directory` and
-  `(set-buffer-modified-p nil)`.
-
-- One project context names one project on one instance.  The context
-  is `PATH` for `gitlab-cli-default-host` and `PATH@HOST` for another
-  instance, and `gitlab-cli-repository-normalize` produces it from a
-  path, a `PATH@HOST` string, an HTTP URL or a Git URL.  Do not add a
-  second spelling: buffer names, `list-buffers-directory`, bookmarks,
-  Org links and xref identifiers all use this one.
-
-- The context comes from a set `gitlab-repository`, else from the URL of
-  `gitlab-git-preferred-remote` of the project root when
-  `gitlab-git-context-from-git` is non-nil.  `gitlab-git-context`
-  applies both steps, `gitlab-git-remote-context` reads only the Git
-  remote, and `gitlab-git-remote-url-p` rejects a remote that names a
-  local path.  A remote read prefers the Magit functions when Magit is
-  already loaded, because loading all of Magit for one `git config` read
-  is not worth it, and it falls back to `git` otherwise.
-
-- The name is a convenience, not the identity.  A display buffer keeps
-  `gitlab--identity`, a list of its major mode, its object ID and its
-  context, and `gitlab--identity-buffer` finds an open buffer by that
-  list.  A user can rename a buffer to anything and the display command
-  still reuses it.  A new display path must set the identity through
-  the same place that sets the mode.
-
-- `gitlab--use-project-directory` takes an optional DIRECTORY, an
-  optional REPOSITORY and an optional SCOPE.  Pass the value of the
-  caller, because a dynamic `let` of `gitlab-repository` loses to a
-  buffer-local value of an earlier display in the same buffer.  The
-  helper sets `default-directory`, `gitlab-cli-directory` (glab must
-  run in the project), `gitlab-repository`, `gitlab--scope`,
-  `gitlab--context` and `gitlab--context-local`, then remembers a
-  project in `gitlab-repositories`.  Call it in
-  `gitlab--prepare-detail`, `gitlab-list--show` and
-  `gitlab-pipeline--prepare-job-log`, so a second display of the same
-  buffer never keeps an old project.
-
-- One list buffer holds one scope: a project, or a group.  SCOPE is a
-  cons of `group` and the group context, or nil for a project, and
-  `gitlab--scope` keeps the kind in the buffer.  A group buffer sets
-  `gitlab-repository` nil, because glab takes a group and not a
-  project, and its context comes from SCOPE.  A group never enters
-  `gitlab-repositories`, because the project prompt would offer it as
-  a project.  The context spelling stays `PATH` or `PATH@HOST`: one
-  path on one instance names either a project or a group, so the
-  identity list and the buffer name need no second element.
-
-- `define-derived-mode` runs `kill-all-local-variables`, so a caller
-  cannot set a buffer local before the mode call.  `gitlab-list--show`
-  binds `gitlab--pending-scope` around the mode, and
-  `gitlab--init-display-buffer` passes it to
-  `gitlab--use-project-directory`.  The mode body therefore reads the
-  scope when it chooses the table format.
-
-- `gitlab--context-local` is non-nil when the context equals the remote
-  of the buffer directory.  `gitlab--local-checkout-p` is the guard of
-  the Git views: it is non-nil for a buffer without a context too,
-  because that buffer means the directory the user opened it from.  A
-  buffer of another project inserts no commit section, and `d` and `l`
-  signal a user error instead of reading the refs of the wrong
-  repository.
-
-- The list commands prompt through `gitlab-read-repository` when
-  `gitlab-git-context` names no project, so the package works outside a
-  checkout.  The prompt completes from `gitlab-repositories` and from
-  the current context, and its answer binds `gitlab-repository` around
-  the display.  Do not prompt when a context exists: the C-u prefix
-  already carries `--all` for merge requests and the extra glab flags of
-  a pipeline list.
-
-- `gitlab-list-group-merge-requests` reads a group through
-  `gitlab-read-group` and passes `(cons 'group CONTEXT)` to
-  `gitlab-list--show`.  The prompt accepts a path, a `PATH@HOST`
-  string and a `https://HOST/groups/PATH` URL, and it defaults to the
-  parent namespace of the context, or to the group of a group buffer.
-  Its candidates come from the namespaces of `gitlab-repositories`,
-  so it starts no request.  The prompt declares the
-  `gitlab-group` category.  The command keeps C-u for `--all` and adds
-  no key.
-
-- The work item family follows the merge request family, because GitLab
-  renamed the issue object to work item and writes it in a
-  `/-/work_items/12` URL.  A work item is an issue: the data layer runs
-  `glab issue list` and `glab issue view`, and the web URL writes
-  `/-/work_items/12`.  Do not use the experimental `glab work-items`
-  command: it answers five fields and offers no view subcommand, so it
-  serves no detail buffer.  The identifier sigil is `%`, because `!`,
-  `#` and `&` already name other kinds.  `gitlab-list-work-items` and
-  `gitlab-list-group-work-items` mirror the two merge request list
-  commands, and the group table adds the same Project column.
-
-- A prompt binds `completion-extra-properties` to a `:category`, an
-  `:annotation-function` and a `:display-sort-function`, so marginalia,
-  embark, `completion-preview` and `completion-category-overrides`
-  reach one kind of object as one kind of object.  The candidate of a
-  merge request is `!IID`, of a work item `%IID`, of a pipeline `#ID`
-  and of a job the plain job ID, and the object behind a candidate
-  travels as the value of
-  `gitlab-read--candidates`, so the annotation reads fields and not the
-  candidate text.  `gitlab-read--selected` maps the candidate back to
-  the ID string and falls back to the typed text without its sigil.
-  `gitlab-read--sort-by-number` orders the identifiers by number, and
-  the project prompt keeps the order of `gitlab-repositories` with
-  `#'identity`, because the current project comes first.
-
-- Every prompt passes its own named history to `completing-read`:
-  `gitlab-read-repository-history`, `gitlab-read-group-history`,
-  `gitlab-read-merge-request-history`, `gitlab-read-work-item-history`,
-  `gitlab-read-pipeline-history` and `gitlab-read-job-history`.
-  `savehist-mode` adds the value of `minibuffer-history-variable` to
-  `savehist-minibuffer-history-variables` while a minibuffer runs, so
-  those names alone carry the answers of a session into the next one.
-  Do not add the names to `savehist-additional-variables`: savehist
-  asks for minibuffer histories itself, and a non-nil list there costs
-  the concurrent-write handling of the history file.  A new prompt
-  gets one history variable of its own and one line in
-  `gitlab-read-prompt-histories`, so a history never turns anonymous
-  and a renamed prompt keeps the answers of a user.
-
-- `gitlab-cli--repository-arguments` passes `PATH` to `--repo` for the
-  default instance and `https://HOST/PATH` for another one, because glab
-  selects an instance from a URL.  `gitlab-cli-project-endpoint`
-  URL-encodes the path alone, so the host never enters an API endpoint.
-  `gitlab-web-url` builds `https://HOST` from the context and keeps
-  `gitlab-web-base-url` for the default instance.
-
-- `gitlab--update-list-buffers-directory` sets the buffer-local
-  `list-buffers-directory` to `gitlab-data-identifier` of the project
-  and the object ID, so `list-buffers` shows `group/project!12` for a
-  merge request, `group/project%12` for a work item, `#` for a
-  pipeline and `&` for a job log.  A list
-  buffer has no object ID and gets the project context alone.  The
-  project comes from the buffer-local `gitlab--context` that
-  `gitlab--use-project-directory` set, so the helper reads no Git
-  remote again and the value never comes from the buffer name.  A
-  renamed buffer keeps its identifier.  `gitlab--render` calls the
-  helper at its end, so the value follows a context change too.
-  `gitlab-export--fill` copies the value of its source buffer, so the
-  export and its source show one identifier.
-
-- `gitlab--prepare-detail` and `gitlab-pipeline--prepare-job-log`
-  return a buffer without displaying it.  The xref backend uses them, so
-  a definition never moves the window configuration.  Both take an
-  optional REPOSITORY, so a caller outside the project names the
-  project and the instance of the object.  Without it they take the
-  context of the caller.  A display command passes the argument
-  through, and the identity lookup uses the same context, so one
-  project never meets a buffer of another.
-
-- Every render keeps point by the identity of a line, never by a
-  buffer position.  `gitlab--render' records `gitlab--point-record'
-  before it calls the render function and `gitlab--restore-point'
-  after it, because a render function erases the buffer and may move
-  point anywhere.  A detail buffer records the section of the line,
-  the number of lines from the start of that section to the line, and
-  the column of point.  `gitlab--record-position` calls
-  `magit-section-goto-successor`, which finds the section of the same
-  identity in the new tree, moves down the recorded lines and sets the
-  recorded column.  A vanished section leaves point on a neighbour
-  section, and a buffer without a section leaves it at `point-min`.
-  A list buffer and a buffer without a section record
-  `gitlab--line-identity` instead, through `gitlab--identity-record`:
-  the list row ID, else the text of the line and its ordinal among the
-  equal lines above it.  A line of whitespace alone has no identity,
-  so the record leans on the nearest line above and keeps its distance
-  from that line.  `gitlab--restore-point` clips the column to the end
-  of a shorter line and moves point to `point-min` when no line has an
-  identity, because the first render of a fresh buffer has no place to
-  keep.  A renderer therefore moves point without a care.  The render
-  also keeps the point of every other window that shows the buffer,
-  because `erase-buffer` pulls the window point marker of such a
-  window to `point-min` and the window would then show the start of
-  the buffer.  `gitlab--window-records` records the line of each such
-  window and `gitlab--restore-window-points` moves each one back, so a
-  visible buffer stays readable even when the user sits in another
-  window while `auto-revert-mode` refreshes it.
-
-- `gitlab-open-other-window` on `o` does what RET does in another
-  window: `gitlab-list-open' in a list buffer and
-  `gitlab-open-at-point' in a detail buffer.  It binds
-  `display-buffer-overriding-action' to a reuse of a window of the
-  buffer and, else, a new window, with `inhibit-same-window', because
-  every display path ends in `pop-to-buffer': the detail buffer, the
-  list buffer, the job log and the commit view.  The command
-  names no mode, because it serves both base modes, and it keeps the
-  two RET commands as the one definition of opening.  Magit owns the
-  display of a commit, so that view may ignore the action.  A job log
-  holds no object that a
-  second window could show, so its evil keys leave `o' alone.
-
-- A detail buffer is a tree of `magit-section' objects, and
-  `gitlab-detail-mode' derives from `magit-section-mode'.  The parent
-  mode supplies the read-only buffer, `q', the section highlight and
-  the section keymap: `TAB' folds the section at point, `n' and `p'
-  move between sections, `^' goes to the parent section and `1' to
-  `4' show that many levels.  The detail keymap keeps `p' for
-  `gitlab-pop', and a merge request buffer keeps `n' for
-  `gitlab-merge-request-show-notes', so the inherited motion commands
-  answer on `M-n' and `M-p' in those buffers.  Do not bind `TAB': the
-  inherited keymap carries `magit-section-toggle', and the button type
-  keeps `keymap' nil, so no button shadows it.  The mode body sets
-  `magit-section-inhibit-markers' to t, because the render inserts the
-  tree once and then only reads it, and
-  `magit-section-show-child-count' to nil, because a child count
-  rewrites a heading after the children recorded their positions.  A
-  heading that needs a count writes it in its text.  The body also
-  sets `truncate-lines' to nil, because a description wraps, and
-  `list-buffers-directory' to nil, because the identifier helper
-  names the buffer.
-
-- The root section names the buffer kind, as `gitlab-detail' with the
-  value of `gitlab--kind', so two kinds never share a section identity
-  and a fold of one buffer never reaches the visibility cache of
-  another.  A type and a value give the identity, so a value stays
-  stable across renders and unique among its siblings: a title is
-  `gitlab-title' with the value `title', a field line is
-  `gitlab-field' with the JSON key, a group is `gitlab-group' with the
-  label alone, a commit is `gitlab-commit' with the SHA, a note is
-  `gitlab-note' with the note ID and a job row is `gitlab-job' with
-  the job ID.  A count, a status and a duration belong to the heading
-  text and never to the value.
-
-- `gitlab--render-default' erases the buffer, opens the root section
-  and runs the hook, and `gitlab--render' then shows the fresh tree
-  with `magit-section-cache-visibility' bound to nil, so the cache
-  keeps only the sections that a reader folded.  A fold survives a
-  render, because the cache keys on the identity.
-  `gitlab--render-fields' renders a title and a field table without a
-  fetch, and `gitlab-merge-request--render' renders a merge request
-  answer that a caller already holds.  The mode never calls
-  `font-lock-ensure': that call drops a `face' property from text that
-  no keyword matches.
-
-- The imenu index walks the section tree with `magit-map-sections' and
-  keeps the title, the group and the field sections, so a renderer
-  adds no imenu entry of its own and the names come out in buffer
-  order.
-
-- `magit-section-mode` filters `buffer-substring` and strips every
-  text property from a killed region, so a copy of a detail line holds
-  plain text.  A command that needs the data of a line reads a buffer
-  variable or a section slot and never the text properties of a copy.
-  The job log stays on `outline-minor-mode` and keeps its own
-  `filter-buffer-substring-function`, because a copy of a trace must
-  drop a hidden timestamp and a hidden section marker.
-
-- A link and a row are text buttons of the type `gitlab-object`, and
-  `button.el` carries the mouse face, the tooltip and the action.
-  `gitlab--button-string` makes one from a string,
-  `gitlab--buttonize` covers a buffer range, and `gitlab--nav-string`
-  makes one that names a navigation property.  The type keeps
-  `keymap` nil, because the inherited `button-map` would bind RET and
-  TAB and shadow the mode keymap of a list row.  Its `follow-link` is
-  the function `gitlab--button-follow-mouse-1-p`, which answers nil in
-  a list buffer, so one left click keeps the selection of a row and
-  still follows a link in a detail buffer.  Do not set `mouse-face` by
-  hand: a row-level button ends before the newline, so the runs of two
-  rows never join.
-
-- A detail buffer and a job log link the references and the URLs of
-  their text through two built-in modes.  `gitlab--init-text-links`
-  sets the buffer-local `bug-reference-bug-regexp` and
-  `bug-reference-url-format` before it enables `bug-reference-mode`,
-  because both values inhibit the auto setup of the mode.  The regexp
-  comes from `gitlab--bug-reference-regexp`, which derives the sigils
-  from `gitlab-data-identifier-signs` and needs one slash in a project
-  path, so a bare word before a sigil never reads as a project.  Group
-  1 is the link region and covers group 2 to group 4, as
-  `bug-reference-bug-regexp` requires: group 2 holds the optional
-  project, group 3 the sigil and group 4 the number.  A group outside
-  group 1 makes the mode warn and underline the whole line.
-  `gitlab--bug-reference-url` reads the match data and builds the URL
-  of the object, and `gitlab--bug-reference-repository` keeps the host
-  of the buffer context for a reference of another project, because a
-  project path alone names no instance.  `goto-address-mode` covers a
-  URL.  Both modes use jit-lock and an overlay, so `#` keeps the
-  identifier syntax of the package: `!` names a merge request, `%` a
-  work item, `#` a pipeline and `&` a job.  The options `gitlab-bug-reference` and
-  `gitlab-goto-address` turn each mode off.  A list buffer gets
-  neither, because a link there would take the left click of a row.
-
-- The merge request detail renders every top-level JSON field.  Nested
-  objects go through `gitlab--format-object`: a user becomes `Name`,
-  or `Name (@username)` with `gitlab-show-author-username`, a
-  milestone its title, and an object with `id`
-  and `status` becomes `#ID status`.  Only an object that also has
-  `ref` or `sha` carries `gitlab-pipeline-id`; any other keeps the
-  plain text or a `gitlab-url` link.  Empty strings and nil render as
-  `-`.
-
-- The work item detail renders every top-level JSON field of
-  `glab issue view --output json` with the same field table.  The
-  buffer title writes `%12`, and the `web_url` field points at
-  `/-/work_items/12`.  A work item is an issue, so a task or an epic
-  stays outside the list and the detail.
-
-- The pipeline detail uses a hand-written jobs table, not
-  `tabulated-list-mode`, because the pipeline fields occupy the same
-  buffer.  Every job row carries `gitlab-job-id` and `gitlab-job-name`,
-  and it is one text button that names the job in its tooltip.  The
-  mouse face therefore covers the row without joining the rows above
-  and below.  The duration column keeps
-  `gitlab-pipeline-job-duration-width` and aligns its values to the
-  right, like the identifier column.
-  The table lists the oldest job first, because
-  glab answers the jobs array newest first.  `gitlab-pipeline--sort-jobs`
-  copies the array and sorts it by numeric job ID, so the table, the
-  sibling commands and the imenu agree on one chronological order.
-
-- The job log streams `glab ci trace`.  `gitlab-cli-stream` inserts
-  chunks into a read-only buffer, applies ANSI colors and clears the
-  modified flag.  Killing the buffer deletes the process.  The buffer
-  has no stale check.  `gitlab-job-log--start` erases the buffer first,
-  so a second display of the same job never appends a second trace.
-  `gitlab-job-log-restart` serves as `revert-buffer-function`, so it
-  accepts and ignores the two `revert-buffer` arguments.
-
-- A stream never moves point.  `gitlab-cli--insert-chunk` inserts
-  through `save-excursion`, so `gitlab-job-log--start` puts point on
-  the first line and the trace grows below it.  The log follows the
-  tail only through `gitlab-job-log--tail-p`: point must sit at
-  `point-max` of a buffer that already holds text, and both
-  `gitlab-job-log--write` and `gitlab-job-log--flush` read that
-  answer before they insert.  An empty buffer at its start therefore
-  never counts as the tail, and a reader who moves away from the end
-  keeps the place.  A transport that moved point itself would fight
-  this policy.
-
-- The job log installs a chunk filter, because a process filter
-  receives arbitrary chunks.  `gitlab-job-log--write` joins the tail of
-  the previous chunk (`gitlab-job-log--pending`), so a line that a
-  chunk cut in two reaches the buffer as one line.  Both callbacks of
-  the stream flush the pending tail.  The filter drops the banner that
-  `glab ci trace` prints on every run ("Getting job trace..." and
-  "Showing logs for NAME job #ID."), and the empty lines before the
-  first trace line, so the header line is the only place that names the
-  job.
-
-- GitLab prefixes a trace line with an ISO 8601 timestamp and a stream
-  identifier (00O, 01O, 01E, 00O+) when the job enables runner
-  timestamps.  `gitlab-job-log--apply-timestamps` marks the whole
-  prefix with the text property `gitlab-job-log-timestamp`, gives the
-  timestamp alone the face `gitlab-date`, and hides
-  it with the `invisible` property
-  `gitlab-job-log--hidden-prefix` when
-  `gitlab-job-log-show-timestamps` is nil.  Do not hide the prefix
-  with `display ""`: Emacs then draws the cursor at the end of the
-  previous line when point sits at the start of the line, so
-  `move-beginning-of-line` on `0` and `C-a` looks like a motion to the
-  line above.  `gitlab-job-log-mode` adds the symbol to
-  `buffer-invisibility-spec`, so a custom spec hides the prefix too.
-  The hidden range ends at
-  `gitlab-job-log--prefix-end`: the stream identifier from
-  `gitlab-job-log--stream-regexp` plus its one separator, or the one
-  separator of the timestamp when no identifier follows.  The text of
-  the line then starts at column 0, and every further space stays,
-  because such a space belongs to the text.  The text stays in the
-  buffer, so `gitlab-job-log-toggle-timestamps`, bound to `~` and to
-  the evil remap of `evil-invert-char`, never fetches again.  The
-  prefix is marked after the ANSI conversion, because a trace line
-  starts with the escape sequences of the server.
-
-- A copy of a region in a job log holds the text that the buffer
-  shows.  `gitlab-job-log-mode` sets
-  `filter-buffer-substring-function` to
-  `gitlab-job-log--filter-buffer-substring`, so `kill-region`,
-  `kill-ring-save` and the clipboard all receive the filtered string.
-  `gitlab-job-log--replaced-ranges` collects the ranges that carry a
-  `gitlab-job-log-section-start`, a `gitlab-job-log-section-end`, an
-  `invisible` property or a string `display` property.  They cover a
-  hidden timestamp prefix, the text of a section header and the text
-  of an end marker, so a visible prefix reaches the copy and a hidden
-  one does not.  The ranges also keep
-  the face properties of the text that stays.
-  `gitlab-job-log--strip-replaced` drops a line that keeps no text
-  together with its newline, because a hidden end marker would
-  otherwise leave an empty line.  Do not filter at
-  `kill-transform-function`: that variable holds one global function
-  and not a hook list, and it runs for every buffer.  A kill command
-  in the read-only log copies and signals `buffer-read-only` through
-  the usual `kill-region` fallback, so the trace text stays in place.
-
-- A job log shows a duration on the right edge of the mode line.
-  Without an active region the section reports the whole trace.
-  `gitlab-job-log--record-line-time` runs from
-  `gitlab-job-log--insert-line` and keeps the first and the last
-  timestamp of the buffer together with their count, so
-  `gitlab-job-log--total-span` answers the totals without a scan and
-  a long trace costs the mode line nothing.  A restart clears the
-  three values with the text in `gitlab-job-log--start`, because an
-  increment over an erased buffer would count the old run twice.
-  With an active region `gitlab-job-log--region-span` reads the first
-  and the last trace line in the region that carries a timestamp and
-  returns their count and their difference.  The section then reports
-  the selection alone and marks the values as the values of the
-  region, because the total says nothing about the step that a reader
-  measures.  A line without a timestamp neither starts nor ends the
-  span, and fewer than two stamped lines leave the section off.  The
-  helper reads
-  `region-beginning` and `region-end` into locals before it moves
-  point: `region-end` reads point and the mark, so a region that
-  starts above and ends below would otherwise collapse to its first
-  line.  The section appears only
-  while `gitlab-job-log-show-duration` is non-nil.
-  `gitlab-job-log--mode-line-format-base` reads the default mode line
-  and drops a trailing `mode-line-end-spaces`, because that construct
-  fills the rest of the line and would push the section past the
-  right edge.  The mode keeps that list in
-  `gitlab-job-log--mode-line-base`, and
-  `gitlab-job-log--mode-line-format` appends the text to it.  Add the
-  literal symbol `mode-line-format-right-align` only when the base
-  format does not hold one: `mode--line-format-right-align` reads the
-  first such symbol of `mode-line-format` and right-aligns every
-  construct behind it, so a second symbol aligns the section against
-  itself and pushes the whole right block off the edge.  A user format
-  with its own right block therefore needs the plain text alone.
-  `post-command-hook` and the chunk
-  filter call `gitlab-job-log--mode-line-maybe-update`, which rebuilds
-  the format only when the signature changes.
-  `gitlab-job-log--mode-line-signature` holds the region bounds, nil
-  without an active region, and `buffer-chars-modified-tick`, so a new
-  trace line moves the total too.  The
-  hidden timestamp text stays in the buffer, so the section measures
-  a region while `gitlab-job-log-show-timestamps` is nil.  Do not put
-  `mode-line-format-right-align` in an `:eval` form: `format-mode-line`
-  reads the symbol as a variable and the alignment stops working.
-
-- GitLab writes `section_start:UNIX:NAME[collapsed=true]` before a
-  section of a job and `section_end:UNIX:NAME` after it.
-  `gitlab-job-log--section-regexp` reads both, and
-  `gitlab-job-log--apply-section` runs from `gitlab-job-log--insert-line`
-  after the ANSI conversion.  The start marker becomes a header, a
-  `display` property of `── NAME (DURATION, N lines) ── ` with the
-  `gitlab-title` face, and the anchor message of GitLab stays behind
-  it on the same line.  The depth of a section is the length of the
-  open stack at its start marker, and the entry keeps it, because
-  the close renders the header again with the duration and the line
-  count.  `gitlab-job-log--section-header` puts
-  `gitlab-job-log--indent-width` spaces per level in front of the
-  header, so a reader sees the parent of a nested section.  Only the
-  header shifts: a body line keeps column 0, so a copy of the trace
-  keeps its shape.  The line from its start up to the end of the
-  marker also carries the property `gitlab-job-log-section-start`,
-  and the name of the section is the property
-  `gitlab-job-log-section-name` of the same range.  The helper reads
-  the marker before it deletes the carriage returns of the line,
-  because a carriage return ends the name and keeps the message that
-  follows it out of the name.
-  The duration comes from the two UNIX times of the markers, so
-  no request is needed.  `gitlab-job-log--duration-string` keeps at
-  most three decimals and drops trailing zeroes, so a whole second
-  reads `27s` and not `27.000s`.  The end marker text gets
-  `display ""` and
-  the property `gitlab-job-log-section-end`, and the newline above
-  it goes, so the marker joins the line before it.  A marker on a
-  line of its own would hide a newline inside a folded section, and
-  Emacs then draws the header of the next section on the header
-  line of the folded one.  The close counts the trace lines between
-  the two markers with `gitlab-job-log--section-line-count` before
-  the join, because the join deletes a newline.  The count leaves
-  the line of the start marker out and keeps every line between,
-  so a blank line and the line of a nested section count.  The
-  close writes the duration into the property
-  `gitlab-job-log-section-duration` and the count into the property
-  `gitlab-job-log-section-lines` of the start marker, so a later
-  imenu entry needs no end marker.
-  `gitlab-job-log--apply-timestamps` skips a line that starts with
-  `gitlab-job-log-section-end`, so the timestamp toggle never shows
-  part of a hidden end marker.  A start marker covers its leading
-  carriage return and escape sequence, because glab passes them
-  through.
-  GitLab ends a trace line with a carriage return and an erase
-  sequence, which a terminal uses to overwrite the line.  The ANSI
-  conversion drops the escape sequence and leaves the carriage
-  return, which a reader sees as ^M.
-  `gitlab-job-log--delete-trailing-carriage-returns` removes the
-  trailing carriage return of every inserted line, and
-  `gitlab-job-log--delete-carriage-returns` removes every carriage
-  return of a section marker line, so a header and a hidden end
-  marker keep no ^M.
-
-- The job log folds sections with `outline-minor-mode`, not with an
-  overlay package.  `outline-regexp` is
-  `gitlab-job-log--section-heading-regexp`, which matches the raw
-  marker behind the timestamp prefix, so folding works while the
-  prefix stays hidden.  `gitlab-job-log-toggle-section` on `TAB` calls
-  `outline-toggle-children` at the enclosing heading, so it folds from
-  any line of a section.  `S-TAB`, the `C-c @` prefix and the evil
-  folds `zc`, `zo` and `za` come from `evil-fold-list`.  New text
-  inherits text properties from the line above, so
-  `gitlab-job-log--insert-line` removes `invisible`, `display`,
-  `gitlab-job-log-section-start`, `gitlab-job-log-section-name`,
-  `gitlab-job-log-section-duration`, `gitlab-job-log-section-lines`
-  and `gitlab-job-log-section-end`
-  from the inserted range first.
-  `gitlab-job-log--reveal-open-section` opens the section that the
-  new output enters, so a live trace never hides behind a fold.
-
-- A fold never hides the newline that ends the buffer.
-  `outline-hide-subtree` stops at `point-max` when the section ends
-  the buffer, so its overlay covers the newline of the last line
-  too, and Emacs then drops that line break and draws the next trace
-  line on the row of the folded header.  A close folds its section
-  before the output of the next section arrives, so every fold of a
-  live trace reaches the end of the buffer, and a `g r` with folded
-  sections stacks every header on one row.
-  `gitlab-job-log--keep-final-newline-visible` moves the end of such
-  an overlay back by one, so a fold of a section at the end of the
-  buffer has the same shape as a fold of a section with text behind
-  it.  `gitlab-job-log--hide-section`, `gitlab-job-log-toggle-section`
-  and `gitlab-job-log--insert-line` call it, because a close, a
-  reader and a new line each reach the end of the buffer.  The
-  overlay, not a text property, carries the fold: an Emacs 30 and
-  later `outline-flag-region` makes an overlay with `evaporate`, so
-  `remove-list-of-text-properties` in `gitlab-job-log--insert-line`
-  never drops a fold.
-
-- `gitlab-job-log--section-starts` walks the property
-  `gitlab-job-log-section-start`, so it finds every section even
-  when a marker shares its line with the marker of a neighbour.
-  `gitlab-job-log--imenu-index` lists every start marker with the
-  `gitlab-job-log-section-name` of the marker and, once the end
-  marker arrived, the `gitlab-job-log-section-duration` and the
-  `gitlab-job-log-section-lines`.  A section
-  that still streams shows its name alone.
-  `gitlab-job-log--collapsed-names` reads the same property list and
-  asks `outline-invisible-p` at the heading line, so a name never
-  comes from a search of the buffer text.
-
-- List modes derive from `gitlab-list-mode`, which derives from
-  `tabulated-list-mode`.  A derived mode sets
-  `gitlab-list--fetch-function`, `gitlab-list--entries-function`,
-  `gitlab-list--rows-function` and `gitlab-list--open-function`, and
-  sets `gitlab-list--kind`.  The row ID is the merge request IID or the
-  pipeline ID, so an update keeps point on the same row.
-  `gitlab-change-functions` receives `gitlab-list--kind` and a nil ID
-  for a list buffer, because one collection has no single ID.
-
-- `gitlab-list-open` serves an active region before the row at point
-  through `gitlab-list--region-open-function`, a buffer-local function
-  of no argument that a mode sets.  It returns non-nil when it opened
-  the region, nil to fall back to the row, and it signals a user error
-  when the region names no valid selection.  `gitlab-list-open` and
-  `gitlab-list-mouse-open` share `gitlab-list--open-at-point`, and the
-  mouse click calls that helper alone, because a click names one row
-  and never the region.  The merge request list binds the hook to
-  `gitlab-merge-request--open-region`, which turns the commit rows of
-  the region into one diff through `gitlab-git-commit-selection-range`:
-  `gitlab-merge-request--region-rows` reads the row IDs of the region,
-  ignores a row that holds no commit, and the command signals a user
-  error when the rows name two merge requests.  So RET and the evil
-  `o` on a visual line selection show the diff of the selected span,
-  and one selected commit row shows its commit view instead, because
-  `gitlab-git-show-changes` hands a single commit to
-  `magit-show-commit` and a longer span to `magit-diff-range`.  The
-  region function runs under the display action of
-  `gitlab-open-other-window` without a second path.  The base mode
-  keeps the hook nil, so a pipeline list ignores its region.
-
-- A group list keeps the row ID apart from a project list.  Its row ID
-  is the full identifier, `group/project!12` or
-  `group/project@HOST!12`, because two projects of one group can both
-  hold !12.  The IID cell shows `!12` and carries the full identifier
-  as its navigation property, so `gitlab-list--id-cell` takes an
-  optional VALUE, and `gitlab--identifier-object` reads the repository
-  part of a property.  `gitlab-display-merge-request` accepts a full
-  identifier too, so RET from a row opens the project of the row.  A
-  project list keeps the bare IID.
-
-- The group fetch runs `glab mr list --group PATH --per-page 100`.
-  `gitlab-cli--repository-arguments` appends no `--repo` beside a
-  `--group`, because glab ignores one there.  A group of another
-  instance sets `gitlab-cli--host`, which
-  `gitlab-cli--environment` turns into GITLAB_HOST, because `glab mr
-  list` takes no host flag.  One request per buffer stays, and the
-  cache key holds the scope.
-
-- A row expands into child rows through `gitlab-list--child-function`,
-  a function of the row ID that answers the entries of the child rows
-  or nil.  `gitlab-list--expanded` holds the row IDs that a buffer
-  shows expanded, and it is `permanent-local`, so an automatic refresh
-  never collapses a row.  `gitlab-list--weave` puts the child entries
-  behind their parent and `gitlab-list--stamp-child` marks every cell
-  of a child row with the property `gitlab-list-parent-id`, so
-  `gitlab-list--parent-id-at-point` reaches the parent from any cell of
-  the child row.
-
-- The list layer sorts the parent rows alone and weaves the child rows
-  after the sort, because `tabulated-list-print` reverses a descending
-  sort by swapping the arguments and that swap would turn a child in
-  front of its parent.  `gitlab-list--sorter` builds the predicate of
-  the sorted column and `gitlab-list--print` binds
-  `tabulated-list-sort-key` to nil around `tabulated-list-print`, so
-  the printer keeps the order that `gitlab-list--ordered-entries`
-  built.  `gitlab-list-sort` on `S` owns the sort key, its direction
-  and a prefix of -1 for the collection order, and the evil layer
-  remaps `evil-change-whole-line` to it.  A direct call of
-  `tabulated-list-sort` interleaves the child rows, so no code and no
-  key uses it.
-
-- `gitlab-list-toggle-expansion` on `TAB` toggles the row at point.
-  Only a row of the collection toggles, because this layer weaves one
-  level of child rows and a child row holds no children of its own.
-  Point on a commit row or on a job row therefore leaves the table as
-  it stands, so a reader never closes a merge request or a pipeline
-  from a row that it holds.  `gitlab-list-mouse-toggle` on
-  `double-mouse-1` does the same, and a mode that binds it also binds
-  `follow-link` to `gitlab-list--click-selects-row`, so one left click
-  selects a row instead of following the link of its ID cell.
-  `gitlab-list-expand-all` and `gitlab-list-collapse-all` serve the
-  whole table, and `gitlab-list--child-reset-function` lets a mode
-  retry a fetch when the user expands a row again.
-
-- A child row answers the row of its parent as the identity of its
-  line, so `gitlab--line-identity` keeps the place through the parent
-  and a render that replaces the child row never moves point to
-  `point-min`.  A bookmark record of a child row stores
-  `(job-row JOB PARENT)`; `gitlab-list--target-expands-p` expands the
-  parent during the weave, and `gitlab--apply-target` keeps the target
-  while the child rows still load and lands on the parent row
-  meanwhile.  `gitlab-list--children` skips the child rows, so a
-  sibling walk reads the collection alone.  `gitlab-list--row-id-function`
-  names the object ID of a composite row ID, `gitlab-list--row-data-function`
-  answers its decoded data, and `gitlab-list-copy-id` copies the object
-  ID through the first of them.
-
-- `gitlab-list-mode` appends a `url` provider to
-  `thing-at-point-provider-alist`.  `gitlab-list--thing-at-point-url`
-  returns the `web_url` field of `gitlab-list--row-at-point`, so
-  `thing-at-point 'url` and `browse-url-at-point` answer with the
-  upstream URL of the object on the current line.  The provider
-  returns nil on a line without a row, and `thing-at-point` then falls
-  back to its own scan.  `gitlab-list-open-web` and the provider share
-  that function, so `w` and `thing-at-point` never disagree.
-
-- The reverse direction is an entry in `browse-url-default-handlers`,
-  the alist that Emacs and packages own.  `browse-url-handlers` stays
-  with the user, so the package adds nothing there.
-  `gitlab--browse-url-regexp` reads the host, the project path, the
-  object family and the number of
-  `https://HOST/PATH/-/merge_requests/ID`, `/-/pipelines/ID`,
-  `/-/jobs/ID`, `/-/work_items/ID` and the older `/-/issues/ID`, with any suffix, query or anchor behind the number.
-  The shape carries everything that the display needs, so no list of
-  private instances exists.  `gitlab-browse-url` normalizes host and
-  path to the one context spelling and passes it as the REPOSITORY
-  argument of the display command, so a link of another project or of
-  another instance opens its own buffer, and a dynamic `let` of
-  `gitlab-repository` never meets a buffer-local value.  A job URL
-  knows no pipeline, so the log reads it once through
-  `gitlab-job-pipeline-id`.  `gitlab-browse-url-handler` (default t)
-  registers the entry through its `:set` function, so Customize and
-  `setopt` add and remove it, and a plain `setq` does not.
-
-- The pipeline list expands a row into the jobs of that pipeline.
-  `gitlab-pipeline--jobs` holds the answer of each expanded pipeline
-  in a plist of `:jobs`, `:loaded`, `:process`, `:error`, `:stale` and
-  `:tick`, and it is `permanent-local`, so a refresh never collapses a
-  row.  The row ID of a job is a cons of the pipeline ID and the job
-  ID, so a job never meets a pipeline of the same number.
-  `gitlab-pipeline--refresh-tick` counts the collection answers of the
-  buffer; `gitlab-pipeline--outdate-jobs` runs in the fetch callback
-  and marks the answer of a pipeline that still runs stale once per
-  answer, and the child function fetches again.  A final pipeline
-  keeps its answer, because only a user action changes its jobs.  The
-  callback reprints the buffer when the collection answer equals the
-  last one, because `gitlab--refresh-done` renders no unchanged
-  answer.  A first fetch shows `Loading jobs...`, a failed fetch names
-  the condition and waits for the next answer, a previous answer
-  stays on screen while a new fetch runs, and a pipeline without jobs
-  shows `No jobs.`.  The kill hook of the list buffer cancels every
-  fetch in flight.
-
-- The list columns live in `gitlab-merge-request-list-format`,
-  `gitlab-merge-request-group-list-format`,
-  `gitlab-work-item-list-format`,
-  `gitlab-work-item-group-list-format` and
-  `gitlab-pipeline-list-format`.  A group list puts the Project column
-  first, because one row alone names no project; a project list shows
-  no such column.  The list mode chooses the format from
-  `gitlab--scope` in its body.  Numeric columns use
-  `gitlab-list--number-sort` and take `:right-align t` in the column
-  plist, because a printed table aligns a number to the right and a
-  reader compares the last digit.  A `tabulated-list` SORT predicate
-  receives whole `tabulated-list-entries` elements, not the cell
-  strings, so the helper reads the sorted column from the entry and
-  strips the `!` of a merge request IID; a group row keeps `!12` in
-  that cell, so the sort never reads the digits of the project path.
-  A date column goes through
-  `gitlab-list--date-cell`, so the cell carries `gitlab-date`.  The
-  identifier column goes through `gitlab-list--id-cell`, so the cell
-  carries `gitlab-id` and its navigation property.
-
-- A list buffer fits the width of every column to its rows when
-  `gitlab-list-fit-columns` is non-nil, the default.
-  `gitlab-list--column-minimum` keeps a column at the width of its
-  header, its pad and the sort indicator, so a fitted column never
-  hides its name.  `gitlab-list--fit-widths` finds the largest cap
-  that keeps the total width within the window and clips every
-  wider column to it, so the widest columns shrink together.  The
-  answer keeps the label, the sort predicate and the properties of
-  each column.  `gitlab-list--base-format` holds the format that the
-  collection declared, because `tabulated-list-format` itself holds
-  the fitted answer and a second fitting must not compound it.  Do
-  not read the cell strings from the entries without
-  `gitlab-list--entry-cells`: an entry is a list of an ID and a
-  vector of cells.
-
-- A list buffer shows the column names of `tabulated-list-format'
-  in its header line, with the sort column marked by
-  `tabulated-list-sort-key'.  `gitlab-list--render' fits the columns,
-  prints the rows and then calls `tabulated-list-init-header',
-  because the printer alone sets no header, and keeps the answer in
-  `gitlab--header-line-format'.  `gitlab--set-error' replaces the
-  header line of a detail buffer, and `gitlab--clear-error' restores
-  `gitlab--header-line-format`.  A list error goes to
-  `mode-line-process`, because the header line belongs to the table.
-  Do not set a `:eval' entry in `header-line-format` of a list mode:
-  it replaces the column names.
-
-- `gitlab-list--show` runs the mode of the collection buffer again, and
-  `define-derived-mode` runs `kill-all-local-variables`.  A second
-  display therefore drops `header-line-format` and
-  `gitlab--header-line-format` while the rows of the last render stay
-  in the buffer, so the table would show its columns without names
-  until the fetch returns.  After the mode call, `gitlab-list--show`
-  therefore calls `tabulated-list-init-header` and stores the answer
-  again in `gitlab--header-line-format` whenever the buffer holds
-  text, so the header line never waits for a fetch.
-
-- `gitlab-export-json` exports the answer of the current display
-  buffer.  The transport binds `gitlab-cli-response-text` around an
-  asynchronous SUCCESS callback, and the refresh pipeline stores that
-  raw text in the buffer-local `gitlab--raw-text`.  The export uses the
-  raw text for one object, so it matches `glab ... --output json`
-  byte for byte there.  A top-level array becomes one element per line
-  through `gitlab-export--array-lines`, because glab prints a list
-  answer on one line.  Every element stays compact, so a grep finds a
-  whole element on one line, and the two spaces of indent show the
-  elements of the array.  `gitlab-export--array-p` reads a decoded
-  array, and an empty array keeps the text of glab.  A fetch that
-  merges two answers sets `gitlab--raw-text` to nil, and the
-  export encodes `gitlab--last-data` with `json-false` bound to
-  `:false`.  One buffer, named by `gitlab-export-json-buffer-name`,
-  serves every export.  It stays read-only, unmodified and a snapshot.
-  Both display base modes remap `js-json-mode` and `json-ts-mode` to
-  the command, because Emacs 30 ships two JSON major modes, and the
-  job log mode does not, because a trace has no JSON answer.  The
-  remap lives in `gitlab-mode.el` and not in `gitlab-export.el`: an
-  autoloaded display command loads the display layer alone, so a key
-  that `gitlab-export` installs at its own load never appears.  The
-  remap target stays the symbol, so the first key that reaches it
-  loads the export layer through its autoload cookie.
-
-- Every face inherits a standard face and lives in `gitlab-mode.el`.
-  Status faces come from `gitlab-status-faces`; do not apply a
-  font-lock face in a renderer.  `gitlab-author` inherits
-  `magit-log-author`, `gitlab-branch` inherits `magit-branch-remote`,
-  `gitlab-tag` inherits `magit-tag` and `gitlab-hash` inherits
-  `magit-hash`.  `gitlab-date` inherits
-  `org-date` and `gitlab-label` inherits `org-tag`, because the
-  Labels cell of a list row goes through `gitlab--format-labels`,
-  which paints every label of the decoded array.  Magit and Org stay optional:
-  Emacs ignores an undefined parent face, so no name goes into
-  `Package-Requires` nor into a `require`.
-
-- A renderer paints text through `gitlab--propertize`, which names
-  its face in `face` and in `font-lock-face`.  `magit-section-mode`
-  sets `font-lock-defaults` to `(nil t)`, so `font-lock-mode` turns
-  on in a detail buffer, and fontification removes every `face`
-  property that no keyword matches.  The keyword list stays nil, so
-  `font-lock-face` keeps the paint: `font-lock-mode` adds that
-  property to `char-property-alias-alist` as an alias of `face`, and
-  the display reads it.  Do not `propertize` a face by hand in a
-  renderer, and do not call `font-lock-ensure` in a render: both
-  drop the paint of a Magit section buffer.  A list buffer and a
-  job log set no `font-lock-defaults`, so font-lock stays off there,
-  and the same helper serves them.  A test renders a field table,
-  calls `font-lock-ensure` and reads `font-lock-face`, because a
-  batch Emacs never turns `font-lock-mode` on.
-
-- Colors, dates, identifiers, authors, branches and status values go
-  through `gitlab--field-value-face`, `gitlab--format-date` and
-  `gitlab-status-face`.  A new date field goes into
-  `gitlab-date-fields`, so it takes `gitlab-date' and the compact
-  form of `gitlab--format-date', because `gitlab--format-field-value'
-  asks `gitlab--date-field-p' and keeps no second list of names; a
-  new identifier field goes into
-  `gitlab-id-fields`, so `id`, `iid`, `project_id`, `sha` and
-  `before_sha` share `gitlab-id`.  A new author field goes into
-  `gitlab-author-fields`, so `author`, `assignee`, `assignees`,
-  `reviewers`, the `user` of a pipeline, `merge_user` and
-  `merged_by` carry the author faces.
-  A field that holds an array of users goes through
-  `gitlab--format-author-list`, which maps `gitlab--format-author`
-  over the array.  A new branch or ref field goes into
-  `gitlab-branch-fields`.
-
-- A merge request with a merge conflict marks its State cell with
-  `gitlab-merge-request-conflict-marker` behind the state text, so a
-  row reads `opened ⚠`.  The marker carries the `gitlab-conflict`
-  face, which inherits `warning`.  `gitlab--conflict-p` reads the
-  `has_conflicts` flag, which the list answer carries beside the
-  `merge_status` field, so the table never fetches the detail of a
-  row.  GitLab answers `has_conflicts` with false unless
-  `merge_status` reads `cannot_be_merged`, so a
-  `cannot_be_merged_recheck` status also counts: it names a merge
-  request that held a conflict before its last change.
-  `gitlab-merge-request--state-cell` builds the cell, and the column
-  fitting measures its text, so the State column grows by the marker
-  only while a conflicted row shows.
-
-- A merge request that sits behind its target branch marks its State
-  cell with `gitlab-merge-request-behind-marker`, so a row reads
-  `opened ↓`, and a conflicted row that is also behind reads
-  `opened ⚠ ↓`.  The marker carries the `gitlab-behind` face, which
-  inherits `warning`.  The fact comes from the local Git refs and not
-  from the answer, because `detailed_merge_status` holds one blocker
-  only: `not_approved` hides `need_rebase`.  GitLab itself asks
-  `project.repository.ancestor?(target_branch_sha, diff_head_sha)` and
-  calls a merge request behind only when
-  `ff_merge_must_be_possible?` holds, so the marker states "behind
-  target" and not "must rebase", because a merge commit project
-  merges a behind branch.  `gitlab-git-merge-requests-behind` answers
-  the whole table in one round: one `for-each-ref` for the refs, one
-  `for-each-ref --contains` per distinct target branch for the refs
-  that hold the target tip, and one `gitlab-git--ancestor-p` per row
-  that the batch cannot answer.  `gitlab-git--holds-tip-p` takes the
-  batch answer while the local merge request ref names the head commit
-  of the row, and it checks ancestry otherwise, so a head that the
-  checkout holds but no ref names still answers.  `gitlab-git--ancestor-p`
-  calls `magit-rev-ancestor-p` when the user already loaded Magit, and
-  `git merge-base --is-ancestor` otherwise.  A row counts when the
-  checkout holds the head commit that the answer names, so no fetch
-  refspec is needed.  The rows that are no longer open stay out,
-  because a closed row has no place behind a branch.
-  `gitlab-merge-request--behind` caches the answer per row ID and head
-  commit, so an unchanged table runs no Git command on a later render,
-  and `gitlab-merge-request-show-behind` turns the whole check off.
-  The check needs `gitlab--local-checkout-p`, so a group list and a
-  list of another project read no ref.
-
-- A merge request list row expands into its local commits through
-  `gitlab-list--child-function`, the hook that the pipeline list uses
-  for its jobs, so the list base mode owns the weave, the sort, the
-  point record and the parent property of a child row.
-  `gitlab-merge-request--child-entries` answers the rows: the IID cell
-  holds the short hash with `gitlab-hash` and `gitlab-commit-sha` on
-  it, the Title cell
-  the subject, the Author cell the author and the Updated cell the
-  author date.  The other cells stay empty, as a nested row leaves the
-  cells that it does not own, and the Project cell of a group list
-  stays empty too, so the indentation of `gitlab-list-expand-indent`
-  goes into the IID cell at `gitlab-merge-request--id-index`.  The row
-  ID is a cons of the parent row ID and the full commit, so a commit
-  never meets a merge request of the same text, and
-  `gitlab-merge-request--row-id-string` answers the commit for `c` and
-  the parent for a note row.  `gitlab-merge-request--row-data` answers
-  the commit record with a `web_url` of the commit page, so `w` and
-  `thing-at-point` reach it, and `gitlab-web-url` takes the `commit`
-  kind for that.  The rows read
-  `gitlab-git-merge-request-commits`, which follows the head commit of
-  the answer, so a row of a group list and a row whose head commit the
-  local checkout lacks answer one note row instead, and
-  `gitlab-merge-request--missing-commit` names that commit when the
-  answer carries it.  The answer
-  caches in `gitlab-merge-request--commits` under the row ID and the
-  head commit, so an unchanged table reads no Git again.
-  `gitlab-git-commit-limit` caps the rows and a note row counts the
-  rest.  `gitlab-merge-request--open-row` opens the commit for a commit
-  row and the merge request for every other row.  An active region
-  over the commit rows opens the diff of that range instead, through
-  `gitlab-list--region-open-function` and
-  `gitlab-merge-request--open-region`, so one selected commit shows
-  its commit view and a longer selection shows the diff of that span.
-
-- A renderer that prints an author calls `gitlab--format-author`, and
-  a renderer that prints a branch or a ref calls
-  `gitlab--format-branch`, because `gitlab--format-value` adds no
-  face.  `gitlab--format-author` gives the name `gitlab-author` and
-  the account name `gitlab-id`, so `Alice (@alice)` shows two faces.
-  The option `gitlab-show-author-username`, nil by default, decides
-  whether the account name follows the name, so a user then reads
-  `Alice`.  The option applies in `gitlab--format-author` and in
-  `gitlab--format-object`, so a user looks the same wherever it
-  appears.  A user without a name keeps the account name either way.
-  The merge request list uses both faces in its Author and Branches
-  columns, the commit list and the notes header use the first, and
-  the pipeline list uses the second in its Ref column.  The commit
-  list and a commit row of the merge request list give the short SHA
-  `gitlab-hash`, which inherits `magit-hash`.  `gitlab--format-field-value`
-  prints an author field through `gitlab--format-author-list` and
-  applies no whole-text face there, because that would overwrite the
-  two faces of each name.
-
-- An interactive function that works in one mode names that mode in its
-  `interactive` form, `(interactive nil gitlab-detail-mode)`, so `M-S-x`
-  and `C-h m` list it in that mode alone.  A display command that
-  starts a mode names no mode, because a user calls it from anywhere.
-  `gitlab-go-to-parent`, `gitlab-next-sibling` and
-  `gitlab-previous-sibling` name both `gitlab-detail-mode` and
-  `gitlab-job-log-mode`; `gitlab-export-json` names both base modes.
-  A command that takes its target from `gitlab--object-at-point`
-  names no mode, because it works in any buffer that shows a
-  property or a URL: `gitlab-approve-merge-request`,
-  `gitlab-merge-merge-request`, `gitlab-merge-request-show-changes`,
-  `gitlab-merge-request-show-log` and `gitlab-copy-id` all carry a
-  plain `(interactive)`.  `command-modes` returns the list, and the
-  suites assert it.
-
-- `gitlab-evil.el` binds every command key through
-  `evil-define-minor-mode-key`, one key set per state and local minor
-  mode.  A key that evil already binds becomes a `[remap
-  EVIL-COMMAND]` vector, so the binding follows the command and not
-  the key, and a user who moves `evil-ret` elsewhere keeps the
-  behaviour.  A key without an evil command, such as `gr`, stays a
-  key string.  `gitlab-evil--key-sequence` passes a vector unchanged
-  and parses a string.  `gitlab-job-log-toggle-timestamps` takes the
-  `evil-invert-char` remap, so `~` toggles the timestamps of a job log
-  in normal state.  `gitlab-job-log-toggle-section` takes the plain
-  `TAB` key, because evil binds no fold command to it, and the evil
-  fold keys `zc`, `zo` and `za` reach the same sections through
-  `evil-fold-list` and `outline-minor-mode`.
-  `gitlab-evil-detail-keys` binds `TAB` to `magit-section-toggle`, and
-  the file adds an `evil-fold-list` entry for `gitlab-detail-mode`
-  whose actions wrap the section command in a lambda of no argument,
-  because evil calls a fold action with no argument and demotes its
-  error.  `gitlab-open-other-window` takes the `evil-open-below`
-  remap of `o` in a detail buffer and in a list buffer, because evil
-  binds `o` to a text edit that a read-only view cannot use, and a
-  job log keeps `o`.  A visual line selection of list rows binds
-  `[remap evil-ret]` to `gitlab-list-open` and `o` as a plain key to
-  `gitlab-open-other-window`, and not through the
-  `exchange-point-and-mark` remap, because that remap would follow
-  `C-x C-x` too; the two keys open the diff of the selected commit
-  rows.  `gitlab-list-toggle-expansion`
-  takes the same plain `TAB` key in a list buffer, and
-  `gitlab-list-sort` takes the `evil-change-whole-line` remap, so
-  `S` sorts the table through the command that keeps a child row
-  behind its parent.  `gitlab-export-json`
-  takes the `evil-yank` remap, so `y` exports the JSON of a detail
-  buffer or of a list buffer in normal state, and visual state keeps
-  the ID copy.  `revert-buffer-quick` takes the `evil-replace` and
-  the `evil-enter-replace-state` remaps, so `r` and `R` refresh with
-  less confirmation than the `gr` key, which stays a plain
-  `revert-buffer` string.  A display buffer takes no text edit, so
-  the two replace commands have no meaning here.  Do not
-  `require` evil at the top of the file:
-  evil runs `evil-after-load-hook` before it provides its feature, so
-  a plain `require` recurses there.  The file requires evil only when
-  `evil-define-minor-mode-key` is absent, and it declares that
-  function for the byte compiler.  Do not add evil to
-  `Package-Requires` or `packageRequires`; the check phase and the
-  `preInstall` compile put evil on the load path instead.
-
-- `gitlab-modes.el` carries one autoloaded `add-hook` form for
-  `evil-after-load-hook` and one plain `(when (featurep 'evil) ...)`
-  form.  Together they load `gitlab-evil` and call the autoloaded
-  `gitlab-evil-auto-setup`, which enables `gitlab-evil-mode` unless
-  the option `gitlab-evil-auto-enable` is nil.  The hook covers a load
-  of evil after this library, the plain form covers the other order.
-  A user without evil loads nothing extra.  Do not use
-  `with-eval-after-load` or `after-load-functions` here: package-lint
-  warns about the first, and the second fired during a byte-compile
-  scan and caused a recursive load.
-
-- `gitlab-xref.el` registers its backend through an `add-hook` form
-  at its load, and the package adds that form to the autoload file
-  through a `;;;###autoload` cookie.  The cookie sits on the
-  `gitlab-xref-backend` defun and not on the `add-hook` form: a
-  cookie on a plain form copies the form alone, so the hook entry
-  would name a void function and every `xref-find-backend` call of
-  every buffer would signal `void-function`.  The autoload stub of
-  the function loads this library on the first xref request, and the
-  check then answers nil outside a GitLab object, so the other
-  backends run.  Do not move the cookie back to the `add-hook` form.
-  The backend accepts text properties first, then a typed
-  `mr:`, `work-item:`, `pipeline:` or `job:` identifier.  A merge request list cell
-  shows `!IID`, so the backend strips the sigil before it names a
-  buffer or a glab argument.
-
-- One identifier syntax names one object.  `gitlab-data-identifier`
-  builds `REPOSITORY<SIGIL>ID` and `gitlab-data-identifier-split`
-  parses it back; the sigils come from `gitlab-data-identifier-signs`
-  (`!` merge request, `%` work item, `#` pipeline, `&` job).  A GitLab project path
-  holds letters, digits, dots, hyphens and underscores only, so a
-  sigil never appears in a path.  A text without the sigil is a bare
-  ID, so an older Org link or bookmark keeps its meaning, and
-  `gitlab-web-url` takes the repository as an optional third argument.
-  Bookmarks, Org links and xref use this syntax in all three places;
-  do not add a second spelling.  `string-trim` takes a regexp, so trim
-  both ends with `"/+"` twice, not with one `"/"`.
-
-- Bookmarks live in the display layer, so every user has them without
-  a load step.  `gitlab--init-display-buffer` sets
-  `bookmark-make-record-function` to `gitlab--bookmark-make-record`,
-  and `gitlab-job-log-mode` sets its own wrapper because it does not
-  run the display base mode; the wrapper adds the job name, and the
-  pipeline ID when the buffer knows it.
-  `gitlab--bookmark-make-record` stores `kind`, `id`, `location`,
-  `repository`, `directory` and `target`, plus `arguments`, `sort` and
-  `scope` for a list buffer.  The kind of a list buffer is the
-  collection kind with a `-list` suffix, and
-  `gitlab--bookmark-base-kind` gives the object kind back.  A group
-  list stores `group` in `scope`, keeps the group context in
-  `repository` and takes its name from `gitlab--bookmark-label`, which
-  says "GitLab Group Merge Requests".  A new bookmarkable kind needs
-  one entry in `gitlab--bookmark-labels`, one in
-  `gitlab--bookmark-link-types` and one `pcase` branch in
-  `gitlab-bookmark-jump`.
-
-- A target names a field line, a job row or a list row, never a buffer
-  position, because the first render erases the buffer and moves point
-  to its start.  `gitlab--goto-property` and `gitlab-list--goto-id`
-  find the target again, and both fall back to `point-min` when the
-  object is gone.  `gitlab--target` belongs to the display buffer, so a
-  jump binds the dynamic `gitlab--pending-target` and
-  `gitlab--init-display-buffer` copies it; the handler must not
-  `setq-local` in the caller.  `gitlab--apply-target` runs at the end
-  of `gitlab--render` and clears the target, so a later auto refresh
-  keeps point through the text property instead of jumping back.  It
-  answers non-nil when it moved point, and `gitlab--render` then skips
-  the point record, because the jump wins over the line of the old
-  point.
-  `gitlab-bookmark-jump` restores the project and the directory by
-  binding `gitlab-repository` and `gitlab-cli-directory`, then
-  dispatches on the kind and sets `bookmark-handler-type` for the type
-  column of `bookmark-bmenu`.
-
-- Tests run offline.  Mock at the process level with `test/mock-glab`;
-  never call a real GitLab.  A new command needs an ERT test and, when
-  it adds a file, a line in `checkPhase` only if the glob misses it.
-  `gitlab-test-with-root` renders a section tree without the fetch
-  pipeline, so a test of one inserter asserts the section type, the
-  value and the children instead of the text of the buffer.
-  The export tests compare the export buffer with the fixture text, so
-  a raw answer must survive the fetch unchanged.
-
-- A helper that reads only its arguments carries
-  `(declare (pure t) (side-effect-free t))`, so the byte-compiler
-  folds a call with constant arguments.  A helper that also reads a
-  defcustom, a defconst, a defvar or a buffer-local value carries
-  `(declare (side-effect-free t))` alone.  A helper that touches a
-  buffer, a process or a file carries no such declaration.  The
-  annotation goes after the docstring and before the body.
-
-- `checkdoc` and `package-lint` must pass through `checks.checkdoc` and
-  `checks.package-lint`, and both checks cover the test tree: a test
-  file keeps the header, docstring and prefix rules of the code under
-  test.  The package-lint check whitelists `gitlab` and `ol-gitlab` as
-  shared prefixes, and it lints `test/*.el` in a second invocation with
-  `package-lint-main-file` set, because a test file is a secondary file
-  of the package.  The source files lint without that variable, because
-  each one carries its own `Package-Requires` header and package-lint
-  rejects that header in a secondary file.  Every check that runs Emacs
-  takes `pkgs.writableTmpDirAsHomeHook` in its inputs, so the hook owns
-  a private writable home and no check writes an `export HOME` line.
-
-- `nix fmt` formats `flake.nix`.  Do not run nixfmt standalone.
-
-- `gitlabModes` in `flake.nix` calls `lib.makeOverridable` with one
-  argument set: `emacs`, `emacsPackages`, `melpaBuild`, `version`,
-  `glab`, `git`, `evil` and `magitSection`.  The flake passes the
-  commit-derived `version`, and
-  the argument defaults to `"0.1.0"` for a plain import.  Every other
-  dependency derives from `emacs`, so one override moves them all.  A
-  new build input becomes a new named argument, not a hard-coded
-  binding.  `melpaBuild` keeps `packageRequires` off the load path of
-  its own build, so `preBuild` puts one `emacsWithPackages` wrapper on
-  PATH and the build phase, the install compile and the check phase
-  all find the dependency there.  The package-lint check and the dev
-  shell carry the same package in their Emacs pack.
+- Load direction runs down only.  `gitlab-cli` requires neither
+  `gitlab-data` nor `gitlab-mode`, and `gitlab-data` requires no mode
+  library.
+- A mode never builds a glab command and never reads `gitlab-program`.
+  Every read uses a data entry point, so the planned `api` backend
+  stays a transport swap.
+- Every read carries a synchronous and an asynchronous form.  A prompt
+  and a test use the synchronous one, a display buffer the
+  asynchronous one.  A fetch function returns its process object, so
+  `gitlab--kill-pending` cancels it.
+- JSON stays a raw alist with symbol keys.  Read it with
+  `gitlab-data-field` and merge a missing key with
+  `gitlab-data-set-field`.  `:false` is JSON false, nil is JSON null.
+- A write uses `gitlab--write` or `gitlab--write-async` with PARSE
+  `text`.  It names its own CONTEXT and asks `yes-or-no-p` when the
+  target sits outside the current detail buffer.
+- A command that acts on one object takes it from
+  `gitlab--object-at-point`.  The precedence is the text property at
+  point, the identity of the display buffer, the web URL at point.  A
+  target of another kind signals a user error.
+- One context spelling names one project: `PATH` on
+  `gitlab-cli-default-host`, `PATH@HOST` on another instance.  Buffer
+  names, `list-buffers-directory`, bookmarks, Org links and xref
+  identifiers all use it.  Do not add a second spelling.
+- A display buffer carries `gitlab--identity`, a list of its mode, its
+  object ID and its context.  Buffer lookup uses
+  `gitlab--identity-buffer`, never a buffer name.
+- Every display path calls `gitlab--use-project-directory` with the
+  value of its caller and leaves `buffer-modified-p` nil.
+- A render keeps point by the identity of a line, never by a buffer
+  position.  `gitlab--render` records before the render and restores
+  after it, so a renderer moves point freely.
+- A renderer paints with `gitlab--propertize`.  Do not call
+  `propertize` with `face` alone and do not call `font-lock-ensure`:
+  both lose the paint of a Magit section buffer.
+- Every face inherits a standard face and lives in `gitlab-mode.el`.  A
+  new status face goes into `gitlab-status-faces`.
+- An error signals a condition that derives from `gitlab-error`.  An
+  asynchronous error callback receives a condition list, not a string.
+- The cache serves prompts only.  A display buffer fetches fresh data
+  on every refresh.
+- `GLAB_NO_PROMPT=1` stays in the process environment, and a write that
+  glab would confirm passes `--yes`.  A job trace stream keeps no
+  timeout, a request keeps `gitlab-cli-timeout`.
+- Byte-compilation warnings fail the build.  Fix the warning, do not
+  silence it.
+- Magit stays optional: the Git views call Magit functions, declare
+  them with `declare-function`, and build no diff, commit or log
+  buffer of their own.  Evil stays optional: `Package-Requires` names
+  neither evil nor Magit.
+- A new build input becomes a named argument of `gitlabModes` in
+  `flake.nix`.
 
 ## Conventions
 
-- An active region over commit lines narrows `d` and `l`.
-  `gitlab-merge-request--region-commits` collects the
-  `gitlab-commit-sha` values from the region in display order.
-  `gitlab-git-commit-selection-range` takes the newest selected commit
-  as the head and the parent of the oldest selected commit as the
-  base.  A selected root commit uses `git hash-object -t tree
-  /dev/null`, so a SHA-256 repository gets its own empty tree.  A
-  region without a commit line and a stale selected commit both fall
-  back to the full merge request range.
-
-- Every write goes through `gitlab--write` and `gitlab--write-async`
-  in the data layer, so one function holds the PARSE value `text` and
-  one function reports the condition.  A write answer holds prose and
-  not JSON.  A new write entry point passes its glab arguments to
-  those two functions and adds no request of its own.
-
-- A command that acts on one object takes its target from
-  `gitlab--object-at-point`, a list of KIND, ID, CONTEXT and SOURCE.
-  The precedence is the text property at point, the identity of the
-  display buffer, and the web URL at point, so one command serves a
-  detail buffer, a list row and a link in any buffer.  The URL
-  comes from `thing-at-point 'url`, which the list mode answers
-  through its own provider.  `gitlab--object-at-point` takes a
-  wanted KIND, and a target of another kind signals a user error
-  instead of falling back, because a silent fallback would act on a
-  different object than point names.  `gitlab--object-id` strips
-  the sigil of a list cell, because a cell writes `!13` and `#34`
-  and glab wants the digits.  Commands that belong to a view stay
-  buffer-bound: the notes render into the current buffer, the JSON
-  export needs the raw answer text, and the parent, sibling and job
-  log commands walk a view.
-
-- A write names its CONTEXT.  `gitlab-approve-merge-request` and
-  `gitlab-merge-merge-request` bind `gitlab-repository` and
-  `gitlab-cli-directory` to the resolved value around the
-  asynchronous request, so a write from a list row or from a link
-  reaches the right project.  `gitlab--write-buffer` names the
-  buffer to refresh: a live detail buffer of the object, else the
-  current buffer when it shows GitLab data, else nil so the write
-  drops every cached list and touches no foreign buffer.  A write
-  that acts on an object outside its own detail buffer asks
-  `yes-or-no-p` first, and `gitlab--target-elsewhere-p` answers that
-  question.  The merge request commands therefore work from a list
-  row and from a pasted URL.
-
-- `gitlab-merge-request-merge` is the second write entry point.  It
-  runs `glab mr merge IID --yes` through `gitlab--write` and returns
-  that text.  `--yes` is required, because `GLAB_NO_PROMPT=1` leaves
-  the submission prompt of glab without an answer, and the Emacs
-  command asks `yes-or-no-p` for the same decision before it sends the
-  request.  The merge command `gitlab-merge-merge-request` follows
-  the approve command in every other respect, and it holds no key.
-  A declined confirmation sends no request.
-
-- The data cache serves prompts only.  `gitlab-cache-ttl` controls it;
-  `gitlab-cache-clear` and `gitlab-cache-invalidate` drop entries.  A
-  display buffer fetches fresh data on every refresh.
-
-- `gitlab-pipeline-show` and its asynchronous form read the jobs array
-  from `glab ci get --output json`.  When the array is missing, the
-  data layer fetches `projects/:id/pipelines/:pipeline_id/jobs` once and
-  merges the answer.  The renderer always sees a `jobs` key.  The
-  asynchronous form stores the follow-up process in the
-  `gitlab-cli-follow-up` property of the first process, so a cancel
-  stops both.
-
-- `gitlab-cli-request` takes `PARSE` as `json` (the default) or `text`.
-  A nil value means `json`.  The job trace uses `text`.
-
-- A synchronous `make-process` needs `:sentinel #'ignore`.  The default
-  sentinel writes "Process ... finished" into the output buffer and
-  corrupts JSON.  The asynchronous forms supply their own sentinel.
-
-- `gitlab-cli--repository-arguments` appends `--repo` when
-  `gitlab-repository` is set and the caller did not name one as
-  `--repo`, `--repo=X`, `-R` or `-RX`.  The API endpoint helper
-  URL-encodes a namespace path, or uses the `:id` placeholder for glab
-  inference.
-
-- `gitlab-cli-directory` selects the directory in which glab runs.  A
-  nil value means `default-directory`, so a prompt runs in the project
-  of the user.  Every process creation binds `default-directory` to
-  `gitlab-cli-directory-of'.  `gitlab-cli--project-directory` asks
-  project.el for the root of a directory and returns the directory
-  itself when it belongs to no project.
-
-- Errors signal a condition that derives from `gitlab-error`.  A public
-  function documents the conditions it raises.  An asynchronous error
-  callback receives a condition list, not a string.
-
-- `gitlab--refresh` and `gitlab-list--refresh` share one pipeline.  An
-  in-flight fetch sets `gitlab--pending`; a refresh during that fetch
-  sets `gitlab--refresh-requested` and runs when the fetch completes.
-  An unchanged answer (`equal`) is not rendered again.
-
-- `gitlab-next-sibling` and `gitlab-previous-sibling` walk inside one
-  collection, and a numeric argument walks several entries at once.
-  The parent view holds the order of its children, so a sibling
-  command reads the open parent buffer and fetches no collection.  The
-  child names its parent with `gitlab--parent-identity-function`, a
-  function of no argument that returns the major mode function and
-  the object ID of the parent, or nil.  A list parent passes nil as
-  the ID.  `gitlab--parent-buffer` finds the parent by identity, so a
-  renamed parent buffer still answers.  A parent detail mode sets
-  `gitlab--children-function`, a function of no argument that returns
-  `(ID . NAME)` entries in display order; a list buffer needs no such
-  function, because `gitlab--children` reads its rendered rows through
-  `tabulated-list-get-id`, so the sort column decides the order.  The
-  child sets `gitlab--sibling-open-function`, a function of ID and
-  NAME that opens one entry of its own kind, and
-  `gitlab--parent-label`, the human name of the parent view for the
-  error messages.  `gitlab--move-sibling` resolves the current
-  position by identity and calls the opener.
-
-- A job log stores its pipeline ID, so a sibling jump passes the
-  pipeline and the job name of the new entry to `gitlab-display-job-log`
-  and the new log can walk up without a request.  A pipeline detail
-  buffer is both a child of its list and the parent of its jobs: its
-  own siblings come from the pipeline list rows, and its children are
-  its job rows.
-
-- The context names the buffer.  A detail name puts the context in
-  front of the sigil (`*GitLab MR group/project!12*`), and a list name
-  appends it (`*GitLab Merge Requests group/project*`).  A resource
-  file therefore passes a *namer* to `gitlab--prepare-detail`, a
-  function of ID and context that returns the name, and
-  `gitlab-list--show` takes a base name that
-  `gitlab--contextual-name` completes.  A new kind adds one namer next
-  to its buffer-name defcustom.
-
-- The renderers attach text properties.  `gitlab-field` names a field
-  line.  `gitlab-pipeline-id`, `gitlab-merge-request-iid`,
-  `gitlab-work-item-iid`,
-  `gitlab-job-id`, `gitlab-commit-sha` and `gitlab-url` are navigation
-  targets.  `gitlab-open-at-point` reads them.  A new object type adds
-  one property and one branch there.
-
-- One hook per buffer kind names its inserters in display order:
-  `gitlab-detail-sections-hook',
-  `gitlab-merge-request-sections-hook',
-  `gitlab-work-item-sections-hook' and
-  `gitlab-pipeline-sections-hook'.  `gitlab--sections-hook' names the
-  hook of the current buffer, and `gitlab--render-default' runs its
-  entries through `magit-run-section-hook'.  Add no second option that
-  lists sections.  An inserter takes no argument and reads the decoded
-  answer from `gitlab--buffer-data'.  `gitlab-insert-title' builds the
-  heading from `gitlab--title-function', `gitlab-insert-fields' takes
-  the field order from `gitlab--field-keys-function', and a group
-  inserter owns its own section through `gitlab--insert-group-heading'.
-  A family sets those buffer locals in its mode body, so a display
-  command sets `gitlab--id' alone.
-
-- A restart erases the buffer, so `gitlab-job-log--start` calls
-  `gitlab-job-log--collapsed-names` first and stores the folded names
-  in `gitlab-job-log--collapsed`.  A section that the new trace closes
-  folds again when its name is in the list.  Both
-  `gitlab-job-log--collapsed` and `gitlab-job-log--sections` are
-  `permanent-local`, because the mode runs again on a second display
-  of the same buffer, and both stay in the buffer: no file, no
-  custom variable, no session state.
-
-- A job row fills the five columns of the pipeline list: the job ID,
-  the status, the name, the stage and the finish time, or the running
-  time of a job that still runs.  The name takes the Ref column and
-  the stage the Source column, because the table has no column of its
-  own for the job.  `gitlab-pipeline--job-time-cell` reads
-  `finished_at` and falls back to `gitlab--elapsed-seconds` of
-  `started_at`.  `gitlab-pipeline--open-row` opens the job log with
-  the pipeline of the row, so the log walks up without a request.
-  `gitlab-pipeline--row-data` answers the job of a job row, so `w` and
-  `thing-at-point 'url` reach the job page.
-
-- A resize refits through `window-size-change-functions`.  The hook
-  runs during redisplay, so `gitlab-list--window-size-changed` only
-  queues the buffer in `gitlab-list--refit-buffers` and a zero delay
-  timer runs `gitlab-list--run-refits`, which reprints through
-  `gitlab-list--refit`.  A refit compares
-  `gitlab-list--available-width` with `gitlab-list--fit-width` of the
-  last fitting, so a hook that fires for the echo area reprints
+- Prefix a public symbol with `gitlab-` and an internal one with
+  `gitlab--`.  `ol-gitlab.el` uses `gitlab-org-`.
+- A helper that reads only its arguments declares `(declare (pure t)
+  (side-effect-free t))`.  One that also reads a defcustom, a defconst
+  or a buffer-local value declares `(declare (side-effect-free t))`
+  alone.  One that touches a buffer, a process or a file declares
   nothing.
+- Declare a function of another file with `declare-function` when the
+  file does not require it.
+- An interactive entry point carries a `;;;###autoload` cookie.
+- A display mode passes `:interactive nil`.  A command that works in
+  one mode names it in the `interactive` form, as
+  `(interactive nil gitlab-detail-mode)`.  A command that resolves its
+  target from `gitlab--object-at-point` names no mode.
+  `gitlab-mode-command-modes` asserts the list.
+- One hook per buffer kind lists its inserters in display order.  Add
+  no second option that orders sections.
+- Register a new field in the field list of the display layer
+  (`gitlab-date-fields`, `gitlab-id-fields`, `gitlab-author-fields`,
+  `gitlab-branch-fields`, `gitlab-tag-fields`) instead of testing a key
+  name inside a renderer.
+- Bind an evil key with `evil-define-minor-mode-key`.  A key that evil
+  already owns becomes a `[remap EVIL-COMMAND]` vector.
+- Write a function docstring in the imperative.  Write a variable
+  docstring as a noun phrase.  Start a flag docstring with `When
+  non-nil, ...`.  checkdoc enforces the form.
 
-- A ref that the `tag` flag of the object marks a tag takes
-  `gitlab-tag` instead of `gitlab-branch`.  A name goes into
-  `gitlab-tag-fields` for the field table, and the renderer passes
-  the decoded flag to `gitlab--format-branch`.  Read a flag with
-  `gitlab--tag-flag-p`, because JSON false decodes to `:false` and a
-  plain truth test reads it as true.  `gitlab--format-field-value`
-  takes the object as an optional third argument for that answer,
-  so a caller without the object passes the flag to
-  `gitlab--format-branch` itself.
+## Testing
 
-- A draft merge request carries the `draft` flag and writes `Draft:`
-  in front of its title.  The Title cell of a merge request list row
-  takes the `gitlab-draft` face, which inherits `shadow`, when
-  `gitlab--draft-p` answers non-nil.  It reads the flag through
-  `gitlab--tag-flag-p`.
+- One `test/<unit>-test.el` per source unit.  A new unit adds a file,
+  and the flake globs the tree.
+- The suite runs offline.  `test/mock-glab` answers from
+  `test/fixtures`, and no test opens a network connection.
+- A new command and a changed behavior ship an ERT test.
+  `gitlab-test-with-root` renders a section tree without the fetch
+  pipeline.
+- `test/gitlab-test-helper.el` holds the shared helpers.
 
-- Interactive entry points carry `;;;###autoload` cookies.  The
-  optional layers keep their own files and are not required by
-  `gitlab-modes.el`.
+## Dependencies
 
-- Every display mode passes `:interactive nil` to
-  `define-derived-mode`, so the mode function is no command of its
-  own.  A display command enters a mode, and a bare call of the mode
-  would show an empty buffer that fetches nothing.
-
-- `ol-gitlab.el` registers the link types at load.  A `:store`
-  function calls `org-link-store-props` and returns nil outside a
-  GitLab buffer, because Org calls every store function in every
-  buffer and a signal there breaks `org-store-link` for all link types.
-  The export function writes a web URL when `gitlab-repository' is
-  set, because the URL needs the project path: an HTML anchor, a
-  markdown link, a LaTeX `\href`, and the text with the URL after it
-  for every other backend.
-
-- Byte-compilation runs with warnings as errors.  Declare a function
-  from another file with `declare-function` when the file does not
-  require it.  The test helper marks its dynamically bound variables
-  special at compile time.  A `dotimes` form with a RESULT form makes
-  Emacs 31 report "Unused lexical variable" for a loop variable that
-  the body reads, so write the loop without a result form and put the
-  answer after it.
+| package | required | why |
+|---|---|---|
+| Emacs 30.1 | required | floor of the section and table APIs in use |
+| `magit-section` | required | the detail modes derive from `magit-section-mode` |
+| `glab` | required | the transport shells out to it, and the build bakes in its store path |
+| evil | optional | `gitlab-evil.el` and its suite only, never in `Package-Requires` |
+| Magit | optional | the commit, changes and log views |
+| Org | optional | `ol-gitlab.el` |
 
 ## Open work
 
-- Native `api` backend.  The design is in git-bug issue `cabdead`:
-  `url.el` transport, token discovery, pagination, cancellation and a
-  parity test against the CLI fixtures.
-- More filters for the list commands: state, scope, labels and author.
-- Merge request discussions by discussion, not one flat notes list.
-- Pipeline actions: retry, cancel and play a manual job.
-- A second detail buffer for a job with its metadata, not only the log.
-- Job rows in the imenu of a pipeline buffer.  The design is in
-  git-bug issue `01e1ede`: keep the field lines and add one entry per
-  job row.
-- Merge request rows that expand into their notes, through
-  `gitlab-list--child-function` of the list base mode.  The commit
-  rows of that hook already answer the sort, the point record and the
-  row data.
+- Keep the work in git-bug.  `git-bug bug` lists the issues of this
+  repository, and an issue carries the design of a larger change.
+- Add a native `api` transport.  The design sits in git-bug issue
+  `cabdead`.
+- List the job rows in the imenu of a pipeline buffer.  The design sits
+  in git-bug issue `01e1ede`.
+- Add list filters for state, scope, labels and author.
+- Show merge request discussions one discussion at a time, not as one
+  flat notes list.
+- Add the pipeline actions retry, cancel and play.
+- Add a detail buffer for a job with its metadata beside the log.
+
+## Workflow
+
+- Write the commit subject in the imperative, and name the file with a
+  `file:` prefix when one file carries the change.  Put the reason in
+  the body.
+- Keep a generated file out of git.  `*.elc`, `*.eln`, `result*` and
+  the ELPA directory stay ignored.
+- Bump no version by hand.  The flake derives it from the commit date
+  and passes it to `gitlabModes`.
