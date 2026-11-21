@@ -129,8 +129,7 @@ library.  Each one registers itself at its own load.
 - `GLAB_NO_PROMPT=1` stays in the process environment, and a write that
   glab would confirm passes `--yes`.  A job trace stream keeps no
   timeout, a request keeps `gitlab-cli-timeout`.
-- Byte-compilation warnings fail the build.  Fix the warning, do not
-  silence it.
+- Never silence a byte-compilation warning.  Fix the warning.
 - Magit stays optional: the Git views call Magit functions, declare
   them with `declare-function`, and build no diff, commit or log
   buffer of their own.  Evil stays optional: `Package-Requires` names
