@@ -2907,7 +2907,9 @@ A numeric prefix COLUMN names the column, and a prefix of -1
 returns the order of the collection.  A second call on the column
 that already sorts the table reverses the direction.  The child
 rows of an expanded row travel with their parent, so a sort never
-separates a row from the rows that it holds."
+separates a row from the rows that it holds.  A direct call of
+`tabulated-list-sort' interleaves the child rows, so no code and no
+key uses it."
   (interactive "P")
   (when (and column (or (>= column (length tabulated-list-format))
                         (< column -1)))

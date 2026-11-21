@@ -1666,7 +1666,10 @@ up without a request."
 The helper reads the folded sections of the old trace first, so a
 restart folds the same sections again when their markers arrive.
 It puts point on the first line, because a display command shows the
-trace from its start."
+trace from its start.  It also clears the first time, the last time
+and the stamped line count, because the mode line adds to those
+values and an increment over the erased buffer would count the old
+run twice."
   (gitlab-job-log--kill)
   (setq-local gitlab-job-log--collapsed (gitlab-job-log--collapsed-names))
   (setq gitlab-job-log--finished nil
