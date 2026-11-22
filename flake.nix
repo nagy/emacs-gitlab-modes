@@ -94,6 +94,7 @@
               # The package name matches its entry library, gitlab-modes.el,
               # so `(use-package gitlab-modes :ensure t)' resolves it.
               pname = "gitlab-modes";
+              preferLocalBuild = true;
               inherit version;
 
               src = lib.cleanSource ./.;
