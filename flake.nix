@@ -248,6 +248,10 @@
           # the whole repo rather than only `nix build'.
           checks.package = gitlabModes;
 
+          # Same derivation under the name every other flake exposes, so
+          # `nix build .#checks.<system>.default' works here too.
+          checks.default = gitlabModes;
+
           # package-lint: ELPA policy (headers, symbol prefixes,
           # dependency declarations).
           checks.package-lint =
