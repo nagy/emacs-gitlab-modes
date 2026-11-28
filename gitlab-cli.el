@@ -143,13 +143,20 @@ comes back in that spelling."
   "Return a cons of HOST and PATH parsed from a URL REPOSITORY.
 Return nil when REPOSITORY is not a URL.  The function knows the
 form with a scheme, such as https://host/path, and the scp form,
-such as git@host:path."
+such as git@host:path.  An HTTP or HTTPS URL keeps its port in
+HOST, because that port serves the web interface.  The port of
+another scheme says nothing about the instance and stays out."
   (declare (pure t) (side-effect-free t))
   (cond
    ((string-match
-     "\\`[[:alpha:]][[:alnum:]+.-]*://\\(?:[^@/]+@\\)?\\([^/:]+\\)\\(?::[0-9]+\\)?/\\(.+\\)\\'"
+     "\\`\\([[:alpha:]][[:alnum:]+.-]*\\)://\\(?:[^@/]+@\\)?\\([^/]+\\)/\\(.+\\)\\'"
      repository)
-    (cons (match-string 1 repository) (match-string 2 repository)))
+    (let ((scheme (downcase (match-string 1 repository)))
+          (host (match-string 2 repository))
+          (path (match-string 3 repository)))
+      (unless (member scheme '("http" "https"))
+        (setq host (replace-regexp-in-string ":[0-9]+\\'" "" host)))
+      (cons host path)))
    ((string-match "\\`\\(?:[^@/:]+@\\)?\\([^/:]+\\):\\(.+\\)\\'" repository)
     (cons (match-string 1 repository) (match-string 2 repository)))))
 
@@ -160,7 +167,9 @@ https://gitlab.example.com/group/project.git or
 git@gitlab.example.com:group/project.git.  HOST is nil when the
 text names no host or names `gitlab-cli-default-host', so the
 default instance stays out of buffer names and out of the glab
-arguments.  PATH carries no surrounding slash and no .git suffix."
+arguments.  A host of an HTTP or HTTPS URL keeps its port, because
+one instance on a port is not another instance.  PATH carries no
+surrounding slash and no .git suffix."
   (declare (side-effect-free t))
   (let ((text (and repository (string-trim repository))))
     (if (or (null text) (string-empty-p text))
@@ -173,8 +182,6 @@ arguments.  PATH carries no surrounding slash and no .git suffix."
              (path (if (string-suffix-p ".git" path)
                        (substring path 0 (- (length path) 4))
                      path)))
-        (when (and host (string-match "\\`\\([^:]+\\)\\(?::[0-9]+\\)?\\'" host))
-          (setq host (match-string 1 host)))
         (cons (if (or (null host)
                       (string-empty-p host)
                       (string-equal-ignore-case host gitlab-cli-default-host))

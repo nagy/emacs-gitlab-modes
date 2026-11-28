@@ -124,6 +124,9 @@ Kill every GitLab buffer that BODY opened."
   (should (equal "g/p@host.example"
                  (gitlab-cli-repository-normalize
                   "ssh://git@host.example:2222/g/p.git")))
+  (should (equal "g/p@gitlab.example.com:8443"
+                 (gitlab-cli-repository-normalize
+                  "https://gitlab.example.com:8443/g/p")))
   (should-not (gitlab-cli-repository-normalize nil))
   (should-not (gitlab-cli-repository-normalize "")))
 
@@ -150,6 +153,10 @@ Kill every GitLab buffer that BODY opened."
   (let ((gitlab-repository "group/project@gitlab.example.com"))
     (should (equal '("mr" "list" "--repo"
                      "https://gitlab.example.com/group/project")
+                   (gitlab-cli--repository-arguments '("mr" "list")))))
+  (let ((gitlab-repository "group/project@gitlab.example.com:8443"))
+    (should (equal '("mr" "list" "--repo"
+                     "https://gitlab.example.com:8443/group/project")
                    (gitlab-cli--repository-arguments '("mr" "list")))))
   (let ((gitlab-repository "group/project"))
     (should (equal '("mr" "list" "--repo" "group/project")
