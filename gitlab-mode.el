@@ -1279,10 +1279,14 @@ The notes command uses this after it fetched comments."
   (capitalize (replace-regexp-in-string "_" " " (symbol-name key))))
 
 (defun gitlab--json-encode (value)
-  "Return VALUE as compact JSON, or its printed form on failure."
+  "Return VALUE as compact JSON, or its printed form on failure.
+The decoder uses the keyword `:false' for JSON false and nil for
+JSON null, so the encoder binds both back to their JSON form."
   (declare (side-effect-free t))
   (condition-case nil
-      (json-encode value)
+      (let ((json-false :false)
+            (json-null nil))
+        (json-encode value))
     (error (format "%S" value))))
 
 ;;; Text buttons
@@ -1534,15 +1538,19 @@ ref of a tag takes `gitlab-tag'."
     (gitlab--format-value value)))
 
 (defun gitlab--format-date (value)
-  "Return timestamp VALUE in a compact readable form."
-  (declare (pure t) (side-effect-free t))
+  "Return timestamp VALUE in one readable form.
+VALUE is the ISO 8601 text of a GitLab answer or of `git log %aI',
+which carries either a Z suffix or an offset.  Both name one
+instant, so both print in the same clock.  The clock is UTC,
+because a GitLab answer is UTC and the timestamp prefix of a job
+trace shows UTC too.  A text that is no timestamp returns as it
+is."
+  (declare (side-effect-free t))
   (if (stringp value)
-      (let ((text (replace-regexp-in-string "T" " " value)))
-        (setq text (replace-regexp-in-string "\\.[0-9]+" "" text))
-        (setq text (replace-regexp-in-string "Z\\'" "" text))
-        (setq text (replace-regexp-in-string "[+-][0-9][0-9]:[0-9][0-9]\\'"
-                                             "" text))
-        text)
+      (let ((time (ignore-errors (date-to-time value))))
+        (if time
+            (format-time-string "%Y-%m-%d %H:%M:%S" time t)
+          value))
     (gitlab--format-value value)))
 
 (defun gitlab--format-duration (value)

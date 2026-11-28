@@ -54,12 +54,22 @@
     (should (equal "100" id))))
 
 (ert-deftest gitlab-mode-format-date-and-duration ()
-  "Timestamps and durations have compact forms."
+  "Timestamps and durations have compact forms.
+A timestamp with an offset prints the same instant as the UTC
+timestamp of a GitLab answer."
   (should (equal "2026-10-31 20:57:30"
                  (gitlab--format-date "2026-10-31T20:57:30.763Z")))
+  (should (equal "2026-10-31 20:57:30"
+                 (gitlab--format-date "2026-10-31T22:57:30+02:00")))
+  (should (equal "yesterday" (gitlab--format-date "yesterday")))
   (should (equal "8m 42s" (gitlab--format-duration 522)))
   (should (equal "1m 40s" (gitlab--format-duration 100.234765)))
   (should (equal "1h 0m 5s" (gitlab--format-duration 3605))))
+
+(ert-deftest gitlab-mode-json-encode-false ()
+  "A nested JSON false keeps its JSON form."
+  (should (equal "{\"flag\":false,\"none\":null}"
+                 (gitlab--json-encode '((flag . :false) (none))))))
 
 (ert-deftest gitlab-mode-label-face ()
   "Every label of a label list takes `gitlab-label'."
