@@ -141,6 +141,23 @@
      (gitlab-cache-invalidate 'merge-request)
      (should (equal first (gitlab-merge-request-list-cached))))))
 
+(ert-deftest gitlab-list-cache-key-names-the-project ()
+  "Two checkouts never share one cached list."
+  (gitlab-test-with-environment
+   (let ((one (make-temp-file "gitlab-cache-one-" t))
+         (two (make-temp-file "gitlab-cache-two-" t)))
+     (unwind-protect
+         (let ((keys
+                (mapcar (lambda (directory)
+                          (let ((default-directory
+                                 (file-name-as-directory directory)))
+                            (gitlab--list-cache-key
+                             'merge-request nil nil)))
+                        (list one two))))
+           (should-not (equal (car keys) (cadr keys))))
+       (delete-directory one t)
+       (delete-directory two t)))))
+
 (ert-deftest gitlab-data-pagination-arguments ()
   "Notes and jobs requests ask for one full page.
 `--paginate' concatenates JSON arrays, which one decode cannot

@@ -230,6 +230,19 @@ KIND is `merge-request', `pipeline' or `work-item'."
                gitlab--cache)
     (clrhash gitlab--cache)))
 
+(defun gitlab--list-cache-key (kind arguments scope)
+  "Return the cache key of KIND, ARGUMENTS and SCOPE.
+The project term names the collection that an answer holds, so a
+prompt in one checkout never offers the titles of another.  A group
+scope names its group, a set `gitlab-repository' names that
+project, and the directory in which glab runs names a project that
+neither sets."
+  (declare (side-effect-free t))
+  (list kind (car-safe scope)
+        (or (cdr-safe scope) gitlab-repository
+            (gitlab-cli-directory-of))
+        arguments))
+
 (defun gitlab--cached (key thunk)
   "Return the cached value of KEY, or call THUNK and cache it.
 The entry expires after `gitlab-cache-ttl' seconds, unless that
@@ -421,9 +434,7 @@ ERROR receives a condition.  Return the process object."
 ARGUMENTS holds extra glab flags, and SCOPE names a group with a cons
 of `group' and a context.  Prompts use this; display buffers never
 do."
-  (gitlab--cached (list 'merge-request (car-safe scope)
-                        (or (cdr-safe scope) gitlab-repository)
-                        arguments)
+  (gitlab--cached (gitlab--list-cache-key 'merge-request arguments scope)
                   (lambda () (gitlab-merge-request-list arguments scope))))
 
 ;;; Work items
@@ -500,9 +511,7 @@ Return the process object."
 ARGUMENTS holds extra glab flags, and SCOPE names a group with a cons
 of `group' and a context.  Prompts use this; display buffers never
 do."
-  (gitlab--cached (list 'work-item (car-safe scope)
-                        (or (cdr-safe scope) gitlab-repository)
-                        arguments)
+  (gitlab--cached (gitlab--list-cache-key 'work-item arguments scope)
                   (lambda () (gitlab-work-item-list arguments scope))))
 
 ;;; Pipelines
@@ -610,7 +619,7 @@ process object."
 (defun gitlab-pipeline-list-cached (&optional arguments)
   "Return the cached pipeline list, fetching it when stale.
 ARGUMENTS holds extra glab flags."
-  (gitlab--cached (list 'pipeline gitlab-repository arguments)
+  (gitlab--cached (gitlab--list-cache-key 'pipeline arguments nil)
                   (lambda () (gitlab-pipeline-list arguments))))
 
 ;;; Job log
