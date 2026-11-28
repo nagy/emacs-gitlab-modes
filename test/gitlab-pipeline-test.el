@@ -1009,6 +1009,30 @@ no buffer text and a long trace costs it nothing."
                          gitlab-job-log--mode-line-cache)))
       (kill-buffer buffer))))
 
+(ert-deftest gitlab-pipeline-job-log-stream-skips-region-scan ()
+  "A trace chunk does not rescan an active region.
+The span of a selection cannot change while the output lands
+behind it, and one scan of a large selection per chunk would
+stall the stream.  The next command reports the span again."
+  (let ((buffer
+         (gitlab-pipeline-tests--job-log-with-trace
+          (concat "2026-10-30T20:59:37.000Z 00O one\n"
+                  "2026-10-30T20:59:40.000Z 00O two\n"))))
+    (unwind-protect
+        (with-current-buffer buffer
+          (gitlab-job-log--update-mode-line)
+          (let ((scans 0))
+            (cl-letf (((symbol-function 'gitlab-job-log--region-span)
+                       (lambda ()
+                         (setq scans (1+ scans))
+                         (cons 2 3))))
+              (gitlab-job-log--write
+               "2026-10-30T20:59:41.000Z 00O three\n")
+              (should (= 0 scans))
+              (gitlab-job-log--mode-line-maybe-update)
+              (should (= 1 scans)))))
+      (kill-buffer buffer))))
+
 (ert-deftest gitlab-pipeline-job-log-mode-line-empty ()
   "A log without two stamped lines shows no duration section."
   (let ((buffer

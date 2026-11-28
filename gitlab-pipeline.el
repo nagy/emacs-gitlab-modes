@@ -1400,7 +1400,7 @@ tail when `gitlab-job-log--tail-p' holds before the write."
       (gitlab-job-log--insert-line line))
     (when follow
       (goto-char (point-max)))
-    (gitlab-job-log--mode-line-maybe-update)))
+    (gitlab-job-log--mode-line-maybe-update 'stream)))
 
 (defun gitlab-job-log--flush ()
   "Write the incomplete line that waits for its end."
@@ -1603,14 +1603,19 @@ because `post-command-hook' runs it after every command."
               (gitlab-job-log--mode-line-format text)))))
   (force-mode-line-update))
 
-(defun gitlab-job-log--mode-line-maybe-update ()
+(defun gitlab-job-log--mode-line-maybe-update (&optional stream)
   "Rebuild the duration section when its state changed.
 `gitlab-job-log-mode' runs this from `post-command-hook', so a moved
 point, a new selection or a new trace line reaches the mode line
-without a redraw."
-  (unless (equal (gitlab-job-log--mode-line-signature)
-                 gitlab-job-log--mode-line-state)
-    (gitlab-job-log--update-mode-line)))
+without a redraw.  STREAM is non-nil for a chunk of the trace: a
+chunk then leaves an active region alone, because a selection
+behind the output keeps its span, and one scan of a large
+selection per chunk would stall the stream.  The next command
+reports the span again."
+  (unless (and stream (use-region-p))
+    (unless (equal (gitlab-job-log--mode-line-signature)
+                   gitlab-job-log--mode-line-state)
+      (gitlab-job-log--update-mode-line))))
 
 (defun gitlab-job-log-toggle-timestamps ()
   "Show or hide the timestamp prefix of every trace line.
