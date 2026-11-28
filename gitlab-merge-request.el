@@ -360,6 +360,9 @@ The value is a plist with `:kind' and, for the `commits' kind, the
          (sha (and row (gitlab-data-field-string "sha" row)))
          (key (cons id sha))
          (table (gitlab-merge-request--commit-table)))
+    (when (> (hash-table-count table) 2048)
+      (setq table (setq-local gitlab-merge-request--commits
+                              (make-hash-table :test #'equal))))
     (or (gethash key table)
         (puthash key (gitlab-merge-request--commit-answer-compute row)
                  table))))

@@ -825,6 +825,20 @@ fetch."
     (should (eq gitlab-list--region-open-function
                 #'gitlab-merge-request--open-region))))
 
+(ert-deftest gitlab-merge-request-commit-cache-capped ()
+  "The commit cache starts over when it grows past its bound."
+  (with-temp-buffer
+    (gitlab-merge-request-list-mode)
+    (let ((table (gitlab-merge-request--commit-table)))
+      (dotimes (index 2049)
+        (puthash (cons "7" (number-to-string index)) nil table))
+      (cl-letf (((symbol-function
+                  'gitlab-merge-request--commit-answer-compute)
+                 (lambda (_row) (list :kind 'none))))
+        (gitlab-merge-request--commit-answer "7"))
+      (should (= 1 (hash-table-count
+                    gitlab-merge-request--commits))))))
+
 (provide 'gitlab-merge-request-tests)
 
 ;;; gitlab-merge-request-test.el ends here
