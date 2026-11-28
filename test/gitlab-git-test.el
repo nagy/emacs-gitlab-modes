@@ -99,6 +99,11 @@ The macro deletes the repository afterwards."
          (progn ,@body)
        (delete-directory (car ,spec) t))))
 
+(ert-deftest gitlab-git-run-without-program ()
+  "An absent git program returns nil instead of a signal."
+  (let ((gitlab-git-program "gitlab-git-tests-no-such-program"))
+    (should-not (gitlab-git--run '("--version") temporary-file-directory))))
+
 (ert-deftest gitlab-git-merge-request-head-ref ()
   "The local merge request ref resolves from the remote namespace."
   (skip-unless (executable-find "git"))

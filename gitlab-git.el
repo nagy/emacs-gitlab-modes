@@ -114,7 +114,8 @@ as an earlier version did."
 (defun gitlab-git--run (arguments &optional directory)
   "Run git with ARGUMENTS and return its standard output.
 The command runs in DIRECTORY, or in `gitlab-cli-directory-of'.
-Return nil when git exits with a non-zero status, so a missing ref
+Return nil when git exits with a non-zero status or when the
+program is absent, so a missing ref or a machine without git
 never signals."
   (let ((default-directory (or directory (gitlab-cli-directory-of)))
         (coding-system-for-read 'utf-8-unix)
@@ -123,8 +124,12 @@ never signals."
                                    process-environment)))
     (when (file-directory-p default-directory)
       (with-temp-buffer
-        (when (eq 0 (apply #'process-file gitlab-git-program nil t nil
-                           arguments))
+        (when (condition-case nil
+                  (eq 0 (apply #'process-file gitlab-git-program nil t nil
+                               arguments))
+                ;; A machine without the program shows no section
+                ;; instead of a signal from inside a render.
+                (file-missing nil))
           (buffer-string))))))
 
 (defun gitlab-git--lines (arguments &optional directory)
