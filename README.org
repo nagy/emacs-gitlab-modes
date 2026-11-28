@@ -103,8 +103,10 @@ A branch carries the =gitlab-branch= face, which inherits
 =magit-branch-remote=, and a ref that the =tag= flag of a pipeline
 marks a tag carries the =gitlab-tag= face, which inherits
 =magit-tag=.  A timestamp carries the =gitlab-date= face, which
-inherits =org-date=.  Magit and Org stay optional, because Emacs shows
-the face without its parent.
+inherits =org-date=.  A timestamp prints in UTC, because GitLab
+answers in UTC while a commit date carries its own offset; one
+instant therefore prints one way in both places.  Magit and Org stay
+optional, because Emacs shows the face without its parent.
 The Title cell of a draft merge request carries the =gitlab-draft=
 face, which inherits =shadow=.  GitLab marks a draft merge request
 with the =draft= field and writes =Draft:= in front of the title.
@@ -712,7 +714,10 @@ share one buffer:
 The host stays out of the name for =gitlab-cli-default-host=, which
 defaults to =gitlab.com=.  A project of another instance passes
 =https://HOST/PATH= to =glab --repo=, so one Emacs reaches every
-instance that =glab= can authenticate to.
+instance that =glab= can authenticate to.  A host of an HTTP or HTTPS
+URL keeps its port, so an instance on a port keeps its own name and
+its own =--repo= URL.  The port of an =ssh://= URL stays out, because
+it serves SSH and not the web interface.
 
 Buffer names are a convenience, not the identity.  Each display
 buffer keeps its mode, its object ID and its context in
