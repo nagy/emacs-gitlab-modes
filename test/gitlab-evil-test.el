@@ -76,6 +76,19 @@
             (ids (gitlab-evil--ids-between start end)))
        (should (equal '("1" "2") ids))))))
 
+(ert-deftest gitlab-evil-copy-ids-child-row ()
+  "A child row copies its plain ID and not its cons."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-list-mode)
+     (setq-local tabulated-list-format [("ID" 6 t)])
+     (setq-local gitlab-list--row-id-function
+                 (lambda (id) (gitlab-data-id-string (cdr id))))
+     (setq-local tabulated-list-entries '((("301" . "176") ["build"])))
+     (tabulated-list-print)
+     (should (equal '("176")
+                    (gitlab-evil--ids-between (point-min) (point-max)))))))
+
 (defun gitlab-evil-test--binding (mode key &optional visual)
   "Return the command that MODE binds to KEY with evil.
 VISUAL reads the binding in visual state instead of normal state."

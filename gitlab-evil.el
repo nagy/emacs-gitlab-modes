@@ -239,13 +239,15 @@ passes through unchanged."
 ;;; Selection
 
 (defun gitlab-evil--ids-between (start end)
-  "Return the row IDs of the GitLab list rows between START and END."
+  "Return the row IDs of the GitLab list rows between START and END.
+A child row names a cons, so the row ID goes through the plain-ID
+function of the list buffer."
   (let ((ids nil))
     (save-excursion
       (goto-char start)
       (while (< (point) end)
         (when-let* ((id (tabulated-list-get-id)))
-          (push (gitlab-data-id-string id) ids))
+          (push (gitlab-list--row-id-string id) ids))
         (forward-line 1)))
     (nreverse ids)))
 
