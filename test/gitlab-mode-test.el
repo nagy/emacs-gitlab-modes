@@ -22,6 +22,7 @@
 (require 'subr-x)
 (require 'gitlab-test-helper)
 (require 'gitlab-mode)
+(require 'gitlab-merge-request)
 
 (declare-function gitlab-display-job-log "gitlab-pipeline"
                   (job-id &optional name pipeline-id repository))
@@ -1156,6 +1157,93 @@ column stays right-aligned."
    (with-temp-buffer
      (gitlab-list-mode)
      (should-error (gitlab-next-sibling) :type 'user-error))))
+
+(ert-deftest gitlab-mode-sibling-group-list ()
+  "A detail buffer walks the rows of the group list that opened it."
+  (gitlab-test-with-environment
+   (let ((list-buffer (generate-new-buffer " *gitlab-group-list*"))
+         (detail (generate-new-buffer " *gitlab-group-detail*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer list-buffer
+             (gitlab-merge-request-list-mode)
+             (setq-local gitlab--scope 'group)
+             (setq-local gitlab--context "my-group")
+             (setq-local gitlab--identity
+                         (list #'gitlab-merge-request-list-mode nil
+                               "my-group"))
+             (setq-local tabulated-list-format [("IID" 12 t)])
+             (setq-local tabulated-list-sort-key nil)
+             (setq-local tabulated-list-entries
+                         '(("group/one!12" ["!12"])
+                           ("group/two!13" ["!13"])))
+             (tabulated-list-print t))
+           (with-current-buffer detail
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "13"
+                         gitlab--context "group/two"
+                         gitlab--identity
+                         (list #'gitlab-merge-request-mode "13"
+                               "group/two"))
+             (let ((opened nil))
+               (cl-letf (((symbol-function 'gitlab-display-merge-request)
+                          (lambda (id) (setq opened id))))
+                 (gitlab-previous-sibling))
+               (should (equal "group/one!12" opened)))))
+       (with-current-buffer list-buffer (set-buffer-modified-p nil))
+       (with-current-buffer detail (set-buffer-modified-p nil))
+       (kill-buffer list-buffer)
+       (kill-buffer detail)))))
+
+(ert-deftest gitlab-mode-sibling-ignores-another-project-list ()
+  "A project list of another context supplies no siblings.
+The fallback serves a group list alone, because only its rows name
+their own project.  A bare IID of another project's list must not
+be taken for this object."
+  (gitlab-test-with-environment
+   (let ((list-buffer (generate-new-buffer " *gitlab-other-project-list*"))
+         (detail (generate-new-buffer " *gitlab-other-project-detail*")))
+     (unwind-protect
+         (progn
+           (with-current-buffer list-buffer
+             (gitlab-merge-request-list-mode)
+             (setq-local gitlab--context "group/one"
+                         gitlab--identity
+                         (list #'gitlab-merge-request-list-mode nil
+                               "group/one")
+                         tabulated-list-format [("IID" 12 t)]
+                         tabulated-list-sort-key nil
+                         tabulated-list-entries
+                         '(("12" ["!12"]) ("13" ["!13"])))
+             (tabulated-list-print t))
+           (with-current-buffer detail
+             (gitlab-merge-request-mode)
+             (setq-local gitlab--id "12"
+                         gitlab--context "group/two"
+                         gitlab--identity
+                         (list #'gitlab-merge-request-mode "12"
+                               "group/two"))
+             (let ((opened nil))
+               (cl-letf (((symbol-function 'gitlab-display-merge-request)
+                          (lambda (id) (setq opened id))))
+                 (should-error (gitlab-next-sibling) :type 'user-error))
+               (should-not opened))))
+       (with-current-buffer list-buffer (set-buffer-modified-p nil))
+       (with-current-buffer detail (set-buffer-modified-p nil))
+       (kill-buffer list-buffer)
+       (kill-buffer detail)))))
+
+(ert-deftest gitlab-mode-sibling-position-names-the-row-project ()
+  "A group row names its project, so two equal IIDs stay apart."
+  (gitlab-test-with-environment
+   (with-temp-buffer
+     (gitlab-merge-request-mode)
+     (setq-local gitlab--kind 'merge-request
+                 gitlab--id "12"
+                 gitlab--context "group/two")
+     (should (= 1 (gitlab--sibling-position
+                   '(("group/one!12" . nil)
+                     ("group/two!12" . nil))))))))
 
 (ert-deftest gitlab-mode-list-children ()
   "The children of a list buffer are its rows in display order.

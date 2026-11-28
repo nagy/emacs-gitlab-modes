@@ -2041,12 +2041,30 @@ IDENTITY defaults to the answer of
 `gitlab--parent-identity-function', a list of the major mode
 function and the object ID of the parent.  The lookup reads the
 buffer-local identity of every buffer, so a renamed parent buffer
-still answers."
+still answers.
+
+A list parent carries the context of its own collection, and a
+group list carries the group while a detail buffer carries the
+project of one row.  The exact lookup therefore misses when the
+row came from a group list, so an ID-less buffer of the same mode
+serves next, but a group list alone, because its row names its own
+project.  A project list of another context holds a different
+collection, and its bare IIDs would name rows that the object does
+not have."
   (when-let* ((identity (or identity
                            (and gitlab--parent-identity-function
                                 (funcall gitlab--parent-identity-function)))))
-    (gitlab--identity-buffer (car identity) (cadr identity)
-                             gitlab--context)))
+    (or (gitlab--identity-buffer (car identity) (cadr identity)
+                                 gitlab--context)
+        (and (null (cadr identity))
+             (seq-find (lambda (buffer)
+                         (and (not (buffer-base-buffer buffer))
+                              (with-current-buffer buffer
+                                (and (equal (car gitlab--identity)
+                                            (car identity))
+                                     (null (cadr gitlab--identity))
+                                     (eq gitlab--scope 'group)))))
+                       (buffer-list))))))
 
 (defun gitlab--children ()
   "Return the children of the current buffer in display order.
@@ -2080,9 +2098,19 @@ or when the parent view holds no child."
 (defun gitlab--sibling-position (entries)
   "Return the position of the current object in ENTRIES, or nil.
 The ID of the current buffer names the entry, so a changed sort
-order keeps its meaning."
-  (seq-position entries gitlab--id
-                (lambda (entry id) (equal (car entry) id))))
+order keeps its meaning.  A row of a group list carries the full
+identifier of its object, so the helper compares the object ID and,
+whenever the row names a project, that project too."
+  (let ((id (gitlab-data-id-string gitlab--id)))
+    (seq-position entries id
+                  (lambda (entry _id)
+                    (let ((split (gitlab-data-identifier-split
+                                  gitlab--kind
+                                  (gitlab-data-id-string (car entry)))))
+                      (and (equal (cdr split) id)
+                           (or (null (car split))
+                               (null gitlab--context)
+                               (equal (car split) gitlab--context))))))))
 
 (defun gitlab--move-sibling (n)
   "Open the sibling N entries after the current object.
