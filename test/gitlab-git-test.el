@@ -79,9 +79,13 @@ carries a fetched refs/remotes/origin/merge-requests/7/head ref."
 
 (defmacro gitlab-git-tests--with-repo-commits (spec extra &rest body)
   "Bind SPEC to a scratch repository with EXTRA commits and run BODY.
-The macro deletes the repository afterwards."
+The macro deletes the repository afterwards.  It turns off
+`gitlab-git-context-from-git', because a buffer that these tests
+build by hand takes no project from the checkout that runs the
+suite."
   (declare (indent 2))
-  `(let ((,spec (gitlab-git-tests--repo ,extra)))
+  `(let ((,spec (gitlab-git-tests--repo ,extra))
+         (gitlab-git-context-from-git nil))
      (unwind-protect
          (progn ,@body)
        (delete-directory (car ,spec) t))))
